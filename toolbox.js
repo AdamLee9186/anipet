@@ -6,8 +6,8 @@
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
 // @match        *://*.lionwheel.com/*
-// @updateURL    https://anipetapp.netlify.app/toolbox.js
-// @downloadURL  https://anipetapp.netlify.app/toolbox.js
+// @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/toolbox.js
+// @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/toolbox.js
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
 // @grant        GM_setValue
