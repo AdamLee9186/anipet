@@ -9,8 +9,8 @@
 // @connect      raw.githubusercontent.com
 // @require      https://cdn.jsdelivr.net/npm/fuse.js@6.6.2/dist/fuse.min.js
 // @run-at       document-idle
-// @updateURL    https://anipetapp.netlify.app/search.js
-// @downloadURL  https://anipetapp.netlify.app/search.js
+// @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/search.js
+// @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/search.js
 // ==/UserScript==
 
 (function () {
