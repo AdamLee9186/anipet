@@ -4,6 +4,14 @@
 
 ## 📁 קבצים
 
+### 🔍 search.js
+סקריפט חיפוש מתקדם עם:
+- חיפוש חכם עם Fuse.js
+- תמיכה בברקוד ומק"ט
+- ממשק משתמש משופר
+- עדכונים אוטומטיים
+- תמיכה בעברית ו-RTL
+
 ### 🔍 Lionwheel - Enhanced Search 1.4.0.user.js
 סקריפט חיפוש מתקדם עם:
 - חיפוש חכם עם Fuse.js
@@ -41,16 +49,13 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/AdamLee9186/anipet_app.git
+git clone https://github.com/AdamLee9186/anipet.git
 
 # Navigate to the project
-cd anipet_app
+cd anipet
 
-# Install dependencies (if any)
-npm install
-
-# Deploy to Netlify
-npm run deploy
+# View the search script
+cat search.js
 ```
 
 ## 📝 הערות
@@ -62,7 +67,7 @@ npm run deploy
 
 ## 🤝 תמיכה
 
-לשאלות ותמיכה, פנה אל: [GitHub Issues](https://github.com/AdamLee9186/anipet_app/issues)
+לשאלות ותמיכה, פנה אל: [GitHub Issues](https://github.com/AdamLee9186/anipet/issues)
 
 ## 📄 רישיון
 
