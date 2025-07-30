@@ -844,8 +844,8 @@
         margin-bottom: -5px;
       }
       
-      /* Custom dropdown styles */
-      .lw-custom-dropdown {
+      /* Custom dropdown styles - ONLY our specific dropdown */
+      #lw-custom-dropdown {
         position: absolute;
         top: 100%;
         left: 0;
@@ -859,38 +859,36 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         display: none;
       }
-      .lw-custom-dropdown .search-input {
+      #lw-custom-dropdown .search-input {
         width: 100%;
         padding: 8px;
         border: none;
         border-bottom: 1px solid #eee;
         outline: none;
       }
-      .lw-custom-dropdown .results-container {
+      #lw-custom-dropdown .results-container {
         max-height: 250px;
         overflow-y: auto;
       }
-      .lw-custom-dropdown .product-item {
+      #lw-custom-dropdown .product-item {
         padding: 8px 12px;
         cursor: pointer;
         border-bottom: 1px solid #f0f0f0;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        display: block;
       }
-      .lw-custom-dropdown .product-item:hover {
+      #lw-custom-dropdown .product-item:hover {
         background-color: #f5f5f5;
       }
-      .lw-custom-dropdown .product-name {
+      #lw-custom-dropdown .product-name {
         flex: 1;
         text-align: right;
       }
-      .lw-custom-dropdown .product-sku {
+      #lw-custom-dropdown .product-sku {
         color: #666;
         font-size: 0.9em;
         margin-right: 10px;
       }
-      .lw-custom-dropdown .show-more-btn {
+      #lw-custom-dropdown .show-more-btn {
         padding: 8px 12px;
         background: #007bff;
         color: white;
@@ -899,8 +897,8 @@
         width: 100%;
         text-align: center;
       }
-      .lw-custom-dropdown .show-more-btn:hover {
-        background: #0056b3;
+      #lw-custom-dropdown .show-more-btn:hover {
+        background: #007bff;
       }
       
       /* Smart Search Highlight Styles */
@@ -922,7 +920,11 @@
         color: #ff8c00 !important;
         font-size: 16px;
       }
-      mark {
+      /* Mark highlighting - ONLY in our enhanced elements */
+      #lw-custom-dropdown mark,
+      .select2-container.smart-enhanced mark,
+      .select2-container.smart-enhanced .select2-results__option mark,
+      .select2-container.smart-enhanced .select2-dropdown mark {
         background: #ffeb3b !important;
         color: #000 !important;
         padding: 0 2px !important;
@@ -932,37 +934,7 @@
         box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
       }
       
-      .select2-results__option mark {
-        background: #ffeb3b !important;
-        color: #000 !important;
-        padding: 0 2px !important;
-        border-radius: 2px !important;
-        font-weight: bold !important;
-        text-shadow: none !important;
-        box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
-      }
-      
-      .select2-dropdown mark {
-        background: #ffeb3b !important;
-        color: #000 !important;
-        padding: 0 2px !important;
-        border-radius: 2px !important;
-        font-weight: bold !important;
-        text-shadow: none !important;
-        box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
-      }
-      
-      .select2-container mark {
-        background: #ffeb3b !important;
-        color: #000 !important;
-        padding: 0 2px !important;
-        border-radius: 2px !important;
-        font-weight: bold !important;
-        text-shadow: none !important;
-        box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
-      }
-      
-      /* Custom dropdown highlighting */
+      /* Custom dropdown highlighting - ONLY in our custom dropdown */
       #lw-custom-dropdown mark {
         background: #ffeb3b !important;
         color: #000 !important;
@@ -973,10 +945,10 @@
         box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
       }
       
-      /* Ensure highlighting works in all contexts */
-      .lw-custom-dropdown mark,
-      .lw-custom-dropdown .product-item mark,
-      .lw-custom-dropdown div mark {
+      /* Ensure highlighting works in all contexts - ONLY in our custom dropdown */
+      #lw-custom-dropdown mark,
+      #lw-custom-dropdown .product-item mark,
+      #lw-custom-dropdown div mark {
         background: #ffeb3b !important;
         color: #000 !important;
         padding: 0 2px !important;
@@ -986,117 +958,128 @@
         box-shadow: 0 0 2px rgba(0,0,0,0.3) !important;
       }
       
-      /* Keyboard navigation styles */
-      .lw-custom-dropdown .product-item.highlighted {
+      /* Keyboard navigation styles - ONLY in our custom dropdown */
+      #lw-custom-dropdown .product-item.highlighted {
         background-color: #007bff !important;
         color: white !important;
-        border: 2px solid #0056b3 !important;
+        border: 2px solid #007bff !important;
       }
       
-      .lw-custom-dropdown .product-item.highlighted mark {
+      #lw-custom-dropdown .product-item.highlighted mark {
         background: #ffeb3b !important;
         color: #000 !important;
       }
       
-      .lw-custom-dropdown .product-item.highlighted:hover {
-        background-color: #0056b3 !important;
+      #lw-custom-dropdown .product-item.highlighted:hover {
+        background-color: #007bff !important;
       }
       
-      /* Ensure all text elements turn white when highlighted */
-      .lw-custom-dropdown .product-item.highlighted * {
+      /* Ensure all text elements turn white when highlighted - ONLY in our custom dropdown */
+      #lw-custom-dropdown .product-item.highlighted * {
         color: white !important;
       }
       
-      .lw-custom-dropdown .product-item.highlighted mark {
+      #lw-custom-dropdown .product-item.highlighted mark {
         background: #ffeb3b !important;
         color: #000 !important;
       }
       
-      /* Hover styles for product items */
-      .lw-custom-dropdown .product-item:hover {
+      /* Hover styles for product items - ONLY in our custom dropdown */
+      #lw-custom-dropdown .product-item:hover {
         background-color: #007bff !important;
         color: white !important;
       }
       
-      .lw-custom-dropdown .product-item:hover * {
+      #lw-custom-dropdown .product-item:hover * {
         color: white !important;
       }
       
-      .lw-custom-dropdown .product-item:hover mark {
+      #lw-custom-dropdown .product-item:hover mark {
         background: #ffeb3b !important;
         color: #000 !important;
       }
       
-      /* Ensure product items are properly styled */
-      .lw-custom-dropdown .product-item {
+      /* Ensure product items are properly styled - ONLY in our custom dropdown */
+      #lw-custom-dropdown .product-item {
         border: 1px solid transparent !important;
         cursor: pointer !important;
+        display: block !important;
         /* Remove transition for instant hover feedback */
       }
       
-      /* Instant hover styles for product items */
-      .lw-custom-dropdown .product-item:hover {
+      /* Ensure proper spacing for product content */
+      #lw-custom-dropdown .product-item > div {
+        display: block !important;
+        margin-bottom: 4px !important;
+      }
+      
+      #lw-custom-dropdown .product-item > div:last-child {
+        margin-bottom: 0 !important;
+      }
+      
+      /* Instant hover styles for product items - ONLY in our custom dropdown */
+      #lw-custom-dropdown .product-item:hover {
         background-color: #007bff !important;
         color: white !important;
-        border-color: #0056b3 !important;
+        border-color: #007bff !important;
       }
       
-      .lw-custom-dropdown .product-item:hover * {
+      #lw-custom-dropdown .product-item:hover * {
         color: white !important;
       }
       
-      .lw-custom-dropdown .product-item:hover mark {
+      #lw-custom-dropdown .product-item:hover mark {
         background: #ffeb3b !important;
         color: #000 !important;
       }
       
-      /* Highlighted state (keyboard navigation) */
-      .lw-custom-dropdown .product-item.highlighted {
+      /* Highlighted state (keyboard navigation) - ONLY in our custom dropdown */
+      #lw-custom-dropdown .product-item.highlighted {
         background-color: #007bff !important;
         color: white !important;
-        border: 2px solid #0056b3 !important;
+        border: 2px solid #007bff !important;
       }
       
-      .lw-custom-dropdown .product-item.highlighted * {
+      #lw-custom-dropdown .product-item.highlighted * {
         color: white !important;
       }
       
-      .lw-custom-dropdown .product-item.highlighted mark {
+      #lw-custom-dropdown .product-item.highlighted mark {
         background: #ffeb3b !important;
         color: #000 !important;
       }
       
-      .lw-custom-dropdown .product-item.highlighted:hover {
-        background-color: #0056b3 !important;
+      #lw-custom-dropdown .product-item.highlighted:hover {
+        background-color: #007bff !important;
         border-color: #003d82 !important;
       }
       
-      /* Select2 keyboard navigation styles */
-      .select2-results__option--highlighted {
+      /* Select2 keyboard navigation styles - ONLY for our enhanced Select2 */
+      .select2-container.smart-enhanced .select2-results__option--highlighted {
         background-color: #007bff !important;
         color: white !important;
       }
       
-      .select2-results__option--highlighted * {
+      .select2-container.smart-enhanced .select2-results__option--highlighted * {
         color: white !important;
       }
       
-      .select2-results__option--highlighted mark {
+      .select2-container.smart-enhanced .select2-results__option--highlighted mark {
         background: #ffeb3b !important;
         color: #000 !important;
       }
       
-      /* Select2 hover styles - instant feedback */
-      .select2-results__option:hover {
+      /* Select2 hover styles - ONLY for our enhanced Select2 */
+      .select2-container.smart-enhanced .select2-results__option:hover {
         background-color: #007bff !important;
         color: white !important;
       }
       
-      .select2-results__option:hover * {
+      .select2-container.smart-enhanced .select2-results__option:hover * {
         color: white !important;
       }
       
-      .select2-results__option:hover mark {
+      .select2-container.smart-enhanced .select2-results__option:hover mark {
         background: #ffeb3b !important;
         color: #000 !important;
       }
@@ -1134,12 +1117,12 @@
         background: #c82333;
       }
       
-      /* Show more button styles - instant hover */
-      .lw-custom-dropdown div[style*="הצג עוד מוצרים"] {
+      /* Show more button styles - ONLY in our custom dropdown */
+      #lw-custom-dropdown div[style*="הצג עוד מוצרים"] {
         transition: none !important;
       }
       
-      .lw-custom-dropdown div[style*="הצג עוד מוצרים"]:hover {
+      #lw-custom-dropdown div[style*="הצג עוד מוצרים"]:hover {
         background-color: #e9ecef !important;
       }
     `;
@@ -1843,10 +1826,9 @@
 
         
         option.innerHTML = `
-          <div style="font-weight: bold;">${highlightedName}</div>
-          <div style="font-size: 12px; color: #666;">
-            מק"ט: ${highlightedSku} | ברקוד: ${highlightedBarcode}
-          </div>
+          <div style="font-weight: bold; display: block; margin-bottom: 8px; line-height: 1.4;">${highlightedName}</div>
+          <div style="font-size: 12px; color: #666; display: block; margin-bottom: 4px; line-height: 1.2;">מק\"ט: ${highlightedSku}</div>
+          <div style="font-size: 12px; color: #666; display: block; line-height: 1.2;">ברקוד: ${highlightedBarcode}</div>
         `;
         
         // Add click handler
@@ -2003,8 +1985,9 @@
                   const highlightedBarcode = smartHighlightMatchingTerms(data.barcode, currentTerm);
                   
                   const result = window.jQuery(`<div>
-                    <strong>${highlightedName}</strong><br>
-                    <small>מק"ט: ${highlightedSku} | ברקוד: ${highlightedBarcode}</small>
+                    <strong style="display: block; margin-bottom: 8px; line-height: 1.4;">${highlightedName}</strong>
+                    <small style="display: block; margin-bottom: 4px; line-height: 1.2;">מק"ט: ${highlightedSku}</small>
+                    <small style="display: block; line-height: 1.2;">ברקוד: ${highlightedBarcode}</small>
                   </div>`);
                   
                   return result;
@@ -2434,18 +2417,11 @@
     }
     
     
-    // Look for an empty row (no name or SKU filled)
+    // Look for an empty row (no name, SKU, or product_id filled)
     let emptyRow = null;
     for (let i = orderItemRows.length - 1; i >= 0; i--) {
       const row = orderItemRows[i];
-      const nameField = row.querySelector('input[name*="name"]');
-      const skuField = row.querySelector('input[name*="sku"]');
-      
-      // Check if this row is empty
-      const hasName = nameField && nameField.value && nameField.value.trim() !== '';
-      const hasSku = skuField && skuField.value && skuField.value.trim() !== '';
-      
-      if (!hasName && !hasSku) {
+      if (isRowTrulyEmpty(row)) {
         emptyRow = row;
         break;
       }
@@ -2454,8 +2430,27 @@
     if (emptyRow) {
       fillRowWithProduct(emptyRow, product);
     } else {
-      const lastRow = orderItemRows[orderItemRows.length - 1];
-      fillRowWithProduct(lastRow, product);
+      // If no empty row found, try to find a row with minimal data
+      let bestRow = null;
+      let minDataCount = Infinity;
+      
+      for (let i = orderItemRows.length - 1; i >= 0; i--) {
+        const row = orderItemRows[i];
+        const dataCount = countRowData(row);
+        
+        if (dataCount < minDataCount) {
+          minDataCount = dataCount;
+          bestRow = row;
+        }
+      }
+      
+      if (bestRow && minDataCount <= 1) {
+        fillRowWithProduct(bestRow, product);
+      } else {
+        // If all rows have data, use the last row
+        const lastRow = orderItemRows[orderItemRows.length - 1];
+        fillRowWithProduct(lastRow, product);
+      }
     }
     
     // Trigger toolbox functions to process the new row (images will be injected by Toolbox after Enhanced is ready)
@@ -2490,6 +2485,42 @@
     }, 500); // Wait a bit for the DOM to settle
   }
   
+  // Helper function to check if a row is truly empty
+  function isRowTrulyEmpty(row) {
+    const nameField = row.querySelector('input[name*="name"]');
+    const skuField = row.querySelector('input[name*="sku"]');
+    const productIdField = row.querySelector('input[name*="product_id"]');
+    const productSelect = row.querySelector('select[name*="product"]');
+    const quantityField = row.querySelector('input[name*="quantity"]');
+    
+    // Check if any of the main product fields have values
+    const hasName = nameField && nameField.value && nameField.value.trim() !== '';
+    const hasSku = skuField && skuField.value && skuField.value.trim() !== '';
+    const hasProductId = productIdField && productIdField.value && productIdField.value.trim() !== '';
+    const hasProductSelect = productSelect && productSelect.value && productSelect.value.trim() !== '';
+    
+    // Row is empty if none of the product-related fields have values
+    return !hasName && !hasSku && !hasProductId && !hasProductSelect;
+  }
+  
+  // Helper function to count how much data a row has
+  function countRowData(row) {
+    const nameField = row.querySelector('input[name*="name"]');
+    const skuField = row.querySelector('input[name*="sku"]');
+    const productIdField = row.querySelector('input[name*="product_id"]');
+    const productSelect = row.querySelector('select[name*="product"]');
+    const quantityField = row.querySelector('input[name*="quantity"]');
+    
+    let dataCount = 0;
+    if (nameField && nameField.value && nameField.value.trim() !== '') dataCount++;
+    if (skuField && skuField.value && skuField.value.trim() !== '') dataCount++;
+    if (productIdField && productIdField.value && productIdField.value.trim() !== '') dataCount++;
+    if (productSelect && productSelect.value && productSelect.value.trim() !== '') dataCount++;
+    if (quantityField && quantityField.value && quantityField.value.trim() !== '' && quantityField.value !== '0') dataCount++;
+    
+    return dataCount;
+  }
+
   function fillRowWithProduct(row, product) {
     
     // First, try to find a select field for product in this row and fill it properly
@@ -2568,6 +2599,8 @@
     if (nameField) {
       nameField.value = product.name;
       nameField.dispatchEvent(new Event('change', { bubbles: true }));
+      nameField.dispatchEvent(new Event('input', { bubbles: true }));
+      nameField.dispatchEvent(new Event('blur', { bubbles: true }));
     }
     
     // Try to fill any other hidden inputs that might be related to the product
@@ -2582,10 +2615,32 @@
     
     // Set default quantity to 1 if empty
     const quantityField = row.querySelector('input[name*="quantity"]');
-    if (quantityField && !quantityField.value) {
+    if (quantityField && (!quantityField.value || quantityField.value.trim() === '')) {
       quantityField.value = '1';
       quantityField.dispatchEvent(new Event('change', { bubbles: true }));
+      quantityField.dispatchEvent(new Event('input', { bubbles: true }));
     }
+    
+    // Also try to fill any other product-related fields
+    const allInputs = row.querySelectorAll('input');
+    allInputs.forEach(input => {
+      const inputName = input.name.toLowerCase();
+      if (inputName.includes('sku') && !input.value) {
+        input.value = product.sku;
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+    
+    // Use the new ensureFieldsFilled function as a backup
+    setTimeout(() => {
+      ensureFieldsFilled(row, product);
+    }, 50);
+    
+    // Verify that the fields were filled correctly
+    setTimeout(() => {
+      verifyRowFilled(row, product);
+    }, 100);
     
     // Clear the selected product
     selectedProduct = null;
@@ -2605,6 +2660,175 @@
     
     // Image will be added by Toolbox after Enhanced is ready
     
+  }
+  
+  // Function to verify that a row was filled correctly
+  function verifyRowFilled(row, product) {
+    const nameField = row.querySelector('input[name*="name"]');
+    const skuField = row.querySelector('input[name*="sku"]');
+    const productIdField = row.querySelector('input[name*="product_id"]');
+    const productSelect = row.querySelector('select[name*="product"]');
+    
+    let issues = [];
+    
+    // Check if name field is filled
+    if (nameField && (!nameField.value || nameField.value.trim() === '')) {
+      issues.push('name field is empty');
+      // Try to fill it again
+      nameField.value = product.name;
+      nameField.dispatchEvent(new Event('change', { bubbles: true }));
+      nameField.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    
+    // Check if product_id field is filled
+    if (productIdField && (!productIdField.value || productIdField.value.trim() === '')) {
+      issues.push('product_id field is empty');
+      // Try to fill it again
+      productIdField.value = product.barcode;
+      productIdField.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    
+    // Check if product select is filled
+    if (productSelect && (!productSelect.value || productSelect.value.trim() === '')) {
+      issues.push('product select is empty');
+      // Try to fill it again
+      productSelect.value = product.barcode;
+      productSelect.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    
+    // If there were issues, log them
+    if (issues.length > 0) {
+      console.warn(`⚠️ [LW-Search] Row verification found issues: ${issues.join(', ')}`);
+    }
+  }
+  
+  // Function to ensure all necessary fields are filled
+  function ensureFieldsFilled(row, product) {
+    // Force fill all necessary fields
+    const fieldsToFill = [
+      { selector: 'input[name*="name"]', value: product.name },
+      { selector: 'input[name*="product_id"]', value: product.barcode },
+      { selector: 'select[name*="product"]', value: product.barcode },
+      { selector: 'input[name*="sku"]', value: product.barcode }
+    ];
+    
+    fieldsToFill.forEach(fieldConfig => {
+      const field = row.querySelector(fieldConfig.selector);
+      if (field) {
+        field.value = fieldConfig.value;
+        ['change', 'input', 'blur'].forEach(eventName =>
+          field.dispatchEvent(new Event(eventName, { bubbles: true }))
+        );
+      }
+    });
+    
+    // Also set quantity to 1 if empty
+    const quantityField = row.querySelector('input[name*="quantity"]');
+    if (quantityField && (!quantityField.value || quantityField.value.trim() === '' || quantityField.value === '0')) {
+      quantityField.value = '1';
+      ['change', 'input', 'blur'].forEach(eventName =>
+        quantityField.dispatchEvent(new Event(eventName, { bubbles: true }))
+      );
+    }
+  }
+  
+  // Wait for toolbox functions to be available
+  function waitForToolboxFunctions(callback, maxAttempts = 50) {
+    let attempts = 0;
+    
+    function checkToolbox() {
+      attempts++;
+      
+      // Check if toolbox functions are available
+      if (window.replaceBarcodesInViews || window.replaceBarcodesInDOM || window.tagColumnsForHiding) {
+        callback();
+        return;
+      }
+      
+      if (attempts >= maxAttempts) {
+        // Timeout - proceed anyway
+        callback();
+        return;
+      }
+      
+      setTimeout(checkToolbox, 100);
+    }
+    
+    checkToolbox();
+  }
+  
+  // Ensure image header exists
+  function ensureImageHeaderExists() {
+    const modal = document.querySelector('#order-items-edit-modal');
+    if (!modal) return;
+    
+    // Look for image header in the table
+    const table = modal.querySelector('table');
+    if (!table) return;
+    
+    const headers = table.querySelectorAll('th');
+    let hasImageHeader = false;
+    
+    headers.forEach(header => {
+      if (header.textContent && header.textContent.includes('תמונה')) {
+        hasImageHeader = true;
+      }
+    });
+    
+    // If no image header found, add one
+    if (!hasImageHeader) {
+      const headerRow = table.querySelector('thead tr');
+      if (headerRow) {
+        const imageHeader = document.createElement('th');
+        imageHeader.textContent = 'תמונה';
+        imageHeader.style.cssText = 'width: 80px; text-align: center;';
+        headerRow.appendChild(imageHeader);
+      }
+    }
+  }
+  
+  // Watch for new rows being added
+  function watchForNewRows() {
+    const modal = document.querySelector('#order-items-edit-modal');
+    if (!modal) return;
+    
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'childList') {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === 1 && node.classList && node.classList.contains('order-item-row')) {
+              // New row added - ensure it has proper structure
+              ensureRowStructure(node);
+            }
+          });
+        }
+      });
+    });
+    
+    observer.observe(modal, {
+      childList: true,
+      subtree: true
+    });
+  }
+  
+  // Ensure row has proper structure
+  function ensureRowStructure(row) {
+    // Add image cell if missing
+    const cells = row.querySelectorAll('td');
+    let hasImageCell = false;
+    
+    cells.forEach(cell => {
+      if (cell.querySelector('img') || cell.textContent.includes('תמונה')) {
+        hasImageCell = true;
+      }
+    });
+    
+    if (!hasImageCell) {
+      const imageCell = document.createElement('td');
+      imageCell.style.cssText = 'width: 80px; text-align: center; vertical-align: middle;';
+      imageCell.innerHTML = '<div style="width: 60px; height: 60px; background: #f8f9fa; border: 1px solid #dee2e6; display: flex; align-items: center; justify-content: center; color: #6c757d; font-size: 12px;">תמונה</div>';
+      row.appendChild(imageCell);
+    }
   }
 
   // Main initialization

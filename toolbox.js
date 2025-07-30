@@ -23,6 +23,21 @@
 /* global jQuery */
 /* global Papa */ // ENSURING PAPA IS GLOBAL
 
+// DEBUG flag for production logging control
+window.DEBUG_TOOLBOX = window.DEBUG_TOOLBOX || false;
+
+// Clean up old debug logs from console
+if (!window.DEBUG_TOOLBOX) {
+  // Override console.debug to suppress debug logs in production
+  const originalDebug = console.debug;
+  console.debug = function() {
+    // Only show debug logs if DEBUG_TOOLBOX is true
+    if (window.DEBUG_TOOLBOX) {
+      originalDebug.apply(console, arguments);
+    }
+  };
+}
+
 (function() {
     'use strict';
 
@@ -33,6 +48,27 @@
         }, 1000);
         return;
     }
+
+    // ---< Merlog Panel View Highlighting >---
+    GM_addStyle(`
+        .offcanvas.merlog-highlight, .offcanvas.merlog-row-highlight {
+            background-color: #fff5f5 !important;
+            transition: background-color 0.2s;
+        }
+        .offcanvas.merlog-highlight .offcanvas-body,
+        .offcanvas.merlog-highlight .tab-content,
+        .offcanvas.merlog-highlight .modal-content {
+            background-color: #fff5f5 !important;
+        }
+        .offcanvas.merlog-highlight * {
+            background-color: transparent !important;
+        }
+        .offcanvas.merlog-highlight span,
+        .offcanvas.merlog-highlight div,
+        .offcanvas.merlog-highlight p {
+            color: inherit !important;
+        }
+    `);
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
     const SCRIPT_VERSION = "13.4.2"; // Fixed to match @version
@@ -393,6 +429,7 @@
             const csvImageIndex = headers.indexOf("image url");
             const csvUrlIndex = headers.indexOf("product url");
             const csvProductNameIndex = headers.indexOf("product name");
+            const csvPriceIndex = headers.indexOf("price");
             
             
             if (csvSkuIndex === -1 || csvImageIndex === -1) {
@@ -406,7 +443,8 @@
                     skus: skusString ? skusString.split(',').map(s => normalizeSku(s.trim())).filter(Boolean) : [],
                     image: (parts[csvImageIndex] || "").trim().replace(/^"|"$/g, ''),
                     link: csvUrlIndex !== -1 ? (parts[csvUrlIndex] || "").trim().replace(/^"|"$/g, '') : '',
-                    productName: csvProductNameIndex !== -1 ? (parts[csvProductNameIndex] || "").trim().replace(/^"|"$/g, '') : ''
+                    productName: csvProductNameIndex !== -1 ? (parts[csvProductNameIndex] || "").trim().replace(/^"|"$/g, '') : '',
+                    price: csvPriceIndex !== -1 ? (parts[csvPriceIndex] || "").trim().replace(/^"|"$/g, '') : null
                 };
             }).filter(p => p.skus.length > 0 && p.image);
             
@@ -606,8 +644,8 @@
                 window.targetProductLogged = true;
             }
 
-            // Try to find by SKU first
-            if (sku && itemCodeToBarcodeMap.has(sku)) {
+            // Try to find by SKU first (only if SKU is not null/empty)
+            if (sku && sku.trim() && itemCodeToBarcodeMap.has(sku)) {
                 const barcode = itemCodeToBarcodeMap.get(sku);
                 if (barcode) {
                     if (isTargetProduct && !window.targetProductFound) {
@@ -619,7 +657,7 @@
             }
 
             // Try to find by exact name match
-            if (name && descriptionToBarcodeMap.has(name)) {
+            if (name && name.trim() && descriptionToBarcodeMap.has(name)) {
                 const barcode = descriptionToBarcodeMap.get(name);
                 if (barcode) {
                     if (isTargetProduct && !window.targetProductFound) {
@@ -631,7 +669,7 @@
             }
 
             // Try to find by partial name match (case insensitive)
-            if (name) {
+            if (name && name.trim()) {
                 const normalizedName = name.toLowerCase().trim();
                 for (const [productName, barcode] of descriptionToBarcodeMap.entries()) {
                     const normalizedProductName = productName.toLowerCase().trim();
@@ -688,6 +726,60 @@
         } catch (e) {
             console.warn(`[${SCRIPT_NAME}] ⚠️ Error processing thumbnail URL, returning original:`, thumbnailUrl, e);
             return thumbnailUrl;
+        }
+    }
+
+    // New function for optimized image URLs based on screen size
+    function getOptimizedImageUrl(originalUrl, targetWidth = null) {
+        try {
+            if (!originalUrl || typeof originalUrl !== 'string') return originalUrl;
+
+            // If no target width specified, use screen width
+            if (!targetWidth) {
+                targetWidth = Math.min(window.innerWidth, 1200); // Max 1200px for performance
+            }
+
+            // For different image providers, add size parameters
+            if (originalUrl.includes('cdn.modulus.co.il')) {
+                return `${originalUrl.split('?')[0]}?w=${targetWidth}&h=${Math.round(targetWidth * 0.75)}&fit=crop`;
+            }
+            
+            if (originalUrl.includes('www.gag-lachayot.co.il')) {
+                // Try to get a larger version if available
+                const baseUrl = originalUrl.replace(/-\d+x\d+(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/-\d+x\d+$/, '');
+                return `${baseUrl}?w=${targetWidth}`;
+            }
+            
+            if (originalUrl.includes('www.all4pet.co.il')) {
+                const baseUrl = originalUrl.replace(/_small(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/_small$/, '');
+                return `${baseUrl}?w=${targetWidth}`;
+            }
+            
+            if (originalUrl.includes('d3m9l0v76dty0.cloudfront.net')) {
+                // This provider already has size variants
+                return originalUrl;
+            }
+            
+            if (originalUrl.includes('just4pet.co.il')) {
+                const parts = originalUrl.split('/');
+                const filenameWithQuery = parts.pop();
+                const filenameParts = filenameWithQuery.split('?');
+                const filename = filenameParts[0];
+                const query = filenameParts.length > 1 ? `&${filenameParts[1]}` : '';
+                
+                if (filename.startsWith('tn_')) {
+                    const newFilename = filename.substring(3);
+                    return `${parts.join('/')}/${newFilename}?w=${targetWidth}${query}`;
+                }
+            }
+
+            // For other URLs, try to add width parameter
+            const separator = originalUrl.includes('?') ? '&' : '?';
+            return `${originalUrl}${separator}w=${targetWidth}`;
+            
+        } catch (e) {
+            console.warn(`[${SCRIPT_NAME}] ⚠️ Error optimizing image URL, returning original:`, originalUrl, e);
+            return originalUrl;
         }
     }
 
@@ -754,6 +846,10 @@
 
 function showGalleryOverlay(galleryItems, startIndex) {
     try {
+        // Image cache for performance
+        const imageCache = new Map();
+        let preloadedImages = new Set();
+        
         function handleSwipe() {
             const diff = startX - endX;
             const threshold = 50; // swipe sensitivity in px
@@ -773,27 +869,39 @@ function showGalleryOverlay(galleryItems, startIndex) {
     let currentIndex = startIndex;
     let startX = 0;
     let endX = 0;
+    let isZoomed = false;
+    let zoomLevel = 1;
     const overlay = document.createElement('div');
     overlay.id = 'tampermonkey-gallery-overlay';
 
     const contentWrapper = document.createElement('div');
-    contentWrapper.className = 'gallery-content-wrapper'; // This wrapper will hold both image and caption
+    contentWrapper.className = 'gallery-content-wrapper';
 
     const imgElement = document.createElement('img');
     const imgContainer = document.createElement('div');
-    imgContainer.className = 'gallery-image-container'; // This will contain just the image
+    imgContainer.className = 'gallery-image-container';
     imgContainer.appendChild(imgElement);
 
+    // Loading indicator
+    const loadingIndicator = document.createElement('div');
+    loadingIndicator.className = 'gallery-loading';
+    loadingIndicator.innerHTML = '<div class="spinner"></div>';
+    imgContainer.appendChild(loadingIndicator);
+
     const captionElement = document.createElement('div');
-    captionElement.className = 'gallery-caption'; // This will contain all text
+    captionElement.className = 'gallery-caption';
     const productNameElement = document.createElement('p');
     productNameElement.className = 'gallery-product-name';
     const skuElement = document.createElement('p');
     skuElement.className = 'gallery-sku';
+    const priceElement = document.createElement('p');
+    priceElement.className = 'gallery-price';
     const counterElement = document.createElement('div');
     counterElement.className = 'gallery-counter';
-    const dotContainer = document.createElement('div');
-    dotContainer.className = 'gallery-dots';
+    
+    // Thumbnails container instead of dots
+    const thumbnailsContainer = document.createElement('div');
+    thumbnailsContainer.className = 'gallery-thumbnails';
 
     const prevButton = document.createElement('button');
     prevButton.className = 'gallery-nav prev';
@@ -805,32 +913,115 @@ function showGalleryOverlay(galleryItems, startIndex) {
     closeButton.className = 'gallery-close';
     closeButton.innerHTML = '&times;';
 
-    // *** START MODIFICATION BLOCK for showGalleryOverlay function ***
+    // Zoom controls - removed as requested
 
-    // 1. Append all text elements directly to the captionElement
-    captionElement.append(productNameElement, skuElement, counterElement);
-
-    // 2. Append the image container AND the caption element to the contentWrapper.
-    // The contentWrapper needs to be the flex parent that stacks them.
+    // Append elements
+    captionElement.append(productNameElement, skuElement, priceElement, counterElement);
     contentWrapper.append(imgContainer, captionElement);
+    overlay.append(contentWrapper, prevButton, nextButton, closeButton, thumbnailsContainer);
 
-    // 3. Append the contentWrapper (which now contains both image and caption),
-    // along with navigation buttons and dots, to the main overlay.
-    // The dots should be a direct child of the overlay, as they are fixed to the viewport bottom.
-    overlay.append(contentWrapper, prevButton, nextButton, closeButton, dotContainer);
+    // Preload images function
+    function preloadImage(index) {
+        if (preloadedImages.has(index)) return;
+        
+        const item = galleryItems[index];
+        if (!item || !item.fullSizeUrl) return;
+        
+        const img = new Image();
+        img.onload = () => {
+            imageCache.set(index, img);
+            preloadedImages.add(index);
+        };
+        img.onerror = () => {
+            console.warn(`Failed to preload image ${index}: ${item.fullSizeUrl}`);
+        };
+        img.src = item.fullSizeUrl;
+    }
 
-    // *** END MODIFICATION BLOCK ***
+    // Preload current, next, and previous images
+    function preloadAdjacentImages() {
+        const prevIndex = (currentIndex - 1 + galleryItems.length) % galleryItems.length;
+        const nextIndex = (currentIndex + 1) % galleryItems.length;
+        
+        preloadImage(currentIndex);
+        preloadImage(prevIndex);
+        preloadImage(nextIndex);
+    }
+
+    // Zoom functionality
+    function setZoom(level) {
+        zoomLevel = Math.max(0.5, Math.min(3, level));
+        imgElement.style.transform = `scale(${zoomLevel})`;
+        isZoomed = zoomLevel !== 1;
+    }
+
+    function resetZoom() {
+        setZoom(1);
+    }
+
+    // Create thumbnails
+    function createThumbnails() {
+        thumbnailsContainer.innerHTML = '';
+        galleryItems.forEach((item, index) => {
+            const thumb = document.createElement('div');
+            thumb.className = `gallery-thumbnail ${index === currentIndex ? 'active' : ''}`;
+            
+            const thumbImg = document.createElement('img');
+            thumbImg.src = item.thumbnailUrl || item.fullSizeUrl;
+            thumbImg.alt = item.productName;
+            thumbImg.onerror = () => {
+                thumbImg.src = PLACEHOLDER_IMG_URL;
+            };
+            
+            thumb.appendChild(thumbImg);
+            thumb.onclick = () => {
+                currentIndex = index;
+                updateGalleryView();
+            };
+            
+            thumbnailsContainer.appendChild(thumb);
+        });
+    }
 
     function navigate(delta) {
+        const oldIndex = currentIndex;
         currentIndex = (currentIndex + delta + galleryItems.length) % galleryItems.length;
+        
+        // Add transition animation
+        imgContainer.style.opacity = '0';
+        setTimeout(() => {
         updateGalleryView();
+            imgContainer.style.opacity = '1';
+        }, 150);
+        
+        // Preload images for smooth navigation
+        preloadAdjacentImages();
     }
 
     const updateGalleryView = () => {
         const item = galleryItems[currentIndex];
-        imgElement.src = '';
+        
+        // Show loading indicator
+        loadingIndicator.style.display = 'block';
+        imgElement.style.opacity = '0';
+        
+        // Reset zoom
+        resetZoom();
+        
+        // Update image with transition
+        imgElement.onload = () => {
+            loadingIndicator.style.display = 'none';
+            imgElement.style.opacity = '1';
+        };
+        imgElement.onerror = () => {
+            loadingIndicator.style.display = 'none';
+            imgElement.src = PLACEHOLDER_IMG_URL;
+            imgElement.style.opacity = '1';
+        };
+        
         imgElement.src = item.fullSizeUrl;
 
+        // Update product info
         productNameElement.textContent = item.productName;
         const originalSku = item.sku;
         const barcode = settings.replaceBarcodes ? findBarcode(originalSku, item.productName) : null;
@@ -841,8 +1032,33 @@ function showGalleryOverlay(galleryItems, startIndex) {
             skuElement.textContent = `מק"ט: ${originalSku}`;
         }
 
+        // Add price if available (you can extend this based on your data structure)
+        if (item.price) {
+            priceElement.textContent = `מחיר: ₪${item.price}`;
+            priceElement.style.display = 'block';
+        } else {
+            priceElement.style.display = 'none';
+        }
+
+        // Add product link if available
+        if (item.link) {
+            const linkElement = document.createElement('a');
+            linkElement.href = item.link;
+            linkElement.target = '_blank';
+            linkElement.className = 'gallery-product-link';
+            linkElement.textContent = 'פתח מוצר באתר';
+            linkElement.innerHTML = '<i class="fa-light fa-external-link"></i> פתח מוצר באתר';
+            
+            // Replace existing link if any
+            const existingLink = captionElement.querySelector('.gallery-product-link');
+            if (existingLink) {
+                existingLink.remove();
+            }
+            captionElement.appendChild(linkElement);
+        }
+
         const quantity = item.quantity ? item.quantity.trim() : '';
-        counterElement.textContent = ''; // clear existing content
+        counterElement.textContent = '';
 
         if (quantity && quantity.includes('/')) {
             const [pickedStr, totalStr] = quantity.split('/').map(s => parseInt(s.trim(), 10));
@@ -860,17 +1076,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
             counterElement.appendChild(span);
         }
 
-        dotContainer.innerHTML = galleryItems.map((_, i) => `
-            <span class="dot${i === currentIndex ? ' active' : ''}"></span>
-        `).join('');
-
-        // Enable dot click navigation
-        dotContainer.querySelectorAll('.dot').forEach((dot, i) => {
-            dot.addEventListener('click', () => {
-                currentIndex = i;
-                updateGalleryView();
-            });
-        });
+        // Update thumbnails
+        createThumbnails();
+        
+        // Preload adjacent images
+        preloadAdjacentImages();
     };
 
     const closeOverlay = () => {
@@ -884,23 +1094,36 @@ function showGalleryOverlay(galleryItems, startIndex) {
     const handleKeyDown = (e) => {
         if (e.key === 'Escape') closeOverlay();
         if (e.key === 'ArrowRight') navigate(-1);
-        if (e.key === 'ArrowLeft') navigate(1); // RTL friendly
+        if (e.key === 'ArrowLeft') navigate(1);
+        if (e.key === 'z' || e.key === 'Z') {
+            if (isZoomed) {
+                resetZoom();
+        } else {
+                setZoom(zoomLevel + 0.5);
+        }
+        }
+        if (e.key === 'r' || e.key === 'R') resetZoom();
     };
 
-    imgElement.onerror = () => {
-        const item = galleryItems[currentIndex];
-        if (imgElement.src !== item.thumbnailUrl) {
-            imgElement.src = item.thumbnailUrl;
-        } else {
-            imgElement.src = PLACEHOLDER_IMG_URL;
-        }
-    };
+    // Event listeners
     prevButton.onclick = () => navigate(-1);
     nextButton.onclick = () => navigate(1);
     closeButton.onclick = closeOverlay;
+    
+    // Mouse wheel zoom
+    imgContainer.onwheel = (e) => {
+        e.preventDefault();
+        const delta = e.deltaY > 0 ? -0.2 : 0.2;
+        setZoom(zoomLevel + delta);
+    };
+    
+    // Double click to reset zoom
+    imgElement.ondblclick = resetZoom;
+    
     overlay.onclick = (e) => {
         if (e.target === overlay) closeOverlay();
     };
+    
     document.body.appendChild(overlay);
     overlay.addEventListener('touchstart', (e) => {
         startX = e.touches[0].clientX;
@@ -940,7 +1163,36 @@ function showGalleryOverlay(galleryItems, startIndex) {
             img.onerror = function() { this.src = PLACEHOLDER_IMG_URL; this.onclick = null; };
             img.onclick = (e) => {
                 e.stopPropagation();
-                const searchScope = e.target.closest('.modal, body');
+                
+                // Find the most specific container for the current order
+                let searchScope = null;
+                
+                // First, try to find if we're in a modal
+                const modal = e.target.closest('.modal');
+                if (modal) {
+                    searchScope = modal;
+                } else {
+                    // If not in a modal, try to find the specific table or container
+                    const table = e.target.closest('table');
+                    if (table) {
+                        searchScope = table;
+                    } else {
+                        // Fallback to the closest container with order data
+                        const orderContainer = e.target.closest('.table-responsive, .modal-body, .nested-fields');
+                        if (orderContainer) {
+                            searchScope = orderContainer;
+                        } else {
+                            // Last resort - use the row that contains the image
+                            const row = e.target.closest('tr, .order-item-row, .pick-order-item-row');
+                            if (row) {
+                                searchScope = row.closest('table, .nested-fields') || row;
+                            } else {
+                                searchScope = document.body;
+                            }
+                        }
+                    }
+                }
+                
                 const galleryItems = extractDataForGallery(searchScope);
                 const clickedIndex = galleryItems.findIndex(item => normalizeSku(item.sku) === normalizeSku(skuText));
                 showGalleryOverlay(galleryItems, Math.max(0, clickedIndex));
@@ -960,8 +1212,42 @@ function showGalleryOverlay(galleryItems, startIndex) {
         try {
             if (!searchScope) return [];
 
-            const items = []; const uniqueSkus = new Set();
-            searchScope.querySelectorAll('.table-responsive > .table tr, .modal-body .table tr, .nested-fields.order-item-row, td.pick-order-item-row').forEach(row => {
+            const items = []; 
+            const uniqueSkus = new Set();
+            
+            // Determine the search scope based on the type of container
+            let searchSelector = '';
+            
+            if (searchScope.matches && searchScope.matches('.modal')) {
+                // If we're in a modal, search within the modal
+                searchSelector = '.table-responsive > .table tr, .modal-body .table tr, .nested-fields.order-item-row, td.pick-order-item-row';
+            } else if (searchScope.matches && searchScope.matches('table')) {
+                // If we're in a table, search within that table
+                searchSelector = 'tr';
+            } else if (searchScope.matches && searchScope.matches('.table-responsive, .modal-body, .nested-fields')) {
+                // If we're in a container, search within that container
+                searchSelector = '.table-responsive > .table tr, .modal-body .table tr, .nested-fields.order-item-row, td.pick-order-item-row';
+            } else if (searchScope.matches && searchScope.matches('tr, .order-item-row, .pick-order-item-row')) {
+                // If we're in a row, search within the parent table/container
+                const parentTable = searchScope.closest('table, .nested-fields');
+                if (parentTable) {
+                    return extractDataForGallery(parentTable);
+                } else {
+                    // If no parent table, just search this row
+                    searchSelector = '*';
+                }
+            } else {
+                // Fallback - search for any relevant rows
+                searchSelector = '.table-responsive > .table tr, .modal-body .table tr, .nested-fields.order-item-row, td.pick-order-item-row';
+            }
+            
+            // Search within the determined scope
+            searchScope.querySelectorAll(searchSelector).forEach(row => {
+                // Skip if this is not a data row
+                if (!row.matches || !row.matches('tr, .order-item-row, .pick-order-item-row')) {
+                    return;
+                }
+                
             let name, sku;
 
             // Find cells by header content instead of hardcoded positions
@@ -994,12 +1280,32 @@ function showGalleryOverlay(galleryItems, startIndex) {
             const match = findImageMatch(sku, name);
             if (match && match.image) {
 
+                    // Extract price from DOM - look for "מחיר ליחידה" column
+                    let price = null;
+                    if (table) {
+                        const thead = table.querySelector('thead tr');
+                        if (thead) {
+                            const headers = Array.from(thead.querySelectorAll('th')).map(th => th.textContent.trim());
+                            const priceIndex = headers.findIndex(header => header.includes('מחיר ליחידה'));
+                            if (priceIndex !== -1 && row.cells[priceIndex]) {
+                                const priceText = row.cells[priceIndex].textContent.trim();
+                                // Extract numeric value from price text
+                                const priceMatch = priceText.match(/[\d,]+\.?\d*/);
+                                if (priceMatch) {
+                                    price = priceMatch[0].replace(/,/g, '');
+                                }
+                            }
+                        }
+                    }
+
                 items.push({
-  fullSizeUrl: getFullSizeImageUrl(match.image),
-  thumbnailUrl: match.image,
+  fullSizeUrl: getOptimizedImageUrl(getFullSizeImageUrl(match.image), Math.min(window.innerWidth, 1200)),
+  thumbnailUrl: getOptimizedImageUrl(match.image, 300), // Smaller thumbnails for better performance
   productName: name,
   sku: sku,
-  quantity: row.querySelector('td:nth-child(5)')?.textContent.trim() || '' // Updated to 5th column for quantity
+  quantity: row.querySelector('td:nth-child(5)')?.textContent.trim() || '', // Updated to 5th column for quantity
+  price: price, // Use price from DOM instead of CSV
+  link: match.link || null // Add product link if available
 });
 
                 uniqueSkus.add(normalizedSku);
@@ -1273,9 +1579,19 @@ function showGalleryOverlay(galleryItems, startIndex) {
     }
     // MODIFICATION END
 
-    // MODIFICATION START: Updated replaceBarcodesInViews to accept a scope parameter
+    // MODIFICATION START: Unified barcode replacement function
+    // Add WeakSet for tracking processed elements to improve performance
+    const processedElements = new WeakSet();
+    
+    function isElementProcessed(element) {
+        return processedElements.has(element);
+    }
+    
+    function markElementAsProcessed(element) {
+        processedElements.add(element);
+    }
+    
     function replaceBarcodesInViews(scope = document) {
-    // MODIFICATION END
         try {
             if (!settings || !settings.replaceBarcodes || !itemCodeToBarcodeMap) return;
             
@@ -1288,144 +1604,189 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
             if (foundContexts.length === 0) return;
 
-            foundContexts.forEach((context) => {
-                const elements = context.querySelectorAll('td.text-nowrap, input[type="text"], span.text-muted, strong');
-                elements.forEach((el) => {
-                    const name = el.closest('tr')?.querySelector('td[data-label="שם"], .order-item-name, .text-dark-75, td:nth-child(10), td:nth-child(3)')?.textContent?.trim() || '';
-                    const sku = el.textContent?.trim() || el.value?.trim() || '';
+            // Process elements with data-original-sku first (priority)
+            const elementsWithSku = scope.querySelectorAll('[data-original-sku]');
+            elementsWithSku.forEach((el) => {
+                try {
+                    const originalSku = el.getAttribute('data-original-sku')?.trim();
+                    if (!originalSku) return;
                     
-                    if (!sku || sku.length < 3) return;
-
-                const barcode = findBarcode(sku, name);
-                if (barcode) {
-                    const alreadyProcessed = el.classList.contains('barcode-highlight') || el.classList.contains('barcode-input-highlight');
-                        if (alreadyProcessed) return;
-                        
-                        if (el.tagName === 'INPUT') {
-                        el.value = barcode;
-                            el.classList.add('barcode-input-highlight');
-                    } else {
-                        el.textContent = barcode;
-                            el.classList.add('barcode-highlight');
-                        }
-                        
-                        el.title = `הוחלף אוטומטית. מקורי: ${sku}`;
-                        el.style.backgroundColor = '#e8f5e8';
-                        
-                            // Add barcode-highlight class to the parent td
-                            const parentTd = el.closest('td.text-nowrap, td[data-label="מק״ט"]');
-                            if (parentTd) parentTd.classList.add('barcode-highlight');
-                            // Remove inline background from inner element
-                            el.style.backgroundColor = '';
-                }
-            });
-        });
-
-        // NEW: Handle completely empty SKU cells that don't have any elements
-        foundContexts.forEach((context) => {
-            const rows = context.querySelectorAll('tr');
-            rows.forEach((row) => {
-                // Find the name cell first
-                let nameEl;
-                if (context.matches('.table.table-hover')) {
-                    // Regular tables: Name is at td[data-label="שם"]
-                    nameEl = row.querySelector('td[data-label="שם"]');
-                } else {
-                    // Other tables: Name is at various locations
-                    nameEl = row.querySelector('.order-item-name, .text-dark-75, td:nth-child(10), td:nth-child(3)');
-                }
-                if (!nameEl) return;
-
-                const name = nameEl.value || nameEl.textContent.trim();
-                if (!name) return;
-
-                // Find the SKU cell (empty or with minimal content)
-                let skuCell;
-                if (context.matches('.table.table-hover')) {
-                    // Regular tables: SKU cell is at td[data-label="מק״ט"]
-                    skuCell = row.querySelector('td[data-label="מק״ט"]');
-                } else {
-                    // Other tables: SKU cell is at td.text-nowrap
-                    skuCell = row.querySelector('td.text-nowrap');
-                }
-                if (!skuCell) return;
-
-                // Check if SKU cell is empty or has minimal content
-                const skuContent = skuCell.textContent.trim();
-                const hasSkuElement = skuCell.querySelector('input, span, strong');
-
-                if ((skuContent === '' || skuContent.length < 3) && !hasSkuElement) {
-                    // Try to find barcode by name
-                    const barcode = findBarcode(null, name);
-                    if (barcode) {
-                        // Create a text element to display the barcode
-                        const barcodeSpan = document.createElement('span');
-                        barcodeSpan.textContent = barcode;
-                        barcodeSpan.className = 'barcode-highlight';
-                        barcodeSpan.title = `הוחלף אוטומטית לפי שם. מקורי: לא ידוע`;
-                        barcodeSpan.style.cssText = `
-                            color: #006400 !important;
-                            font-weight: bold !important;
-                            cursor: help !important;
-                        `;
-
-                        // Clear the cell and add the barcode
-                        skuCell.innerHTML = '';
-                        skuCell.appendChild(barcodeSpan);
+                    // Skip if already processed
+                    if (isElementProcessed(el)) return;
+                    
+                    // Find the name from the closest row
+                    const name = el.closest('tr')?.querySelector('[data-label="שם"], .order-item-name, .text-dark-75, td:nth-child(10), td:nth-child(3), .text-dark-75.font-weight-bold')?.textContent?.trim() || '';
+                    
+                    const barcode = findBarcode(originalSku, name);
+                    if (barcode && barcode !== originalSku) {
+                        processBarcodeElement(el, barcode, originalSku);
                     }
+                    markElementAsProcessed(el);
+                } catch (elementError) {
+                    console.warn(`[${SCRIPT_NAME}] Failed to process element with data-original-sku:`, elementError);
+                    // Continue with next element
                 }
             });
-        });
+
+            // Then process other elements (but skip those already processed by data-original-sku)
+            foundContexts.forEach((context) => {
+                try {
+                    const elements = context.querySelectorAll('td.text-nowrap, input[type="text"], span.text-muted, strong');
+                    elements.forEach((el) => {
+                        try {
+                            // Skip if already processed
+                            if (isElementProcessed(el)) return;
+                            
+                            // Skip if this element has data-original-sku (already processed above)
+                            if (el.hasAttribute('data-original-sku')) return;
+                            
+                            const name = el.closest('tr')?.querySelector('[data-label="שם"], .order-item-name, .text-dark-75, td:nth-child(10), td:nth-child(3), .text-dark-75.font-weight-bold')?.textContent?.trim() || '';
+                            const sku = el.textContent?.trim() || el.value?.trim() || '';
+                            
+                            if (!sku || sku.length < 3) return;
+
+                            const barcode = findBarcode(sku, name);
+                            if (barcode && barcode !== sku) {
+                                processBarcodeElement(el, barcode, sku);
+                            }
+                            markElementAsProcessed(el);
+                        } catch (elementError) {
+                            console.warn(`[${SCRIPT_NAME}] Failed to process element:`, elementError);
+                            // Continue with next element
+                        }
+                    });
+                } catch (contextError) {
+                    console.warn(`[${SCRIPT_NAME}] Failed to process context:`, contextError);
+                    // Continue with next context
+                }
+            });
+
+            // Handle completely empty SKU cells that don't have any elements
+            foundContexts.forEach((context) => {
+                try {
+                    const rows = context.querySelectorAll('tr');
+                    rows.forEach((row) => {
+                        try {
+                            // Find the name cell first
+                            let nameEl;
+                            if (context.matches('.table.table-hover')) {
+                                // Regular tables: Name is at td[data-label="שם"]
+                                nameEl = row.querySelector('td[data-label="שם"]');
+                            } else if (context.matches('.pick-order-item-row')) {
+                                // Picking modal: SKU cell is the span with barcode-highlight class
+                                nameEl = row.querySelector('.barcode-highlight[data-original-sku]');
+                            } else {
+                                // Other tables: Name is at various locations
+                                nameEl = row.querySelector('.order-item-name, .text-dark-75, td:nth-child(10), td:nth-child(3), .text-dark-75.font-weight-bold');
+                            }
+                            if (!nameEl) return;
+
+                            const name = nameEl.value || nameEl.textContent.trim();
+                            if (!name) return;
+
+                            // Find the SKU cell (empty or with minimal content)
+                            let skuCell;
+                            if (context.matches('.table.table-hover')) {
+                                // Regular tables: SKU cell is at td[data-label="מק״ט"]
+                                skuCell = row.querySelector('td[data-label="מק״ט"]');
+                            } else if (context.matches('.pick-order-item-row')) {
+                                // Picking modal: SKU cell is the span with barcode-highlight class
+                                skuCell = row.querySelector('.barcode-highlight[data-original-sku]');
+                            } else {
+                                // Other tables: SKU cell is at td.text-nowrap
+                                skuCell = row.querySelector('td.text-nowrap');
+                            }
+                            if (!skuCell) return;
+
+                            // Check if SKU cell is empty or has minimal content
+                            const skuContent = skuCell.textContent.trim();
+                            const hasSkuElement = skuCell.querySelector('input, span, strong');
+                            
+                            // Skip if already processed
+                            if (isElementProcessed(skuCell)) return;
+
+                            if ((skuContent === '' || skuContent.length < 3) && !hasSkuElement) {
+                                // Try to find barcode by name
+                                const barcode = findBarcode(null, name);
+                                if (barcode) {
+                                    // Create a text element to display the barcode
+                                    const barcodeSpan = document.createElement('span');
+                                    barcodeSpan.textContent = barcode;
+                                    barcodeSpan.className = 'barcode-highlight';
+                                    barcodeSpan.title = `הוחלף אוטומטית לפי שם. מקורי: לא ידוע`;
+                                    barcodeSpan.style.cssText = `
+                                        color: #006400 !important;
+                                        font-weight: bold !important;
+                                        cursor: help !important;
+                                    `;
+
+                                    // Clear the cell and add the barcode
+                                    skuCell.innerHTML = '';
+                                    skuCell.appendChild(barcodeSpan);
+                                    markElementAsProcessed(skuCell);
+                                }
+                            }
+                        } catch (rowError) {
+                            console.warn(`[${SCRIPT_NAME}] Failed to process row:`, rowError);
+                            // Continue with next row
+                        }
+                    });
+                } catch (contextError) {
+                    console.warn(`[${SCRIPT_NAME}] Failed to process empty SKU cells in context:`, contextError);
+                    // Continue with next context
+                }
+            });
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error replacing barcodes in views:`, error);
         }
     }
 
-    // NEW: Function to replace barcodes for elements with data-original-sku (like in old version)
-    function replaceBarcodesInDOM(scope = document) {
+    // Helper function to process barcode elements consistently
+    function processBarcodeElement(el, barcode, originalSku) {
         try {
-            if (!settings || !settings.replaceBarcodes || !itemCodeToBarcodeMap) return;
+            if (el.tagName === 'INPUT') {
+                el.value = barcode;
+                el.classList.add('barcode-input-highlight');
+            } else {
+                el.textContent = barcode;
+                el.classList.add('barcode-highlight');
+            }
             
-            // Find all elements with data-original-sku that haven't been processed
-            const elementsWithSku = scope.querySelectorAll('[data-original-sku]');
+            el.title = `הוחלף אוטומטית. מקורי: ${originalSku}`;
             
-            elementsWithSku.forEach((el) => {
-                const originalSku = el.getAttribute('data-original-sku')?.trim();
-                if (!originalSku) return;
-                
-                // Skip if already processed
-                if (el.classList.contains('barcode-highlight') || el.classList.contains('barcode-input-highlight')) return;
-                
-                // Find the name from the closest row
-                const name = el.closest('tr')?.querySelector('[data-label="שם"], .order-item-name, .text-dark-75, td:nth-child(10), td:nth-child(3)')?.textContent?.trim() || '';
-                
-                const barcode = findBarcode(originalSku, name);
-                if (barcode && barcode !== originalSku) {
-                    if (el.tagName === 'INPUT') {
-                        el.value = barcode;
-                        el.classList.add('barcode-input-highlight');
-                    } else {
-                        el.textContent = barcode;
-                        el.classList.add('barcode-highlight');
-                    }
-                    
-                    el.title = `הוחלף אוטומטית. מקורי: ${originalSku}`;
-                    el.style.backgroundColor = '#e8f5e8';
-                    
-                    // Add barcode-highlight class to the parent td if it exists
-                    const parentTd = el.closest('td');
-                    if (parentTd) parentTd.classList.add('barcode-highlight');
+            // Add barcode-highlight class to the parent td if it exists, but not in picking modal
+            const parentTd = el.closest('td');
+            if (parentTd) {
+                // Check if we're in the picking modal - if so, don't add barcode-highlight to the td
+                const isInPickingModal = parentTd.closest('.pick-order-item-table');
+                if (!isInPickingModal) {
+                    parentTd.classList.add('barcode-highlight');
                 }
-            });
+                // Remove any inline background color to let CSS handle it
+                parentTd.style.backgroundColor = '';
+            }
+            
+            // Remove any inline background color from the element itself to let CSS handle it
+            el.style.backgroundColor = '';
         } catch (error) {
-            console.error(`[${SCRIPT_NAME}] Error replacing barcodes in DOM:`, error);
+            console.warn(`[${SCRIPT_NAME}] Failed to process barcode element:`, error);
+            // Continue without failing the entire process
         }
     }
+
+    // Keep the old function name for backward compatibility but make it call the new unified function
+    function replaceBarcodesInDOM(scope = document) {
+        replaceBarcodesInViews(scope);
+    }
+    // MODIFICATION END
 
     // This is the correct and ONLY definition for injectPreviewFunctionality
     function injectPreviewFunctionality(mainTableBody) {
         try {
-            if (!settings || !settings.enablePreview || mainTableBody.hasAttribute('data-preview-injected')) return;
+            if (!settings || !settings.enablePreview || mainTableBody.hasAttribute('data-preview-injected')) {
+                return;
+            }
+            
         const headerRow = mainTableBody.closest('table').querySelector('thead tr');
         let previewHeaderCell = null;
 
@@ -1524,8 +1885,39 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             button.addEventListener('click', async (e) => {
                 e.preventDefault(); e.stopPropagation();
                 const currentButton = e.currentTarget, icon = currentButton.querySelector('i'), taskId = currentButton.dataset.taskId, parentRow = currentButton.closest('tr'), existingPreview = document.getElementById(`preview-for-${taskId}`);
-                if (existingPreview) { existingPreview.remove(); icon.classList.replace('fa-chevron-up', 'fa-chevron-down'); return; }
-                icon.classList.replace('fa-chevron-down', 'fa-refresh'); icon.classList.add('fa-spin'); currentButton.disabled = true;
+                if (existingPreview) { 
+                    // מחק את ה-taskId מה-sessionStorage כאשר PREVIEW נסגר
+                    const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
+                    const updatedPreviews = openPreviews.filter(id => id !== taskId);
+                    sessionStorage.setItem('openPreviewTaskIds', JSON.stringify(updatedPreviews));
+                    
+                    existingPreview.remove(); 
+                    updateButtonState(currentButton, false);
+                    
+                    return; 
+                }
+                // שמור את ה-taskId ב-sessionStorage לפני פתיחה
+                const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
+                if (!openPreviews.includes(taskId)) {
+                    openPreviews.push(taskId);
+                    sessionStorage.setItem('openPreviewTaskIds', JSON.stringify(openPreviews));
+                }
+                
+                // בדוק אם זה session חדש - אם כן, אל תפתח PREVIEWs אחרים
+                const sessionStartTime = sessionStorage.getItem('sessionStartTime');
+                const currentTime = Date.now();
+                const sessionAge = currentTime - parseInt(sessionStartTime || '0');
+                
+                // אם ה-session צעיר מדי (פחות מ-5 שניות), נקה את כל ה-PREVIEWs האחרים
+                if (sessionAge < 5000) {
+                    sessionStorage.setItem('openPreviewTaskIds', JSON.stringify([taskId]));
+                }
+
+                
+                // נקה את כל ה-classes הקודמים וקבע למצב טעינה
+                icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
+                icon.classList.add('fa-refresh', 'fa-spin'); 
+                currentButton.disabled = true;
                 try {
                     const response = await fetch(`/tasks/${taskId}`); if (!response.ok) throw new Error(`Fetch error: ${response.status}`);
                     const doc = new DOMParser().parseFromString(await response.text(), 'text/html'); const allItems = [];
@@ -1543,18 +1935,43 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                         // שיפור: זיהוי גמיש יותר של כותרות - מזהה גם וריאציות של הכותרות
                         const skuIndex = headers.findIndex(h => h.includes('מק')), 
                               nameIndex = headers.findIndex(h => h.includes('שם')), 
-                              quantityIndex = headers.findIndex(h => h.includes('כמות') || h.includes('לוקט'));
+                              quantityIndex = headers.findIndex(h => h.includes('כמות') || h.includes('לוקט')),
+                              priceIndex = headers.findIndex(h => h.includes('מחיר ליחידה'));
                         if (skuIndex !== -1 && nameIndex !== -1 && quantityIndex !== -1) {
                             productTable.querySelectorAll('tbody tr').forEach(itemRow => {
                                 const cells = itemRow.cells;
-                                const name = cells[nameIndex].textContent.trim(), sku = cells[skuIndex].textContent.trim(), quantity = cells[quantityIndex].textContent.trim();
-                                const imageMatch = findImageMatch(sku, name); const barcodeMatch = findBarcode(sku, name);
-                                allItems.push({ name, sku, quantity, image: imageMatch ? imageMatch.image : PLACEHOLDER_IMG_URL, barcode: barcodeMatch });
+                                const name = cells[nameIndex].textContent.trim(), 
+                                      sku = cells[skuIndex].textContent.trim(), 
+                                      quantity = cells[quantityIndex].textContent.trim();
+                                
+                                // חלץ מחיר אם קיים
+                                let price = null;
+                                if (priceIndex !== -1 && cells[priceIndex]) {
+                                    const priceText = cells[priceIndex].textContent.trim();
+                                    const priceMatch = priceText.match(/[\d,]+\.?\d*/);
+                                    if (priceMatch) {
+                                        price = priceMatch[0].replace(/,/g, '');
+                                    }
+                                }
+                                
+                                const imageMatch = findImageMatch(sku, name); 
+                                const barcodeMatch = findBarcode(sku, name);
+                                allItems.push({ 
+                                    name, 
+                                    sku, 
+                                    quantity, 
+                                    price,
+                                    image: imageMatch ? imageMatch.image : PLACEHOLDER_IMG_URL, 
+                                    barcode: barcodeMatch 
+                                });
                             });
                         }
                     }
                     const newRow = document.createElement('tr'); newRow.id = `preview-for-${taskId}`;
                     const newCell = document.createElement('td'); newCell.colSpan = parentRow.cells.length; newCell.style.cssText = 'padding: 15px; background-color: #f9f9f9;';
+                    
+
+
                     newCell.innerHTML = `<a href="/tasks/${taskId}" target="_blank" class="btn btn-primary btn-sm mb-3"><i class="fa-light fa-arrow-up-right-from-square" style="margin-left: 5px;"></i> פתח הזמנה</a>`;
 
                     // Add notes to the preview if found
@@ -1565,38 +1982,134 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                     if (allItems.length > 0) {
                         const container = document.createElement('div'); container.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
                         allItems.forEach((item, itemIndex) => {
+                            if (window.DEBUG_TOOLBOX) {
+        
+                            }
                             const itemDiv = document.createElement('div'); itemDiv.className = 'd-flex align-items-center border rounded p-2 m-1 bg-white';
                             const img = document.createElement('img'); img.src = item.image;
                             img.style.cssText = 'width: 50px; height: 50px; object-fit: contain; margin-left: 10px; cursor: pointer;';
                             img.onerror = function() { this.src = PLACEHOLDER_IMG_URL; this.style.cursor = 'default'; };
-                            img.onclick = () => { const galleryData = allItems.map(i => ({
-    fullSizeUrl: getFullSizeImageUrl(i.image),
-    thumbnailUrl: i.image,
-    productName: i.name,
-    sku: i.sku,
-    quantity: i.quantity // ✅ Add this
-}));
+                            img.onclick = () => { 
+                                // השתמש במחיר שכבר חולץ
+                                const galleryData = allItems.map(i => {
+                                    return {
+                                        fullSizeUrl: getOptimizedImageUrl(getFullSizeImageUrl(i.image), Math.min(window.innerWidth, 1200)),
+                                        thumbnailUrl: getOptimizedImageUrl(i.image, 300),
+                                        productName: i.name,
+                                        sku: i.sku,
+                                        quantity: i.quantity,
+                                        price: i.price,
+                                        link: null // Preview doesn't have direct product links
+                                    };
+                                });
 
-                                                 showGalleryOverlay(galleryData, itemIndex); };
+                                showGalleryOverlay(galleryData, itemIndex); 
+                            };
                             itemDiv.appendChild(img);
                             const textDiv = document.createElement('div');
                             let skuDisplay = `מק"ט: ${item.sku}`;
                             if (settings.replaceBarcodes && item.barcode) {
                                 skuDisplay = `מק"ט: <strong class="barcode-highlight" title="מקורי: ${item.sku}">${item.barcode}</strong>`;
                             }
-                            textDiv.innerHTML = `<div class="font-weight-bold" style="font-size:0.9rem;">${item.name}</div><div class="text-muted" style="font-size:0.8rem;">${skuDisplay} | כמות: ${item.quantity}</div>`;
+                            // הוסף מחיר לתצוגה
+                            let priceDisplay = '';
+                            let priceClass = '';
+                            if (item.price) {
+                                const priceNum = parseFloat(item.price);
+                                if (!isNaN(priceNum)) {
+                                    // הדגש מחירים גבוהים
+                                    if (priceNum > 1000) {
+                                        priceClass = 'text-danger font-weight-bold';
+                                    } else if (priceNum > 500) {
+                                        priceClass = 'text-warning font-weight-bold';
+                                    }
+                                    
+                                    // חשב מחיר כולל כמות
+                                    const quantityParts = item.quantity.split('/').map(part => part.trim());
+                                    const totalQuantity = parseInt(quantityParts[0]) || 1;
+                                    const pickedQuantity = quantityParts.length > 1 ? parseInt(quantityParts[1]) || 0 : totalQuantity;
+                                    
+                                    // השתמש בכמות השנייה (המלוקטת) לחישוב הסה"כ, או בכמות הראשונה אם אין כמות שנייה
+                                    const quantityForCalculation = quantityParts.length > 1 ? pickedQuantity : totalQuantity;
+                                    const totalItemPrice = priceNum * quantityForCalculation;
+                                    
+                                    priceDisplay = ` | מחיר: <span class="${priceClass}">₪${priceNum.toLocaleString('he-IL', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</span>`;
+                                    
+                                    // הוסף מחיר כולל תמיד אם יש מחיר
+                                    if (priceNum > 0) {
+                                        const isNotPicked = quantityParts.length > 1 && pickedQuantity === 0;
+                                        const statusText = isNotPicked ? ' (לא מלוקט)' : '';
+                                        priceDisplay += ` <span class="text-muted">(סה"כ: ₪${totalItemPrice.toLocaleString('he-IL', {minimumFractionDigits: 2, maximumFractionDigits: 2})}${statusText})</span>`;
+                                    }
+                                }
+                            }
+                            
+                            textDiv.innerHTML = `<div class="font-weight-bold" style="font-size:0.9rem;">${item.name}</div><div class="text-muted" style="font-size:0.8rem;">${skuDisplay} | כמות: ${item.quantity}${priceDisplay}</div>`;
                             itemDiv.appendChild(textDiv); container.appendChild(itemDiv);
                         });
                         newCell.appendChild(container);
+                        
+                        // הוסף סיכום מחירים
+                        const itemsWithPrice = allItems.filter(item => {
+                            const price = parseFloat(item.price);
+                            return item.price && !isNaN(price) && price > 0;
+                        });
+                        if (itemsWithPrice.length > 0) {
+                            // חשב סה"כ הזמנה לפי הכמות השנייה (המלוקטת) או הראשונה אם אין שנייה
+                            const totalPrice = itemsWithPrice.reduce((sum, item) => {
+                                const price = parseFloat(item.price);
+                                const quantityParts = item.quantity.split('/').map(part => part.trim());
+                                const quantity = quantityParts.length > 1 ? parseInt(quantityParts[1]) || 0 : parseInt(quantityParts[0]) || 1;
+                                return sum + (price * quantity);
+                            }, 0);
+                            
+                            if (totalPrice > 0) {
+                                const summaryDiv = document.createElement('div');
+                                summaryDiv.style.cssText = 'margin-top: 15px; padding: 10px; background-color: #e8f5e8; border-radius: 5px; border: 1px solid #d4edda;';
+                                
+                                let summaryHTML = `
+                                    <div style="font-weight: bold; color: #155724; font-size: 1.1rem;">
+                                        <i class="fa-light fa-calculator" style="margin-left: 5px;"></i>
+                                        סה"כ הזמנה: ₪${totalPrice.toLocaleString('he-IL', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                                    </div>
+                                `;
+                                
+
+                                
+                                summaryHTML += `
+                                    <div style="font-size: 0.9rem; color: #6c757d; margin-top: 5px;">
+                                        מחושב לפי ${itemsWithPrice.length} פריטים עם מחיר
+                                    </div>
+                                `;
+                                
+                                summaryDiv.innerHTML = summaryHTML;
+                                newCell.appendChild(summaryDiv);
+                            }
+                        }
                     } else { newCell.innerHTML += '<div class="text-center text-muted p-2">לא נמצאו פריטים.</div>'; }
-                    newRow.appendChild(newCell); icon.classList.replace('fa-refresh', 'fa-chevron-up');
+                    newRow.appendChild(newCell); 
+                    updateButtonState(currentButton, true);
                     parentRow.after(newRow);
-                } catch (err) { console.error("Failed to fetch task preview:", err); icon.classList.replace('fa-refresh', 'fa-exclamation-triangle');
-                } finally { icon.classList.remove('fa-spin'); currentButton.disabled = false; }
+                    
+
+                    
+
+                                  } catch (err) { 
+                    console.error("Failed to fetch task preview:", err); 
+                    // במקרה של שגיאה, נקה את כל ה-classes וחזור למצב סגור
+                    icon.classList.remove('fa-refresh', 'fa-spin');
+                    icon.classList.add('fa-exclamation-triangle');
+                    updateButtonState(currentButton, false);
+                  } finally { 
+                    icon.classList.remove('fa-spin'); 
+                    currentButton.disabled = false; 
+
+                  }
             });
             row.setAttribute('data-preview-processed', 'true');
         });
         mainTableBody.setAttribute('data-preview-injected', 'true');
+        
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting preview functionality:`, error);
         }
@@ -1630,7 +2143,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             
             // NEW: Also replace barcodes when adding responsive attributes
             if (settings && settings.replaceBarcodes) {
-                replaceBarcodesInDOM(table);
+                replaceBarcodesInViews(table);
             }
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error adding responsive data attributes:`, error);
@@ -1801,14 +2314,39 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     color: #505050;
 }
 
-
+/* Enhanced Gallery Styles */
 .gallery-sku {
     font-size: 1em;
     color: #ccc;
-    margin: 0; /* Remove existing margins */
+    margin: 0;
 }
 
+.gallery-price {
+    font-size: 1.1em;
+    color: #4CAF50;
+    font-weight: bold;
+    margin: 0;
+}
 
+.gallery-product-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #3699ff;
+    text-decoration: none;
+    font-size: 0.9em;
+    margin-top: 5px;
+    padding: 5px 10px;
+    border: 1px solid #3699ff;
+    border-radius: 4px;
+    transition: all 0.3s ease;
+}
+
+.gallery-product-link:hover {
+    background-color: #3699ff;
+    color: white;
+    text-decoration: none;
+}
 
 .gallery-counter {
     display: flex;
@@ -1820,53 +2358,199 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     margin: 0;
 }
 
+/* Loading Indicator */
+.gallery-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+}
 
+.gallery-loading .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #3699ff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Image Container with Zoom Support */
+.gallery-image-container {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+    cursor: zoom-in;
+}
+
+.gallery-image-container img {
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    cursor: zoom-in;
+}
+
+.gallery-image-container.zoomed img {
+    cursor: move;
+}
+
+/* Zoom Controls */
+.gallery-zoom {
+    position: absolute;
+    top: 60px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 12px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: background 0.3s ease;
+    z-index: 20;
+}
+
+.gallery-zoom:hover {
+    background: rgba(0, 0, 0, 0.9);
+}
+
+.gallery-zoom:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.gallery-zoom.zoom-in {
+    right: 80px;
+}
+
+.gallery-zoom.zoom-out {
+    right: 120px;
+}
+
+.gallery-zoom.reset-zoom {
+    right: 160px;
+}
+
+/* Thumbnails instead of dots */
+.gallery-thumbnails {
+    position: fixed;
+    bottom: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 15;
+    display: flex;
+    gap: 8px;
+    max-width: 80vw;
+    overflow-x: auto;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 8px;
+}
+
+.gallery-thumbnail {
+    width: 60px;
+    height: 60px;
+    border: 2px solid transparent;
+    border-radius: 4px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex-shrink: 0;
+}
+
+.gallery-thumbnail:hover {
+    border-color: #3699ff;
+    transform: scale(1.05);
+}
+
+.gallery-thumbnail.active {
+    border-color: #3699ff;
+    box-shadow: 0 0 10px rgba(54, 153, 255, 0.5);
+}
+
+.gallery-thumbnail img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: transform 0.3s ease;
+}
+
+.gallery-thumbnail:hover img {
+    transform: scale(1.1);
+}
+
+/* Enhanced Caption */
 .gallery-caption {
-    position: fixed; /* Changed to fixed */
-    bottom: 45px; /* MODIFIED: Position above the dots (e.g., dots at 15px, 10px high dots + 20px gap = 45px) */
-    left: 0; /* Align to left edge */
-    right: 0; /* Align to right edge */
-    width: 100%; /* Make it full width */
-    display: flex; /* Keep flex for content centering */
+    position: fixed;
+    bottom: 100px;
+    left: 0;
+    right: 0;
+    width: 100%;
+    display: flex;
     flex-direction: column;
     align-items: center;
     gap: 6px;
     text-align: center;
     color: #fff;
-    background: rgba(0, 0, 0, 0.7); /* Slightly darker background for better visibility */
-    padding: 8px 15px;
-    border-radius: 0; /* Remove border-radius for edge-to-edge look */
-    box-sizing: border-box; /* Ensures padding is included in width */
-    z-index: 10; /* Ensure it's above the image but below the dots in z-index */
+    background: rgba(0, 0, 0, 0.8);
+    padding: 12px 20px;
+    border-radius: 0;
+    box-sizing: border-box;
+    z-index: 10;
 }
 
-
-.gallery-dots {
-    position: fixed;
-    bottom: 15px; /* Keep this to be at the very bottom */
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 15; /* Ensure it's on top of the caption */
-    text-align: center;
-    pointer-events: auto;
+/* Enhanced Navigation Buttons */
+.gallery-nav {
+    transition: all 0.3s ease;
 }
 
-.gallery-dots .dot {
-    height: 10px;
-    width: 10px;
-    margin: 0 4px;
-    background-color: #bbb;
-    border-radius: 50%;
-    display: inline-block;
-    transition: background-color 0.3s;
-    cursor: pointer;
+.gallery-nav:hover {
+    background: rgba(0, 0, 0, 0.8) !important;
 }
 
-.gallery-dots .dot.active {
-    background-color: #3699ff;
+/* Smooth Transitions */
+#tampermonkey-gallery-overlay {
+    transition: opacity 0.3s ease;
 }
 
+.gallery-content-wrapper {
+    transition: all 0.3s ease;
+}
 
+/* Responsive Design for Thumbnails */
+@media (max-width: 768px) {
+    .gallery-thumbnails {
+        max-width: 90vw;
+        gap: 4px;
+    }
+    
+    .gallery-thumbnail {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .gallery-zoom {
+        padding: 6px 10px;
+        font-size: 14px;
+    }
+    
+    .gallery-zoom.zoom-in {
+        right: 70px;
+    }
+    
+    .gallery-zoom.zoom-out {
+        right: 105px;
+    }
+    
+    .gallery-zoom.reset-zoom {
+        right: 140px;
+    }
+}
 
 .tampermonkey-picked-none {
     color: #ff0000 !important;
@@ -1949,16 +2633,78 @@ td.copy-enabled.cell-copied {
             opacity: 0; transition: opacity 0.5s ease-in-out;
         }
 
-        .barcode-highlight { color: #006400 !important; font-weight: bold; cursor: help; }
-        .barcode-highlight-gallery { color: #90ee90 !important; font-weight: bold; cursor: help; }
+        .barcode-highlight { 
+            color: #006400 !important; 
+            font-weight: bold; 
+            cursor: help; 
+            transition: all 0.3s ease;
+            animation: barcodeReplacement 0.5s ease-in-out;
+        }
+        .barcode-highlight-gallery { 
+            color: #90ee90 !important; 
+            font-weight: bold; 
+            cursor: help; 
+            transition: all 0.3s ease;
+            animation: barcodeReplacement 0.5s ease-in-out;
+        }
         td.barcode-highlight, tr[id^="preview-for-"] .barcode-highlight {
-            background-color: #e6ffed; padding: 2px 4px; border-radius: 3px;
+            background-color: #e6ffed; 
+            padding: 2px 4px; 
+            border-radius: 3px;
+            transition: all 0.3s ease;
+            animation: barcodeReplacement 0.5s ease-in-out;
+        }
+        
+        /* ביטול הבהוב ב-PREVIEW */
+        tr[id^="preview-for-"] .barcode-highlight {
+            animation: none !important;
         }
         .pick-order-item-row .barcode-highlight { background-color: transparent !important; }
+        /* Special handling for picking modal - prevent background color on the entire row */
+        .pick-order-item-table .pick-order-item-row.barcode-highlight {
+            background-color: transparent !important;
+        }
+        .pick-order-item-table .pick-order-item-row.barcode-highlight .barcode-highlight {
+            background-color: #e6ffed !important;
+            padding: 2px 4px !important;
+            border-radius: 3px !important;
+            transition: all 0.3s ease;
+            animation: barcodeReplacement 0.5s ease-in-out;
+        }
+        /* Ensure barcode text in picking modal has proper styling */
+        .pick-order-item-table .barcode-highlight {
+            color: #006400 !important;
+            font-weight: bold !important;
+            cursor: help !important;
+            transition: all 0.3s ease;
+            animation: barcodeReplacement 0.5s ease-in-out;
+        }
         .barcode-input-highlight {
             background-color: #e6ffed !important;
             color: #006400 !important;
             font-weight: bold;
+            transition: all 0.3s ease;
+            animation: barcodeReplacement 0.5s ease-in-out;
+        }
+        
+        /* Barcode replacement animation */
+        @keyframes barcodeReplacement {
+            0% { 
+                opacity: 0.5; 
+                transform: scale(0.95); 
+            }
+            100% { 
+                opacity: 1; 
+                transform: scale(1); 
+            }
+        }
+        
+        /* Hover effects for barcode elements */
+        .barcode-highlight:hover,
+        .barcode-highlight-gallery:hover,
+        .barcode-input-highlight:hover {
+            background-color: #d4edda !important;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
         #tampermonkey-gallery-overlay {
@@ -2144,24 +2890,24 @@ td.copy-enabled.cell-copied {
 
 /* Merlog Row Highlighting */
 .merlog-highlight {
-    background-color: rgba(255, 0, 0, 0.1) !important;
+    background-color: #fef2f2 !important;
     transition: background-color 0.3s ease;
 }
 
 .merlog-highlight:hover {
-    background-color:  rgb(255, 230, 230) !important;
+    background-color: #fee2e2 !important;
 }
 
 /* Override for table cells specifically */
 td.merlog-highlight {
-    background-color: rgb(255, 200, 200) !important;
+    background-color: #fef2f2 !important;
     border-radius: 4px;
     padding: 4px 8px;
     margin: 2px 0;
 }
 
 td.merlog-highlight:hover {
-    background-color: rgb(255, 180, 180) !important;
+    background-color: #fee2e2 !important;
 }
 
 /* Exclude preview cells from merlog highlighting */
@@ -2228,7 +2974,7 @@ td.preview-cell button:hover {
 #operator-store-visits-table td.merlog-highlight:not(.preview-cell),
 #tasks-table td.merlog-highlight:not(.preview-cell),
 table td.merlog-highlight:not(.preview-cell) {
-    background-color: rgb(255, 200, 200) !important;
+    background-color: #fef2f2 !important;
     border-radius: 4px;
     padding: 4px 8px;
     margin: 2px 0;
@@ -2237,33 +2983,98 @@ table td.merlog-highlight:not(.preview-cell) {
 #operator-store-visits-table td.merlog-highlight:hover:not(.preview-cell),
 #tasks-table td.merlog-highlight:hover:not(.preview-cell),
 table td.merlog-highlight:hover:not(.preview-cell) {
-    background-color: rgb(255, 180, 180) !important;
+    background-color: #fee2e2 !important;
 }
 
 /* Merlog Panel View Highlighting - Solid background */
-.offcanvas.merlog-highlight {
-    background-color: rgb(255, 230, 230) !important;
-    backdrop-filter: blur(0px) !important;
-}
-
-.offcanvas.merlog-highlight:hover {
-    background-color:  rgb(255, 230, 230)  !important;
+.offcanvas.merlog-highlight,
+.panel_view.merlog-highlight {
+    background-color: #fff5f5 !important;
+    border: 2px solid #fecaca !important;
 }
 
 /* Merlog Panel View Row Highlighting - Darker red for specific rows */
 .offcanvas .select2-selection--single.merlog-highlight,
 .offcanvas .col-xxl-5.col-6.merlog-highlight,
-.offcanvas .col-xxl-7.col-6.merlog-highlight {
-    background-color: rgb(255, 200, 200) !important;
+.offcanvas .col-xxl-7.col-6.merlog-highlight,
+.panel_view .select2-selection--single.merlog-highlight,
+.panel_view .col-xxl-5.col-6.merlog-highlight,
+.panel_view .col-xxl-7.col-6.merlog-highlight {
+    background-color: #fef2f2 !important;
     border-radius: 4px;
     padding: 4px 8px;
     margin: 2px 0;
+    border: 1px solid #fecaca !important;
 }
 
 .offcanvas .select2-selection--single.merlog-highlight:hover,
 .offcanvas .col-xxl-5.col-6.merlog-highlight:hover,
-.offcanvas .col-xxl-7.col-6.merlog-highlight:hover {
-    background-color: rgb(255, 180, 180) !important;
+.offcanvas .col-xxl-7.col-6.merlog-highlight:hover,
+.panel_view .select2-selection--single.merlog-highlight:hover,
+.panel_view .col-xxl-5.col-6.merlog-highlight:hover,
+.panel_view .col-xxl-7.col-6.merlog-highlight:hover {
+    background-color: #fee2e2 !important;
+    border-color: #fca5a5 !important;
+}
+
+/* Merlog Table Row Highlighting - Red background for entire row */
+tr.merlog-row-highlight {
+    background-color: #fff5f5 !important;
+}
+
+/* Merlog Panel View Row Highlighting - Red background for entire row */
+.offcanvas.merlog-row-highlight,
+.panel_view.merlog-row-highlight {
+    background-color: #fff5f5 !important;
+}
+
+/* Merlog Panel View Content Highlighting */
+.offcanvas.merlog-highlight .tab-content,
+.panel_view.merlog-highlight .tab-content {
+    background-color: #fff5f5 !important;
+}
+
+.offcanvas.merlog-highlight .tab-pane,
+.panel_view.merlog-highlight .tab-pane {
+    background-color: #fff5f5 !important;
+}
+
+/* Merlog Panel View Link Highlighting */
+.offcanvas.merlog-highlight a.merlog-highlight,
+.panel_view.merlog-highlight a.merlog-highlight {
+    background-color: #fef2f2 !important;
+    color: #dc2626 !important;
+    padding: 2px 4px !important;
+    border-radius: 3px !important;
+    text-decoration: none !important;
+}
+
+.offcanvas.merlog-highlight a.merlog-highlight:hover,
+.panel_view.merlog-highlight a.merlog-highlight:hover {
+    background-color: #fee2e2 !important;
+    color: #b91c1c !important;
+}
+
+/* Merlog Panel View Text Element Highlighting */
+.offcanvas.merlog-highlight span.merlog-highlight,
+.offcanvas.merlog-highlight div.merlog-highlight,
+.offcanvas.merlog-highlight p.merlog-highlight,
+.panel_view.merlog-highlight span.merlog-highlight,
+.panel_view.merlog-highlight div.merlog-highlight,
+.panel_view.merlog-highlight p.merlog-highlight {
+    background-color: #fef2f2 !important;
+    color: #dc2626 !important;
+    padding: 1px 3px !important;
+    border-radius: 2px !important;
+    font-weight: bold !important;
+}
+
+/* Merlog Panel View Select Element Highlighting */
+.offcanvas.merlog-highlight select.merlog-highlight,
+.panel_view.merlog-highlight select.merlog-highlight {
+    background-color: #fef2f2 !important;
+    border-color: #fca5a5 !important;
+    color: #dc2626 !important;
 }
   `;
 
@@ -2332,6 +3143,18 @@ function prepareCopyElements() {
                 totalRows++;
                 let shouldHighlight = false;
 
+                // Clear previous highlighting from this row
+                row.classList.remove('merlog-row-highlight');
+                Array.from(row.cells).forEach(cell => {
+                    if (!cell.classList.contains('preview-cell')) {
+                        cell.classList.remove('merlog-highlight');
+                        // Remove any inline styles
+                        cell.style.backgroundColor = '';
+                        cell.style.borderRadius = '';
+                        cell.style.padding = '';
+                    }
+                });
+
                 // Check driver column - look for "שיגור למרלוג"
                 Array.from(row.cells).forEach(cell => {
                     // Skip preview cells
@@ -2342,19 +3165,11 @@ function prepareCopyElements() {
                         // Look for the actual displayed text in the select2 element
                         const select2Rendered = cell.querySelector('.select2-selection__rendered');
                         if (select2Rendered) {
-                                                const driverText = select2Rendered.textContent.trim();
-                    // Look for specific patterns that indicate Merlog delivery
+                            const driverText = select2Rendered.textContent.trim();
+                            // Look for specific patterns that indicate Merlog delivery
                             if (driverText.includes('שיגור למרלוג')) {
                                 shouldHighlight = true;
                                 cell.classList.add('merlog-highlight');
-                                cell.style.backgroundColor = 'rgb(255, 200, 200)';
-                                cell.style.borderRadius = '4px';
-                                cell.style.padding = '4px 8px';
-                            } else {
-                                cell.classList.remove('merlog-highlight');
-                                cell.style.backgroundColor = '';
-                                cell.style.borderRadius = '';
-                                cell.style.padding = '';
                             }
                         }
                     }
@@ -2374,14 +3189,6 @@ function prepareCopyElements() {
                              cellText.includes('צ\'יטה'))) {
                             shouldHighlight = true;
                             cell.classList.add('merlog-highlight');
-                            cell.style.backgroundColor = 'rgb(255, 200, 200)';
-                            cell.style.borderRadius = '4px';
-                            cell.style.padding = '4px 8px';
-                        } else {
-                            cell.classList.remove('merlog-highlight');
-                            cell.style.backgroundColor = '';
-                            cell.style.borderRadius = '';
-                            cell.style.padding = '';
                         }
                     }
                 });
@@ -2398,8 +3205,6 @@ function prepareCopyElements() {
                     if (dataLabel === 'לקוח' && cellText.includes('אניפט מרלוג')) {
                         shouldHighlight = true;
                         cell.classList.add('merlog-highlight');
-                    } else {
-                        cell.classList.remove('merlog-highlight');
                     }
                 });
 
@@ -2407,8 +3212,6 @@ function prepareCopyElements() {
                 if (shouldHighlight) {
                     row.classList.add('merlog-row-highlight');
                     highlightedCount++;
-                } else {
-                    row.classList.remove('merlog-row-highlight');
                 }
             });
         } catch (error) {
@@ -2421,72 +3224,82 @@ function prepareCopyElements() {
         try {
             if (!settings || !settings.highlightMerlog) return;
 
-            const panelView = document.querySelector('.panel_view');
+            // Always prefer the specific task panel by id
+            let panelView = document.querySelector('#task_offcanvas');
+            if (!panelView) {
+                panelView = document.querySelector('.panel_view');
+            }
+            if (!panelView) {
+                panelView = document.querySelector('.offcanvas');
+            }
             if (!panelView) return;
 
+            // Clear all previous merlog highlighting from this panel
+            panelView.classList.remove('merlog-highlight', 'merlog-row-highlight');
+            
+            // Remove merlog highlighting from all child elements
+            panelView.querySelectorAll('.merlog-highlight').forEach(el => {
+                el.classList.remove('merlog-highlight');
+            });
+
+            // Check for specific Merlog indicators
+            const panelText = panelView.textContent || panelView.innerText || '';
+            
+            // ONLY highlight if we have SPECIFIC Merlog indicators
+            const merlogPatterns = [
+              'שיגור למרלוג',
+              "מרלוג צור יגאל",
+              "מרלוג צ'יטה",
+              'אניפט מרלוג'
+            ];
             let shouldHighlight = false;
 
-            // Check for "שיגור למרלוג" in driver section
+            // בדיקת נהג בפועל
             const driverSelect = panelView.querySelector('.select2-selection__rendered');
-            if (driverSelect) {
-                const driverText = driverSelect.textContent.trim();
-                if (driverText.includes('שיגור למרלוג')) {
-                    shouldHighlight = true;
-                    driverSelect.classList.add('merlog-highlight');
-                } else {
-                    driverSelect.classList.remove('merlog-highlight');
-                }
+            if (driverSelect && merlogPatterns.some(pattern => driverSelect.textContent.trim().includes(pattern))) {
+              shouldHighlight = true;
             }
 
-            // Check for "מרלוג" in area section
+            // בדיקת select אמיתי (אם יש)
+            const selectElement = panelView.querySelector('select.visit-drivers-select2');
+            if (selectElement) {
+              const selectedOption = selectElement.options[selectElement.selectedIndex];
+              if (selectedOption && merlogPatterns.some(pattern => selectedOption.textContent.includes(pattern))) {
+                shouldHighlight = true;
+              }
+            }
+
+            // בדיקת איזור חלוקה בפועל
             const areaSections = panelView.querySelectorAll('.col-xxl-5.col-6');
             areaSections.forEach(section => {
-                const labelSpan = section.querySelector('span');
-                if (labelSpan && labelSpan.textContent.trim() === 'איזור חלוקה') {
-                    const valueSection = section.nextElementSibling;
-                    if (valueSection) {
-                        const valueText = valueSection.textContent.trim();
-                        if (valueText.includes('מרלוג') &&
-                            (valueText.includes('צור יגאל') ||
-                             valueText.includes('צ\'יטה'))) {
-                            shouldHighlight = true;
-                            // Highlight the entire row (label + value)
-                            section.classList.add('merlog-highlight');
-                            valueSection.classList.add('merlog-highlight');
-                        } else {
-                            section.classList.remove('merlog-highlight');
-                            valueSection.classList.remove('merlog-highlight');
-                        }
-                    }
+              const labelSpan = section.querySelector('span');
+              if (labelSpan && labelSpan.textContent.trim() === 'איזור חלוקה') {
+                const valueSection = section.nextElementSibling;
+                if (valueSection && merlogPatterns.some(pattern => valueSection.textContent.trim().includes(pattern))) {
+                  shouldHighlight = true;
                 }
+              }
             });
 
-            // Check for "אניפט מרלוג" in client section
-            const clientSections = panelView.querySelectorAll('.col-xxl-5.col-6');
-            clientSections.forEach(section => {
-                const labelSpan = section.querySelector('span');
-                if (labelSpan && labelSpan.textContent.trim() === 'לקוח') {
-                    const valueSection = section.nextElementSibling;
-                    if (valueSection) {
-                        const valueText = valueSection.textContent.trim();
-                        if (valueText.includes('אניפט מרלוג')) {
-                            shouldHighlight = true;
-                            // Highlight the entire row (label + value)
-                            section.classList.add('merlog-highlight');
-                            valueSection.classList.add('merlog-highlight');
-                        } else {
-                            section.classList.remove('merlog-highlight');
-                            valueSection.classList.remove('merlog-highlight');
-                        }
-                    }
+            // בדיקת לקוח בפועל
+            areaSections.forEach(section => {
+              const labelSpan = section.querySelector('span');
+              if (labelSpan && labelSpan.textContent.trim() === 'לקוח') {
+                const valueSection = section.nextElementSibling;
+                if (valueSection && merlogPatterns.some(pattern => valueSection.textContent.trim().includes(pattern))) {
+                  shouldHighlight = true;
                 }
+              }
             });
 
-            // Apply highlighting to the entire panel
+            // Debug logging
             if (shouldHighlight) {
+                console.log('[Merlog Highlight] Found specific Merlog indicators (selected values only)');
                 panelView.classList.add('merlog-highlight');
+                panelView.classList.add('merlog-row-highlight');
+                // ... existing code ...
             } else {
-                panelView.classList.remove('merlog-highlight');
+                console.log('[Merlog Highlight] Panel view should NOT be highlighted - no Merlog indicators found');
             }
 
         } catch (error) {
@@ -2500,7 +3313,6 @@ function prepareCopyElements() {
         if (window.runMainLogicExecuting) return;
         window.runMainLogicExecuting = true;
 
-
         safeExecute(() => {
             
             // MODIFICATION: Call tagColumnsForHiding initially with default scope (document)
@@ -2510,8 +3322,7 @@ function prepareCopyElements() {
                 if (!el.hasAttribute('data-original-sku')) el.setAttribute('data-original-sku', el.tagName === 'INPUT' ? el.value.trim() : el.textContent.trim());
             });
             // MODIFICATION: Call these with default scope (document)
-            replaceBarcodesInViews();
-            replaceBarcodesInDOM(); // NEW: Add call to the new function
+            replaceBarcodesInViews(); // Unified barcode replacement function
             injectImagesAndLinks(document);
             injectImagesInRegularTables(document);
             injectImagesInOrderItemRows(document);
@@ -2546,8 +3357,7 @@ function prepareCopyElements() {
                             safeExecute(() => injectImagesAndLinks(modalForm)); // Re-process images/links
                             safeExecute(() => injectImagesInRegularTables(modalForm)); // Re-process regular table images
                             safeExecute(() => injectImagesInOrderItemRows(modalForm)); // Re-process .order-item-row images
-                            safeExecute(() => replaceBarcodesInViews(modalForm)); // Re-process barcodes
-                            safeExecute(() => replaceBarcodesInDOM(modalForm)); // NEW: Re-process barcodes for data-original-sku elements
+                            safeExecute(() => replaceBarcodesInViews(modalForm)); // Re-process barcodes (unified function)
                         }
                     }, 50); // Small debounce delay
                 });
@@ -2565,28 +3375,41 @@ function prepareCopyElements() {
             // Add MutationObserver for panel view highlighting
             const panelView = document.querySelector('.offcanvas.offcanvas-custom-right');
             if (panelView && !panelView.hasAttribute('data-merlog-observer-active')) {
+                // Call highlightMerlogPanelView immediately
+                setTimeout(() => {
+                    highlightMerlogPanelView();
+                }, 100);
                 const panelObserver = new MutationObserver((mutations) => {
                     clearTimeout(panelObserver.debounceTimer);
                     panelObserver.debounceTimer = setTimeout(() => {
                         highlightMerlogPanelView();
                         // NEW: Also replace barcodes in panel view
                         if (settings && settings.replaceBarcodes) {
-                            replaceBarcodesInDOM(panelView);
+                            replaceBarcodesInViews(panelView);
                         }
-                    }, 100);
+                    }, 200);
                 });
                 panelObserver.observe(panelView, { childList: true, subtree: true });
                 panelView.setAttribute('data-merlog-observer-active', 'true');
             }
+
+            // Also add event listener for when panel view is shown
+            document.addEventListener('shown.bs.offcanvas', function(event) {
+                if (event.target.classList.contains('offcanvas-custom-right')) {
+                    setTimeout(() => {
+                        highlightMerlogPanelView();
+                    }, 200);
+                }
+            });
             
         }, () => {
             // Fallback function
             console.error(`[${SCRIPT_NAME}] Error in runMainLogic`);
         });
 
-            // Reset the execution flag
-    window.runMainLogicExecuting = false;
-}
+        // Reset the execution flag
+        window.runMainLogicExecuting = false;
+    }
 
     // Create debounced version of runMainLogic
     const debouncedRunMainLogic = debounce(() => {
@@ -2656,27 +3479,54 @@ async function initialize() {
 
     runMainLogic(); // ← הרצת ההזרקות הראשוניות
 
-  // ◂ MutationObserver על כל הטבלה כדי לזרוק Preview בכל page-change / filter
-const table = document.querySelector('#operator-store-visits-table');
-if (table) {
-  const tableObserver = new MutationObserver((mutations) => {
-    // בכל שינוי בתת-עץ של הטבלה, ננסה להזריק Preview מחדש
-    const tb = table.querySelector('tbody');
-    if (!tb) return;
-    tb.removeAttribute('data-preview-injected');
-    if (settings && settings.enablePreview) {
-      injectPreviewFunctionality(tb);
-    }
-    // NEW: Also replace barcodes when table changes
-    if (settings && settings.replaceBarcodes) {
-      replaceBarcodesInDOM(table);
-    }
-  });
-  tableObserver.observe(table, {
-    childList: true,
-    subtree: true
-  });
-}
+  // ◂ הגנה פשוטה - מונע הסרת PREVIEW לחלוטין
+  const table = document.querySelector('#operator-store-visits-table');
+  if (table) {
+    let tableObserverTimeout = null;
+    const tableObserver = new MutationObserver((mutations) => {
+      // השתמש ב-debounce כדי למנוע לולאה אינסופית
+      clearTimeout(tableObserverTimeout);
+      tableObserverTimeout = setTimeout(() => {
+        // בכל שינוי בתת-עץ של הטבלה, ננסה להזריק Preview מחדש
+        const tb = table.querySelector('tbody');
+        if (!tb) return;
+        
+        // בדוק אם יש PREVIEW פתוחים
+        const hasOpenPreviews = tb.querySelectorAll('tr[id^="preview-for-"]').length > 0;
+        
+        // אם יש PREVIEW פתוחים, אל תסיר את הפונקציונליות
+        if (hasOpenPreviews) {
+          console.log('[DEBUG] Found open previews, skipping re-injection');
+          return;
+        }
+        
+        // רק הזרק פונקציונליות חדשה אם היא לא קיימת
+        if (!tb.hasAttribute('data-preview-injected') && settings && settings.enablePreview) {
+          injectPreviewFunctionality(tb);
+        }
+        
+        // NEW: Also replace barcodes when table changes
+        if (settings && settings.replaceBarcodes) {
+          replaceBarcodesInViews(table);
+        }
+      }, 200); // הגדל את ה-debounce ל-200ms
+    });
+    tableObserver.observe(table, {
+      childList: true,
+      subtree: true
+    });
+    
+
+    
+    // ◂ פונקציה לבניית שורת PREVIEW
+
+    
+
+    
+
+    
+
+  }
 
   prepareCopyElements();
   
@@ -2691,10 +3541,9 @@ if (table) {
       }
       prepareCopyElements();
       highlightPickQuantities();
-      highlightMerlogPanelView(); // Add panel view highlighting
       // NEW: Also replace barcodes for any DOM changes
       if (settings && settings.replaceBarcodes) {
-        replaceBarcodesInDOM();
+        replaceBarcodesInViews();
       }
     }, 100);
   });
@@ -2788,11 +3637,15 @@ window.injectImagesAndLinks = injectImagesAndLinks;
 window.injectImagesInRegularTables = injectImagesInRegularTables;
 window.injectImagesInOrderItemRows = injectImagesInOrderItemRows;
 window.replaceBarcodesInViews = replaceBarcodesInViews;
-window.replaceBarcodesInDOM = replaceBarcodesInDOM; // NEW: Expose the new function
+window.replaceBarcodesInDOM = replaceBarcodesInDOM; // Backward compatibility - calls unified function
 window.tagColumnsForHiding = tagColumnsForHiding;
 window.findImageMatch = findImageMatch;
 window.findBarcode = findBarcode;
 window.createImageElement = createImageElement;
+// Expose new performance and error handling functions
+window.isElementProcessed = isElementProcessed;
+window.markElementAsProcessed = markElementAsProcessed;
+window.processBarcodeElement = processBarcodeElement;
 
 // פתרון: מאזין לפתיחה של modal ואז מוסיף תמונות לאחר שה-Enhanced סיים
 const enhancedSafeObserver = new MutationObserver(() => {
@@ -2806,7 +3659,7 @@ const enhancedSafeObserver = new MutationObserver(() => {
             injectImagesAndLinks(modal);
             injectImagesInRegularTables(modal);
             injectImagesInOrderItemRows(modal);
-            replaceBarcodesInDOM(modal); // NEW: Add barcode replacement
+            replaceBarcodesInViews(modal); // Unified barcode replacement
             clearInterval(interval);
 
             // ✅ Start observing tbody for changes — to reinject if rows are replaced
@@ -2814,7 +3667,7 @@ const enhancedSafeObserver = new MutationObserver(() => {
                 injectImagesAndLinks(modal);
                 injectImagesInRegularTables(modal);
                 injectImagesInOrderItemRows(modal);
-                replaceBarcodesInDOM(modal); // NEW: Add barcode replacement
+                replaceBarcodesInViews(modal); // Unified barcode replacement
             });
             observer.observe(tbody, { childList: true, subtree: true });
         }
@@ -2845,7 +3698,7 @@ window.addEventListener('enhanced-modal-ready', () => {
                 injectImagesAndLinks(modal);
                 injectImagesInRegularTables(modal);
                 injectImagesInOrderItemRows(modal);
-                replaceBarcodesInDOM(modal); // NEW: Add barcode replacement
+                replaceBarcodesInViews(modal); // Unified barcode replacement
             });
             observer.observe(tbody, { childList: true, subtree: true });
         }
@@ -2857,4 +3710,277 @@ window.injectImagesAndLinks = window.injectImagesAndLinks || injectImagesAndLink
 window.__TOOLBOX_READY__ = true;
 window.dispatchEvent(new CustomEvent('toolbox-ready'));
 
+// חילוץ לוגיקת פתיחת preview לפונקציה נפרדת
+async function openPreviewForTask(taskId) {
+    const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+    if (!row) {
+        return;
+    }
+    
+    const currentButton = row.querySelector('.preview-button');
+    if (!currentButton) {
+        return;
+    }
+    
+    const existingPreview = document.getElementById(`preview-for-${taskId}`);
+    if (existingPreview) {
+        // אם ה-preview כבר קיים, סגור אותו
+        const updatedPreviews = openPreviews.filter(id => id !== taskId);
+        sessionStorage.setItem('openPreviewTaskIds', JSON.stringify(updatedPreviews));
+        
+        existingPreview.remove(); 
+        updateButtonState(currentButton, false);
+        
+        return; 
+    }
+    // שמור את ה-taskId ב-sessionStorage לפני פתיחה
+    const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
+    if (!openPreviews.includes(taskId)) {
+        openPreviews.push(taskId);
+        sessionStorage.setItem('openPreviewTaskIds', JSON.stringify(openPreviews));
+    }
+    
+    // בדוק אם זה session חדש - אם כן, אל תפתח PREVIEWs אחרים
+    const sessionStartTime = sessionStorage.getItem('sessionStartTime');
+    const currentTime = Date.now();
+    const sessionAge = currentTime - parseInt(sessionStartTime || '0');
+    
+    // אם ה-session צעיר מדי (פחות מ-5 שניות), נקה את כל ה-PREVIEWs האחרים
+    if (sessionAge < 5000) {
+        sessionStorage.setItem('openPreviewTaskIds', JSON.stringify([taskId]));
+    }
+
+    
+    // נקה את כל ה-classes הקודמים וקבע למצב טעינה
+    icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
+    icon.classList.add('fa-refresh', 'fa-spin'); 
+    currentButton.disabled = true;
+    try {
+        const response = await fetch(`/tasks/${taskId}`); if (!response.ok) throw new Error(`Fetch error: ${response.status}`);
+        const doc = new DOMParser().parseFromString(await response.text(), 'text/html'); const allItems = [];
+
+        // Extract notes from the fetched task page
+        let notesText = '';
+        const notesEl = doc.querySelector('.bg-yellow .hover-copy'); // Assuming this is the selector for notes
+        if (notesEl && notesEl.textContent.includes('מוכן')) { // Check for "מוכן" as per the new script's logic
+            notesText = notesEl.textContent.trim();
+        }
+
+        const productTable = findProductTableInScope(doc);
+        if (productTable) {
+            const headers = Array.from(productTable.querySelectorAll('thead th')).map(th => th.textContent.trim());
+            // שיפור: זיהוי גמיש יותר של כותרות - מזהה גם וריאציות של הכותרות
+            const skuIndex = headers.findIndex(h => h.includes('מק')), 
+                  nameIndex = headers.findIndex(h => h.includes('שם')), 
+                  quantityIndex = headers.findIndex(h => h.includes('כמות') || h.includes('לוקט')),
+                  priceIndex = headers.findIndex(h => h.includes('מחיר ליחידה'));
+            if (skuIndex !== -1 && nameIndex !== -1 && quantityIndex !== -1) {
+                productTable.querySelectorAll('tbody tr').forEach(itemRow => {
+                    const cells = itemRow.cells;
+                    const name = cells[nameIndex].textContent.trim(), 
+                          sku = cells[skuIndex].textContent.trim(), 
+                          quantity = cells[quantityIndex].textContent.trim();
+                    
+                    // חלץ מחיר אם קיים
+                    let price = null;
+                    if (priceIndex !== -1 && cells[priceIndex]) {
+                        const priceText = cells[priceIndex].textContent.trim();
+                        const priceMatch = priceText.match(/[\d,]+\.?\d*/);
+                        if (priceMatch) {
+                            price = priceMatch[0].replace(/,/g, '');
+                        }
+                    }
+                    
+                    const imageMatch = findImageMatch(sku, name); 
+                    const barcodeMatch = findBarcode(sku, name);
+                    allItems.push({ 
+                        name, 
+                        sku, 
+                        quantity, 
+                        price,
+                        image: imageMatch ? imageMatch.image : PLACEHOLDER_IMG_URL, 
+                        barcode: barcodeMatch 
+                    });
+                });
+            }
+        }
+        const newRow = document.createElement('tr'); newRow.id = `preview-for-${taskId}`;
+        const newCell = document.createElement('td'); newCell.colSpan = parentRow.cells.length; newCell.style.cssText = 'padding: 15px; background-color: #f9f9f9;';
+        
+
+        newCell.innerHTML = `<a href="/tasks/${taskId}" target="_blank" class="btn btn-primary btn-sm mb-3"><i class="fa-light fa-arrow-up-right-from-square" style="margin-left: 5px;"></i> פתח הזמנה</a>`;
+
+        // Add notes to the preview if found
+        if (notesText) {
+            newCell.innerHTML += `<div class="preview-notes">${notesText}</div>`;
+        }
+
+        if (allItems.length > 0) {
+            const container = document.createElement('div'); container.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+            
+            allItems.forEach((item, itemIndex) => {
+                if (window.DEBUG_TOOLBOX) {
+         
+                }
+                const itemDiv = document.createElement('div'); itemDiv.className = 'd-flex align-items-center border rounded p-2 m-1 bg-white';
+                itemDiv.style.cssText = 'min-width: 200px; max-width: 300px;';
+                
+                const imageContainer = document.createElement('div'); imageContainer.style.cssText = 'width: 50px; height: 50px; margin-left: 8px; flex-shrink: 0;';
+                const img = document.createElement('img'); img.src = item.image; img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 4px;';
+                imageContainer.appendChild(img);
+                
+                const textContainer = document.createElement('div'); textContainer.style.cssText = 'flex: 1; min-width: 0;';
+                const nameDiv = document.createElement('div'); nameDiv.textContent = item.name; nameDiv.style.cssText = 'font-weight: bold; font-size: 0.9em; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
+                const skuDiv = document.createElement('div'); skuDiv.textContent = `מק"ט: ${item.sku}`; skuDiv.style.cssText = 'font-size: 0.8em; color: #666; margin-bottom: 2px;';
+                const quantityDiv = document.createElement('div'); quantityDiv.textContent = `כמות: ${item.quantity}`; quantityDiv.style.cssText = 'font-size: 0.8em; color: #666;';
+                
+                if (item.price) {
+                    const priceDiv = document.createElement('div'); priceDiv.textContent = `מחיר: ₪${item.price}`; priceDiv.style.cssText = 'font-size: 0.8em; color: #666; margin-top: 2px;';
+                    textContainer.appendChild(priceDiv);
+                }
+                
+                textContainer.appendChild(nameDiv); textContainer.appendChild(skuDiv); textContainer.appendChild(quantityDiv);
+                itemDiv.appendChild(imageContainer); itemDiv.appendChild(textContainer);
+                
+                if (item.barcode) {
+                    const barcodeDiv = document.createElement('div'); barcodeDiv.style.cssText = 'margin-top: 4px; text-align: center;';
+                    const barcodeImg = document.createElement('img'); barcodeImg.src = item.barcode; barcodeImg.style.cssText = 'max-width: 100%; height: 30px;';
+                    barcodeDiv.appendChild(barcodeImg); itemDiv.appendChild(barcodeDiv);
+                }
+                
+                container.appendChild(itemDiv);
+            });
+            
+            newCell.appendChild(container);
+        }
+        
+        newRow.appendChild(newCell); parentRow.parentNode.insertBefore(newRow, parentRow.nextSibling);
+        updateButtonState(currentButton, true);
+        
+                  
+    } catch (err) { 
+        console.error("Failed to fetch task preview:", err); 
+        icon.classList.remove('fa-refresh', 'fa-spin'); 
+        icon.classList.add('fa-exclamation-triangle'); 
+        currentButton.disabled = false;
+    }
+}
+
+// Helper function to update button state (chevron and title)
+function updateButtonState(button, isOpen) {
+  const icon = button.querySelector('i');
+  if (icon) {
+    // נקה את כל ה-classes הקשורים לאייקונים
+    icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
+    
+    if (isOpen) {
+      icon.classList.add('fa-chevron-up');
+      button.title = 'הסתר פריטים';
+    } else {
+      icon.classList.add('fa-chevron-down');
+      button.title = 'הצג פריטים';
+    }
+  }
+}
+
+// MutationObserver שמזהה הכנסת שורה חדשה עם אותו taskId ופותח preview מחדש
+(function setupPreviewAutoRestore() {
+  // בדוק אם זה session חדש (אחרי REFRESH)
+  const sessionStartTime = sessionStorage.getItem('sessionStartTime');
+  const currentTime = Date.now();
+  
+  if (!sessionStartTime) {
+    // זה session חדש - נקה את ה-PREVIEWs הפתוחים ושמור את זמן התחלה
+    sessionStorage.removeItem('openPreviewTaskIds');
+    sessionStorage.setItem('sessionStartTime', currentTime.toString());
+  } else {
+    // בדוק אם יש PREVIEWs ישנים ב-sessionStorage
+    const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
+    if (openPreviews.length > 0) {
+      // נקה את ה-PREVIEWs הישנים רק אם זה session חדש (אחרי REFRESH)
+      // אבל אל תמחק אם זה session ישן (אחרי שינוי סטטוס)
+      const sessionAge = currentTime - parseInt(sessionStartTime);
+      if (sessionAge < 5000) {
+        sessionStorage.removeItem('openPreviewTaskIds');
+      }
+    }
+  }
+  
+  function setupObserver() {
+    const table = document.querySelector('#operator-store-visits-table');
+    if (!table) {
+      setTimeout(setupObserver, 500);
+      return;
+    }
+    const tbody = table.querySelector('tbody');
+    if (!tbody) {
+      setTimeout(setupObserver, 500);
+      return;
+    }
+  
+    const observer = new MutationObserver((mutations) => {
+    // בדוק אם יש previews פתוחים ב-sessionStorage
+    const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
+    if (openPreviews.length === 0) {
+      return;
+    }
+    
+    // בדוק אם זה session חדש (אחרי REFRESH) - אם כן, אל תפתח PREVIEWs
+    const sessionStartTime = sessionStorage.getItem('sessionStartTime');
+    const currentTime = Date.now();
+    const sessionAge = currentTime - parseInt(sessionStartTime || '0');
+    
+    // אם ה-session צעיר מדי (פחות מ-5 שניות), אל תפתח PREVIEWs אוטומטית
+    if (sessionAge < 5000) {
+      return;
+    }
+    
+    // אם יש PREVIEWs ישנים ב-sessionStorage, בדוק אם זה session חדש או ישן
+    if (openPreviews.length > 0) {
+      const sessionAge = currentTime - parseInt(sessionStartTime || '0');
+      if (sessionAge < 5000) {
+        // אם זה session חדש (אחרי REFRESH), נקה את ה-PREVIEWs ולא תפתח אותם
+        sessionStorage.removeItem('openPreviewTaskIds');
+        return;
+      }
+    }
+    
+    const openTaskIds = openPreviews;
+    
+    // בדוק כל preview פתוח
+    openTaskIds.forEach(taskId => {
+      const row = tbody.querySelector('tr[data-task-id="' + taskId + '"]');
+      const existingPreview = document.getElementById(`preview-for-${taskId}`);
+      
+      if (row && !existingPreview) {
+        openPreviewForTask(taskId);
+      } else if (!row) {
+        // אם השורה לא נמצאה, נסה שוב אחרי קצת זמן
+        setTimeout(() => {
+          const retryRow = tbody.querySelector('tr[data-task-id="' + taskId + '"]');
+          const retryPreview = document.getElementById(`preview-for-${taskId}`);
+          if (retryRow && !retryPreview) {
+            openPreviewForTask(taskId);
+          } else if (!retryRow) {
+            // נסה שוב אחרי זמן נוסף
+            setTimeout(() => {
+              const secondRetryRow = tbody.querySelector('tr[data-task-id="' + taskId + '"]');
+              const secondRetryPreview = document.getElementById(`preview-for-${taskId}`);
+              if (secondRetryRow && !secondRetryPreview) {
+                openPreviewForTask(taskId);
+              }
+            }, 500);
+          }
+        }, 100);
+      }
+    });
+    });
+    
+    observer.observe(tbody, { childList: true, subtree: true });
+  }
+  
+  setupObserver();
+})();
+
 })(); //
+
