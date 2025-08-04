@@ -1021,6 +1021,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
     let endX = 0;
     let isZoomed = false;
     let zoomLevel = 1;
+    
+    // Pinch-to-zoom variables
+    let initialDistance = 0;
+    let initialZoom = 1;
+    let isPinching = false;
     const overlay = document.createElement('div');
     overlay.id = 'tampermonkey-gallery-overlay';
     // Don't make it focusable by default - only when needed
@@ -1104,6 +1109,13 @@ function showGalleryOverlay(galleryItems, startIndex) {
         zoomLevel = Math.max(0.5, Math.min(3, level));
         imgElement.style.transform = `scale(${zoomLevel})`;
         isZoomed = zoomLevel !== 1;
+        
+        // Update container class for visual feedback
+        if (isZoomed) {
+            imgContainer.classList.add('zoomed');
+        } else {
+            imgContainer.classList.remove('zoomed');
+        }
     }
 
     function resetZoom() {
@@ -1285,20 +1297,90 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
     // Double click to reset zoom
     imgElement.ondblclick = resetZoom;
+    
+    // Double tap to reset zoom on touch devices
+    let lastTap = 0;
+    imgElement.addEventListener('touchend', (e) => {
+        const currentTime = new Date().getTime();
+        const tapLength = currentTime - lastTap;
+        
+        if (tapLength < 500 && tapLength > 0) {
+            // Double tap detected
+            e.preventDefault();
+            resetZoom();
+        }
+        lastTap = currentTime;
+    }, { passive: false });
 
     overlay.onclick = (e) => {
         if (e.target === overlay) closeOverlay();
     };
 
     document.body.appendChild(overlay);
+    
+    // Enhanced touch event handlers with pinch-to-zoom support
     overlay.addEventListener('touchstart', (e) => {
-        startX = e.touches[0].clientX;
-    }, { passive: true });
+        e.preventDefault();
+        
+        if (e.touches.length === 1) {
+            // Single touch - handle swipe navigation
+            startX = e.touches[0].clientX;
+            isPinching = false;
+        } else if (e.touches.length === 2) {
+            // Two touches - handle pinch-to-zoom
+            isPinching = true;
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            initialDistance = Math.sqrt(
+                Math.pow(touch2.clientX - touch1.clientX, 2) + 
+                Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+            initialZoom = zoomLevel;
+        }
+    }, { passive: false });
+
+    overlay.addEventListener('touchmove', (e) => {
+        e.preventDefault();
+        
+        if (isPinching && e.touches.length === 2) {
+            // Handle pinch-to-zoom
+            const touch1 = e.touches[0];
+            const touch2 = e.touches[1];
+            const currentDistance = Math.sqrt(
+                Math.pow(touch2.clientX - touch1.clientX, 2) + 
+                Math.pow(touch2.clientY - touch1.clientY, 2)
+            );
+            
+            if (initialDistance > 0 && currentDistance > 0) {
+                const scale = currentDistance / initialDistance;
+                const newZoom = Math.max(0.5, Math.min(3, initialZoom * scale));
+                setZoom(newZoom);
+            }
+        }
+    }, { passive: false });
 
     overlay.addEventListener('touchend', (e) => {
-        endX = e.changedTouches[0].clientX;
-        handleSwipe();
-    }, { passive: true });
+        e.preventDefault();
+        
+        if (e.touches.length === 0) {
+            // All touches ended
+            if (!isPinching && startX !== 0) {
+                // Single touch ended - handle swipe navigation
+                endX = e.changedTouches[0] ? e.changedTouches[0].clientX : startX;
+                handleSwipe();
+            }
+            
+            // Reset pinch state
+            isPinching = false;
+            initialDistance = 0;
+            startX = 0;
+            endX = 0;
+        } else if (e.touches.length === 1) {
+            // One touch ended, but another remains - switch to single touch mode
+            isPinching = false;
+            startX = e.touches[0].clientX;
+        }
+    }, { passive: false });
 
     // Add keydown listener to document but only handle when gallery is open
     document.addEventListener('keydown', handleKeyDown);
@@ -2585,15 +2667,52 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     align-items: center;
     overflow: hidden;
     cursor: zoom-in;
+    touch-action: none; /* Prevent default touch behaviors for custom handling */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 .gallery-image-container img {
     transition: opacity 0.3s ease, transform 0.3s ease;
     cursor: zoom-in;
+    touch-action: none; /* Prevent default touch behaviors for custom handling */
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 .gallery-image-container.zoomed img {
     cursor: move;
+}
+
+/* Touch feedback for pinch-to-zoom */
+.gallery-image-container.zoomed::after {
+    content: "🔍";
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 5px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Prevent text selection during touch interactions */
+.gallery-image-container * {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 
 /* Zoom Controls */
@@ -2693,7 +2812,8 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     gap: 6px;
     text-align: center;
     color: #fff;
-    background: rgba(0, 0, 0, 0.8);
+background: #080000;
+background: linear-gradient(0deg, rgba(8, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.6) 50%, rgba(13, 0, 0, 0.25) 100%);
     padding: 12px 20px;
     border-radius: 0;
     box-sizing: border-box;
