@@ -1,13 +1,15 @@
 // ==UserScript==
 // @name         LionWheel Number Wheel Picker (Light)
 // @namespace    http://tampermonkey.net/
-// @version      3.3.1
+// @version      3.3.2
 // @description  מחליף inputs מסוג number בגלגלות מספרים קלות ב-lionwheel - מותאם לביצועים
-// @author       You
+// @author       Adam Lee
 // @match        *://*.lionwheel.com/*
 // @match        *://lionwheel.com/*
 // @grant        none
 // @run-at       document-end
+// @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/lionwheel-number-wheel.user.js
+// @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/lionwheel-number-wheel.user.js
 // ==/UserScript==
 
 (function() {
