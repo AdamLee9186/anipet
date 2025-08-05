@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.4.6
+// @version      13.4.8
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -1310,6 +1310,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             resetZoom();
         }
         lastTap = currentTime;
+        // Only prevent default for double taps, not single taps
     }, { passive: false });
 
     overlay.onclick = (e) => {
@@ -1320,14 +1321,15 @@ function showGalleryOverlay(galleryItems, startIndex) {
     
     // Enhanced touch event handlers with pinch-to-zoom support
     overlay.addEventListener('touchstart', (e) => {
-        e.preventDefault();
-        
+        // Only prevent default if we're handling a specific gesture
         if (e.touches.length === 1) {
             // Single touch - handle swipe navigation
             startX = e.touches[0].clientX;
             isPinching = false;
+            // Don't prevent default for single touch - let other interactions work
         } else if (e.touches.length === 2) {
             // Two touches - handle pinch-to-zoom
+            e.preventDefault(); // Only prevent default for pinch gestures
             isPinching = true;
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
@@ -1340,9 +1342,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
     }, { passive: false });
 
     overlay.addEventListener('touchmove', (e) => {
-        e.preventDefault();
-        
+        // Only prevent default if we're actively handling a gesture
         if (isPinching && e.touches.length === 2) {
+            e.preventDefault(); // Only prevent default for pinch gestures
             // Handle pinch-to-zoom
             const touch1 = e.touches[0];
             const touch2 = e.touches[1];
@@ -1360,7 +1362,10 @@ function showGalleryOverlay(galleryItems, startIndex) {
     }, { passive: false });
 
     overlay.addEventListener('touchend', (e) => {
-        e.preventDefault();
+        // Only prevent default if we're handling a specific gesture
+        if (isPinching && e.touches.length === 0) {
+            e.preventDefault(); // Only prevent default when ending pinch gesture
+        }
         
         if (e.touches.length === 0) {
             // All touches ended
@@ -2597,6 +2602,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     font-size: 1em;
     color: #ccc;
     margin: 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.4); /* Subtle raised effect */
 }
 
 .gallery-price {
@@ -2604,6 +2610,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     color: #4CAF50;
     font-weight: bold;
     margin: 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.4); /* Subtle raised effect */
 }
 
 .gallery-product-link {
@@ -2634,6 +2641,14 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     text-align: center;
     color: inherit;
     margin: 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.4); /* Subtle raised effect */
+}
+
+/* Gallery-specific picked status indicators with raised effect */
+.gallery-counter .tampermonkey-picked-none,
+.gallery-counter .tampermonkey-picked-partial,
+.gallery-counter .tampermonkey-picked-full {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.4); /* Subtle raised effect */
 }
 
 /* Loading Indicator */
@@ -2667,7 +2682,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     align-items: center;
     overflow: hidden;
     cursor: zoom-in;
-    touch-action: none; /* Prevent default touch behaviors for custom handling */
+    touch-action: pan-x pan-y pinch-zoom; /* Allow pan and pinch-zoom, but prevent other gestures */
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -2677,7 +2692,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
 .gallery-image-container img {
     transition: opacity 0.3s ease, transform 0.3s ease;
     cursor: zoom-in;
-    touch-action: none; /* Prevent default touch behaviors for custom handling */
+    touch-action: pan-x pan-y pinch-zoom; /* Allow pan and pinch-zoom, but prevent other gestures */
     -webkit-user-select: none;
     -moz-user-select: none;
     -ms-user-select: none;
@@ -2776,6 +2791,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     cursor: pointer;
     transition: all 0.3s ease;
     flex-shrink: 0;
+    touch-action: manipulation; /* Ensure thumbnails work properly on touch devices */
 }
 
 .gallery-thumbnail:hover {
@@ -3065,12 +3081,14 @@ td.copy-enabled.cell-copied {
     font-weight: normal;
     margin: 0; /* Remove existing margins */
     color: LightGray;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.4); /* Subtle raised effect */
 }
 
         .gallery-close, .gallery-nav {
             position:absolute;background:rgba(0,0,0,.3);color:#fff;border:none;
             cursor:pointer;font-weight:700;transition:background .2s ease;
-            user-select:none;border-radius:8px;z-index:5
+            user-select:none;border-radius:8px;z-index:5;
+            touch-action: manipulation; /* Ensure buttons work properly on touch devices */
         }
         .gallery-close:hover, .gallery-nav:hover { background:rgba(0,0,0,.6) }
         .gallery-close {
