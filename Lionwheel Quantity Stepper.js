@@ -3,15 +3,15 @@
 // @namespace    adam.lionwheel.touch.stepper
 // @version      2.0.0
 // @description  Enhanced quantity stepper with touch-friendly +/- buttons, visual feedback, and responsive design. Works on all number inputs with negative number support.
-// @author       Adam Lionwheel
+// @author       Adam Lee
 // @match        https://members.lionwheel.com/*
 // @match        https://lionwheel.com/*
 // @grant        GM_addStyle
 // @run-at       document-end
-// @homepage     https://github.com/adamlionwheel/lionwheel-quantity-stepper
-// @supportURL   https://github.com/adamlionwheel/lionwheel-quantity-stepper/issues
-// @updateURL    https://raw.githubusercontent.com/adamlionwheel/lionwheel-quantity-stepper/main/lionwheel-quantity-stepper.user.js
-// @downloadURL  https://raw.githubusercontent.com/adamlionwheel/lionwheel-quantity-stepper/main/lionwheel-quantity-stepper.user.js
+// @homepage     https://github.com/AdamLee9186/anipet
+// @supportURL   https://github.com/AdamLee9186/anipet
+// @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/Lionwheel%20Quantity%20Stepper.js
+// @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/Lionwheel%20Quantity%20Stepper.js
 // ==/UserScript==
 
 (function () {
