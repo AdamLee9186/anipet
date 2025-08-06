@@ -2236,11 +2236,23 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
                     newCell.innerHTML = `<a href="/tasks/${taskId}" target="_blank" class="btn btn-primary btn-sm mb-3"><i class="fa-light fa-arrow-up-right-from-square" style="margin-left: 5px;"></i> פתח הזמנה</a>`;
 
-                    // Add notes to the preview if found
-                    if (notesText) {
+                    // Create expandable sections (initially hidden)
+                    const calculatorSection = document.createElement('div');
+                    calculatorSection.className = 'preview-section calculator-section';
+                    calculatorSection.style.cssText = 'display: none; margin-bottom: 10px;';
+
+                    // Create sticky note section variable (will be null if no notes)
+                    let stickyNoteSection = null;
+                    
+                    // Only create sticky note section if there are notes
+                    if (notesText && notesText.trim()) {
+                        stickyNoteSection = document.createElement('div');
+                        stickyNoteSection.className = 'preview-section sticky-note-section';
+                        stickyNoteSection.style.cssText = 'display: none; margin-bottom: 10px;';
+
                         // Highlight "מוכן" in bold if present
                         const highlightedNotes = notesText.replace(/מוכן/g, '<strong>מוכן</strong>');
-                        newCell.innerHTML += `<div class="preview-notes"><i class="fa-light fa-note-sticky"></i> ${highlightedNotes}</div>`;
+                        stickyNoteSection.innerHTML = `<div class="preview-notes"><i class="fa-light fa-note-sticky"></i> ${highlightedNotes}</div>`;
                     }
 
                     if (allItems.length > 0) {
@@ -2313,6 +2325,51 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                         });
                         newCell.appendChild(container);
 
+                        // Create minimized icons container (after items)
+                        const minimizedIconsContainer = document.createElement('div');
+                        minimizedIconsContainer.className = 'preview-minimized-icons';
+                        minimizedIconsContainer.style.cssText = 'display: flex; gap: 8px; margin-top: 15px;';
+
+                        // Create calculator icon button
+                        const calculatorButton = document.createElement('button');
+                        calculatorButton.className = 'btn btn-sm btn-icon btn-light-primary preview-icon-btn calculator-btn';
+                        calculatorButton.innerHTML = '<i class="fa-light fa-calculator"></i>';
+                        calculatorButton.title = 'סה"כ הזמנה';
+                        calculatorButton.style.cssText = 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;';
+
+                        // Add click handler for calculator icon
+                        calculatorButton.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            togglePreviewSection(calculatorButton, 'calculator');
+                        });
+
+                        minimizedIconsContainer.appendChild(calculatorButton);
+                        
+                        // Only create sticky note button if there are notes
+                        if (notesText && notesText.trim()) {
+                            const stickyNoteButton = document.createElement('button');
+                            stickyNoteButton.className = 'btn btn-sm btn-icon btn-light-primary preview-icon-btn sticky-note-btn';
+                            stickyNoteButton.innerHTML = '<i class="fa-light fa-note-sticky"></i>';
+                            stickyNoteButton.title = 'הערות';
+                            stickyNoteButton.style.cssText = 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;';
+
+                            stickyNoteButton.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                togglePreviewSection(stickyNoteButton, 'sticky-note');
+                            });
+
+                            minimizedIconsContainer.appendChild(stickyNoteButton);
+                        }
+                        
+                        newCell.appendChild(minimizedIconsContainer);
+
+                        // Append sticky note section after items and icons
+                        if (stickyNoteSection) {
+                            newCell.appendChild(stickyNoteSection);
+                        }
+
                         // הוסף סיכום מחירים
                         const itemsWithPrice = allItems.filter(item => {
                             const price = parseFloat(item.price);
@@ -2329,7 +2386,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
                             if (totalPrice > 0) {
                                 const summaryDiv = document.createElement('div');
-                                summaryDiv.style.cssText = 'margin-top: 15px; padding: 10px; background-color: #e8f5e8; border-radius: 5px; border: 1px solid #d4edda;';
+                                summaryDiv.style.cssText = 'padding: 10px; background-color: #e8f5e8; border-radius: 5px; border: 1px solid #d4edda;';
 
                                 let summaryHTML = `
                                     <div style="font-weight: bold; color: #155724; font-size: 1.1rem;">
@@ -2338,8 +2395,6 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                                     </div>
                                 `;
 
-
-
                                 summaryHTML += `
                                     <div style="font-size: 0.9rem; color: #6c757d; margin-top: 5px;">
                                         מחושב לפי ${itemsWithPrice.length} פריטים עם מחיר
@@ -2347,7 +2402,8 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                                 `;
 
                                 summaryDiv.innerHTML = summaryHTML;
-                                newCell.appendChild(summaryDiv);
+                                calculatorSection.appendChild(summaryDiv);
+                                newCell.appendChild(calculatorSection);
                             }
                         }
                     } else { newCell.innerHTML += '<div class="text-center text-muted p-2">לא נמצאו פריטים.</div>'; }
@@ -3126,6 +3182,60 @@ td.copy-enabled.cell-copied {
             margin-left: 5px;
             margin-right: 8px;
             color: #dd9803;
+        }
+
+        /* Minimized preview icons styles */
+        .preview-minimized-icons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .preview-icon-btn {
+            width: 32px !important;
+            height: 32px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            border-radius: 6px !important;
+            transition: all 0.2s ease-in-out !important;
+            background-color: #f8f9fa !important;
+            border: 1px solid #dee2e6 !important;
+            color: #6c757d !important;
+        }
+
+        .preview-icon-btn:hover {
+            background-color: #e9ecef !important;
+            border-color: #adb5bd !important;
+            color: #495057 !important;
+            transform: scale(1.05);
+        }
+
+        .preview-icon-btn.active {
+            background-color: #007bff !important;
+            border-color: #007bff !important;
+            color: #ffffff !important;
+        }
+
+        .preview-icon-btn.active:hover {
+            background-color: #0056b3 !important;
+            border-color: #0056b3 !important;
+        }
+
+        .preview-section {
+            margin-bottom: 10px;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .btn-group.btn-group-sm.m-1:has(#expand-all-btn),
@@ -4501,6 +4611,27 @@ function updateButtonState(button, isOpen) {
       icon.classList.add('fa-chevron-down');
       button.title = 'הצג פריטים';
     }
+  }
+}
+
+// Helper function to toggle preview sections (calculator/notes)
+function togglePreviewSection(button, sectionType) {
+  const previewRow = button.closest('tr[id^="preview-for-"]');
+  if (!previewRow) return;
+
+  const section = previewRow.querySelector(`.${sectionType}-section`);
+  if (!section) return;
+
+  const isVisible = section.style.display !== 'none';
+  
+  if (isVisible) {
+    // Hide section
+    section.style.display = 'none';
+    button.classList.remove('active');
+  } else {
+    // Show section
+    section.style.display = 'block';
+    button.classList.add('active');
   }
 }
 

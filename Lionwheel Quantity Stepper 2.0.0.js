@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.0.4
+// @version      2.0.0
 // @description  Enhanced quantity stepper with touch-friendly +/- buttons, visual feedback, and responsive design. Works on all number inputs with negative number support.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
@@ -19,7 +19,7 @@
 
   // Configuration
   const CONFIG = {
-    VERSION: '2.0.4',
+    VERSION: '2.0.0',
     MIN_VALUE: -999,
     MAX_VALUE: 999999,
     HOLD_DELAY: 400,
@@ -271,8 +271,6 @@
     // Tap = ±1; hold begins after 400ms
     function bindHold(btn, dir) {
       let timer = null, raf = null, start = 0, running = false, last = 0;
-      let startX = 0, startY = 0;
-      const DRAG_THRESHOLD = 10;
 
       const startRepeat = () => {
         running = true; start = 0; last = 0;
@@ -288,15 +286,11 @@
 
       const down = e => {
         if (input.disabled || input.readOnly) return;
-        startX = e.clientX; startY = e.clientY;
         e.preventDefault(); e.stopPropagation();
-        if (!navigator.maxTouchPoints || e.pointerType !== 'touch') {
-          input.focus({ preventScroll: true });
-        }
+        input.focus({ preventScroll: true });
         adjust(dir); // single step
         timer = setTimeout(startRepeat, CONFIG.HOLD_DELAY);
       };
-      
       const up = () => {
         clearTimeout(timer); timer = null;
         running = false;
@@ -336,13 +330,8 @@
   const debouncedScan = debounce((root = document) => {
     // Use requestAnimationFrame for better performance
     requestAnimationFrame(() => {
-      const inputs = root.querySelectorAll('input[type="number"]');
-      console.log(`[Lionwheel Stepper] Found ${inputs.length} number inputs to scan`);
-      inputs.forEach(el => { 
-        if (isQtyInput(el)) {
-          console.log('[Lionwheel Stepper] Enhancing input:', el);
-          enhance(el); 
-        }
+      root.querySelectorAll('input[type="number"]').forEach(el => { 
+        if (isQtyInput(el)) enhance(el); 
       });
     });
   }, 100);
@@ -386,43 +375,6 @@
   // Event listeners
   window.addEventListener('turbo:load', () => scan(), { passive: true });
   window.addEventListener('popstate', () => requestAnimationFrame(() => scan()), { passive: true });
-
-  // Async polling function to wait for inputs in modal
-  async function waitForInputsInModal(modal, timeout = 2000) {
-    const start = performance.now();
-    while (performance.now() - start < timeout) {
-      const inputs = modal.querySelectorAll('input[type="number"]');
-      if (inputs.length > 0) {
-        console.log('[Lionwheel Stepper] Inputs appeared in modal, scanning...');
-        scan(modal);
-        return;
-      }
-      await new Promise(r => setTimeout(r, 100));
-    }
-    console.warn('[Lionwheel Stepper] Timeout waiting for inputs in modal');
-  }
-
-  // Fallback scan for modals - scan after modal is shown
-  document.addEventListener('shown.bs.modal', event => {
-    const modal = event.target;
-    if (modal && modal.matches('.modal')) {
-      console.log('[Lionwheel Stepper] Modal shown, waiting for inputs...');
-      setTimeout(() => waitForInputsInModal(modal), 10); // slight delay to ensure DOM readiness
-    }
-  }, { passive: true });
-
-  // Also scan when modal starts showing
-  document.addEventListener('show.bs.modal', event => {
-    const modal = event.target;
-    if (modal && modal.matches('.modal')) {
-      console.log('[Lionwheel Stepper] Modal starting to show, scanning for inputs...');
-      scan(modal);
-    }
-  }, { passive: true });
-
-
-
-
 
   // Cleanup function for page unload
   window.addEventListener('beforeunload', () => {
