@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.4.8
+// @version      13.5.0
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -996,25 +996,54 @@ document.createElement = function(tagName) {
 
 function showGalleryOverlay(galleryItems, startIndex) {
     try {
-        // Image cache for performance
+        // Prevent multiple galleries from being opened simultaneously
+        if (document.getElementById('tampermonkey-gallery-overlay')) {
+            console.warn('Gallery already open, ignoring new request');
+            return;
+        }
+        
+        // Image cache for performance with memory management
         const imageCache = new Map();
         let preloadedImages = new Set();
+        
+        // Memory management: limit cache size to prevent memory leaks
+        const MAX_CACHE_SIZE = 10;
+        const cleanupImageCache = () => {
+            if (imageCache.size > MAX_CACHE_SIZE) {
+                const entries = Array.from(imageCache.entries());
+                // Remove oldest entries
+                for (let i = 0; i < entries.length - MAX_CACHE_SIZE; i++) {
+                    const [key] = entries[i];
+                    imageCache.delete(key);
+                    preloadedImages.delete(key);
+                }
+            }
+        };
 
         function handleSwipe() {
-            const diff = startX - endX;
-            const threshold = 50; // swipe sensitivity in px
+            try {
+                const diff = startX - endX;
+                const threshold = 50; // swipe sensitivity in px
 
-            if (Math.abs(diff) > threshold) {
-                if (diff > 0) {
-                    navigate(-1); // swipe left → next
-                } else {
-                    navigate(1); // swipe right → prev
+                if (Math.abs(diff) > threshold) {
+                    if (diff > 0) {
+                        navigate(-1); // swipe left → next
+                    } else {
+                        navigate(1); // swipe right → prev
+                    }
                 }
+            } catch (error) {
+                console.warn('Gallery swipe error:', error);
             }
         }
 
         if (!galleryItems || galleryItems.length === 0) return;
-        if (document.getElementById('tampermonkey-gallery-overlay')) document.getElementById('tampermonkey-gallery-overlay').remove();
+        
+        // Remove any existing gallery overlay to prevent conflicts
+        const existingOverlay = document.getElementById('tampermonkey-gallery-overlay');
+        if (existingOverlay) {
+            existingOverlay.remove();
+        }
 
     let currentIndex = startIndex;
     let startX = 0;
@@ -1022,16 +1051,29 @@ function showGalleryOverlay(galleryItems, startIndex) {
     let isZoomed = false;
     let zoomLevel = 1;
     
+    // Zoom-to-point variables
+    let zoomOriginX = 0;
+    let zoomOriginY = 0;
+    
+    // Drag/pan variables
+    let isDragging = false;
+    let dragStartX = 0;
+    let dragStartY = 0;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+    
     // Pinch-to-zoom variables
     let initialDistance = 0;
     let initialZoom = 1;
     let isPinching = false;
+    let wasPinching = false; // Track if we were pinching to prevent swipe interference
+    
+    // Timeout management to prevent memory leaks
+    let navigationTimeout = null;
+    
     const overlay = document.createElement('div');
     overlay.id = 'tampermonkey-gallery-overlay';
     // Don't make it focusable by default - only when needed
-
-    const contentWrapper = document.createElement('div');
-    contentWrapper.className = 'gallery-content-wrapper';
 
     const imgElement = document.createElement('img');
     const imgContainer = document.createElement('div');
@@ -1044,14 +1086,18 @@ function showGalleryOverlay(galleryItems, startIndex) {
     loadingIndicator.innerHTML = '<div class="spinner"></div>';
     imgContainer.appendChild(loadingIndicator);
 
+    const productNameElement = document.createElement('h3');
+    productNameElement.className = 'gallery-product-name';
+    
+    const productInfoElement = document.createElement('div');
+    productInfoElement.className = 'gallery-product-info';
+    const skuElement = document.createElement('span');
+    skuElement.className = 'gallery-sku';
+    const priceElement = document.createElement('span');
+    priceElement.className = 'gallery-price';
+    
     const captionElement = document.createElement('div');
     captionElement.className = 'gallery-caption';
-    const productNameElement = document.createElement('p');
-    productNameElement.className = 'gallery-product-name';
-    const skuElement = document.createElement('p');
-    skuElement.className = 'gallery-sku';
-    const priceElement = document.createElement('p');
-    priceElement.className = 'gallery-price';
     const counterElement = document.createElement('div');
     counterElement.className = 'gallery-counter';
 
@@ -1072,26 +1118,37 @@ function showGalleryOverlay(galleryItems, startIndex) {
     // Zoom controls - removed as requested
 
     // Append elements
-    captionElement.append(productNameElement, skuElement, priceElement, counterElement);
-    contentWrapper.append(imgContainer, captionElement);
-    overlay.append(contentWrapper, prevButton, nextButton, closeButton, thumbnailsContainer);
+    productInfoElement.append(skuElement, priceElement);
+    captionElement.append(counterElement);
+    overlay.append(productNameElement, productInfoElement, imgContainer, captionElement, prevButton, nextButton, closeButton, thumbnailsContainer);
 
     // Preload images function
     function preloadImage(index) {
-        if (preloadedImages.has(index)) return;
+        try {
+            if (preloadedImages.has(index)) return;
 
-        const item = galleryItems[index];
-        if (!item || !item.fullSizeUrl) return;
+            const item = galleryItems[index];
+            if (!item || !item.fullSizeUrl) return;
 
-        const img = new Image();
-        img.onload = () => {
-            imageCache.set(index, img);
-            preloadedImages.add(index);
-        };
-        img.onerror = () => {
-            console.warn(`Failed to preload image ${index}: ${item.fullSizeUrl}`);
-        };
-        img.src = item.fullSizeUrl;
+            const img = new Image();
+            img.onload = () => {
+                try {
+                    imageCache.set(index, img);
+                    preloadedImages.add(index);
+                    cleanupImageCache(); // Clean up cache after adding new image
+                } catch (error) {
+                    console.warn('Error in image onload:', error);
+                }
+            };
+            img.onerror = () => {
+                console.warn(`Failed to preload image ${index}: ${item.fullSizeUrl}`);
+                // Remove from preloaded set to allow retry
+                preloadedImages.delete(index);
+            };
+            img.src = item.fullSizeUrl;
+        } catch (error) {
+            console.warn('Error in preloadImage:', error);
+        }
     }
 
     // Preload current, next, and previous images
@@ -1104,22 +1161,89 @@ function showGalleryOverlay(galleryItems, startIndex) {
         preloadImage(nextIndex);
     }
 
-    // Zoom functionality
-    function setZoom(level) {
-        zoomLevel = Math.max(0.5, Math.min(3, level));
-        imgElement.style.transform = `scale(${zoomLevel})`;
-        isZoomed = zoomLevel !== 1;
-        
-        // Update container class for visual feedback
-        if (isZoomed) {
-            imgContainer.classList.add('zoomed');
-        } else {
-            imgContainer.classList.remove('zoomed');
+    // Zoom functionality with performance optimization
+    let zoomTimeout;
+    function setZoom(level, originX = null, originY = null) {
+        // Clear any pending zoom operation
+        if (zoomTimeout) {
+            clearTimeout(zoomTimeout);
         }
+        
+        // Debounce zoom operations to prevent excessive DOM manipulation
+        zoomTimeout = setTimeout(() => {
+            const oldZoom = zoomLevel;
+            zoomLevel = Math.max(0.5, Math.min(3, level));
+            
+            // If zoom origin is provided, calculate the transform origin
+            if (originX !== null && originY !== null && zoomLevel !== 1) {
+                // Cache getBoundingClientRect to avoid multiple calls
+                const rect = imgElement.getBoundingClientRect();
+                if (rect.width > 0 && rect.height > 0) {
+                    const x = ((originX - rect.left) / rect.width) * 100;
+                    const y = ((originY - rect.top) / rect.height) * 100;
+                    
+                    imgElement.style.transformOrigin = `${x}% ${y}%`;
+                }
+            } else if (zoomLevel === 1) {
+                // Reset transform origin when zooming out
+                imgElement.style.transformOrigin = 'center center';
+                // Reset drag offsets when zooming out
+                dragOffsetX = 0;
+                dragOffsetY = 0;
+            }
+            
+            // Apply both zoom and pan transforms
+            imgElement.style.transform = `scale(${zoomLevel}) translate(${dragOffsetX}px, ${dragOffsetY}px)`;
+            isZoomed = zoomLevel !== 1;
+            
+            // Update container class for visual feedback
+            if (isZoomed) {
+                imgContainer.classList.add('zoomed');
+            } else {
+                imgContainer.classList.remove('zoomed');
+            }
+        }, 10); // Small debounce for zoom operations
     }
 
     function resetZoom() {
         setZoom(1);
+    }
+    
+    // Drag/pan functionality
+    function startDrag(e) {
+        if (!isZoomed) return;
+        
+        isDragging = true;
+        dragStartX = e.clientX - dragOffsetX;
+        dragStartY = e.clientY - dragOffsetY;
+        imgContainer.style.cursor = 'grabbing';
+    }
+    
+    // Drag/pan functionality with performance optimization
+    let dragTimeout;
+    function doDrag(e) {
+        if (!isDragging || !isZoomed) return;
+        
+        // Clear any pending drag operation
+        if (dragTimeout) {
+            clearTimeout(dragTimeout);
+        }
+        
+        // Debounce drag operations to prevent excessive DOM manipulation
+        dragTimeout = setTimeout(() => {
+            dragOffsetX = e.clientX - dragStartX;
+            dragOffsetY = e.clientY - dragStartY;
+            
+            // Apply the drag transform
+            imgElement.style.transform = `scale(${zoomLevel}) translate(${dragOffsetX}px, ${dragOffsetY}px)`;
+        }, 16); // ~60fps for smooth dragging
+    }
+    
+    function endDrag() {
+        if (!isDragging) return;
+        
+        isDragging = false;
+        imgContainer.style.cursor = 'grab';
     }
 
     // Create thumbnails
@@ -1147,42 +1271,89 @@ function showGalleryOverlay(galleryItems, startIndex) {
     }
 
     function navigate(delta) {
-        const oldIndex = currentIndex;
-        currentIndex = (currentIndex + delta + galleryItems.length) % galleryItems.length;
+        try {
+            // Clear any pending navigation timeout
+            if (navigationTimeout) {
+                clearTimeout(navigationTimeout);
+            }
+            
+            const oldIndex = currentIndex;
+            currentIndex = (currentIndex + delta + galleryItems.length) % galleryItems.length;
 
-        // Add transition animation
-        imgContainer.style.opacity = '0';
-        setTimeout(() => {
-        updateGalleryView();
-            imgContainer.style.opacity = '1';
-        }, 150);
+            // Validate current index
+            if (currentIndex < 0 || currentIndex >= galleryItems.length) {
+                console.warn('Invalid navigation index:', currentIndex);
+                currentIndex = Math.max(0, Math.min(galleryItems.length - 1, currentIndex));
+            }
 
-        // Preload images for smooth navigation
-        preloadAdjacentImages();
+            // Add transition animation
+            imgContainer.style.opacity = '0';
+            navigationTimeout = setTimeout(() => {
+                try {
+                    updateGalleryView();
+                    imgContainer.style.opacity = '1';
+                } catch (error) {
+                    console.warn('Error in navigation update:', error);
+                    imgContainer.style.opacity = '1';
+                }
+            }, 150);
+
+            // Preload images for smooth navigation (only once)
+            preloadAdjacentImages();
+        } catch (error) {
+            console.warn('Error in navigation:', error);
+            // Fallback: try to show current image without transition
+            try {
+                updateGalleryView();
+            } catch (fallbackError) {
+                console.error('Critical navigation error:', fallbackError);
+            }
+        }
     }
 
     const updateGalleryView = () => {
-        const item = galleryItems[currentIndex];
+        try {
+            const item = galleryItems[currentIndex];
+            
+            // Validate item exists
+            if (!item) {
+                console.warn('Invalid gallery item at index:', currentIndex);
+                return;
+            }
 
-        // Show loading indicator
-        loadingIndicator.style.display = 'block';
-        imgElement.style.opacity = '0';
+            // Show loading indicator
+            loadingIndicator.style.display = 'block';
+            imgElement.style.opacity = '0';
 
-        // Reset zoom
-        resetZoom();
+            // Reset zoom
+            resetZoom();
 
-        // Update image with transition
-        imgElement.onload = () => {
-            loadingIndicator.style.display = 'none';
-            imgElement.style.opacity = '1';
-        };
-        imgElement.onerror = () => {
-            loadingIndicator.style.display = 'none';
-            imgElement.src = PLACEHOLDER_IMG_URL;
-            imgElement.style.opacity = '1';
-        };
+            // Update image with transition
+            imgElement.onload = () => {
+                try {
+                    loadingIndicator.style.display = 'none';
+                    imgElement.style.opacity = '1';
+                } catch (error) {
+                    console.warn('Error in image onload:', error);
+                }
+            };
+            imgElement.onerror = () => {
+                try {
+                    loadingIndicator.style.display = 'none';
+                    imgElement.src = PLACEHOLDER_IMG_URL;
+                    imgElement.style.opacity = '1';
+                } catch (error) {
+                    console.warn('Error in image onerror:', error);
+                }
+            };
 
-        imgElement.src = item.fullSizeUrl;
+            // Validate URL before setting
+            if (item.fullSizeUrl && typeof item.fullSizeUrl === 'string') {
+                imgElement.src = item.fullSizeUrl;
+            } else {
+                console.warn('Invalid image URL:', item.fullSizeUrl);
+                imgElement.src = PLACEHOLDER_IMG_URL;
+            }
 
         // Update product info
         productNameElement.textContent = item.productName;
@@ -1197,7 +1368,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
         // Add price if available (you can extend this based on your data structure)
         if (item.price) {
-            priceElement.textContent = `מחיר: ₪${item.price}`;
+            priceElement.innerHTML = `מחיר: <strong class="barcode-highlight-gallery">₪${item.price}</strong>`;
             priceElement.style.display = 'block';
         } else {
             priceElement.style.display = 'none';
@@ -1209,15 +1380,15 @@ function showGalleryOverlay(galleryItems, startIndex) {
             linkElement.href = item.link;
             linkElement.target = '_blank';
             linkElement.className = 'gallery-product-link';
-            linkElement.textContent = 'פתח מוצר באתר';
-            linkElement.innerHTML = '<i class="fa-light fa-external-link"></i> פתח מוצר באתר';
+            linkElement.innerHTML = '<i class="fa-light fa-external-link"></i>';
+            linkElement.title = 'פתח מוצר באתר';
 
             // Replace existing link if any
-            const existingLink = captionElement.querySelector('.gallery-product-link');
+            const existingLink = imgContainer.querySelector('.gallery-product-link');
             if (existingLink) {
                 existingLink.remove();
             }
-            captionElement.appendChild(linkElement);
+            imgContainer.appendChild(linkElement);
         }
 
         const quantity = item.quantity ? item.quantity.trim() : '';
@@ -1244,9 +1415,39 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
         // Preload adjacent images
         preloadAdjacentImages();
+        } catch (error) {
+            console.warn('Error in updateGalleryView:', error);
+            // Fallback: show placeholder
+            try {
+                loadingIndicator.style.display = 'none';
+                imgElement.src = PLACEHOLDER_IMG_URL;
+                imgElement.style.opacity = '1';
+            } catch (fallbackError) {
+                console.error('Critical error in updateGalleryView fallback:', fallbackError);
+            }
+        }
     };
 
-    const closeOverlay = () => {
+    let closeOverlay = () => {
+        // Remove event listeners to prevent memory leaks
+        document.removeEventListener('keydown', handleKeyDown);
+        document.removeEventListener('mousemove', doDrag);
+        document.removeEventListener('mouseup', endDrag);
+        
+        // Clear any pending timeouts
+        if (wheelTimeout) {
+            clearTimeout(wheelTimeout);
+        }
+        if (zoomTimeout) {
+            clearTimeout(zoomTimeout);
+        }
+        if (dragTimeout) {
+            clearTimeout(dragTimeout);
+        }
+        if (navigationTimeout) {
+            clearTimeout(navigationTimeout);
+        }
+        
         overlay.style.opacity = '0';
         setTimeout(() => {
             if (document.body.contains(overlay)) {
@@ -1270,7 +1471,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
             if (isZoomed) {
                 resetZoom();
             } else {
-                setZoom(zoomLevel + 0.5);
+                // Get the center of the image for keyboard zoom
+                const rect = imgElement.getBoundingClientRect();
+                const centerX = rect.left + rect.width / 2;
+                const centerY = rect.top + rect.height / 2;
+                setZoom(zoomLevel + 0.5, centerX, centerY);
             }
             return;
         }
@@ -1288,15 +1493,30 @@ function showGalleryOverlay(galleryItems, startIndex) {
     nextButton.onclick = () => navigate(1);
     closeButton.onclick = closeOverlay;
 
-    // Mouse wheel zoom
-    imgContainer.onwheel = (e) => {
+    // Mouse wheel zoom with debouncing
+    let wheelTimeout;
+    imgContainer.addEventListener('wheel', (e) => {
         e.preventDefault();
-        const delta = e.deltaY > 0 ? -0.2 : 0.2;
-        setZoom(zoomLevel + delta);
-    };
+        
+        // Clear existing timeout
+        if (wheelTimeout) {
+            clearTimeout(wheelTimeout);
+        }
+        
+        // Debounce wheel events to prevent rapid-fire zooming
+        wheelTimeout = setTimeout(() => {
+            const delta = e.deltaY > 0 ? -0.2 : 0.2;
+            setZoom(zoomLevel + delta, e.clientX, e.clientY);
+        }, 50); // Increased debounce time for better performance
+    }, { passive: false });
 
     // Double click to reset zoom
     imgElement.ondblclick = resetZoom;
+    
+    // Drag/pan event listeners
+    imgContainer.addEventListener('mousedown', startDrag);
+    document.addEventListener('mousemove', doDrag);
+    document.addEventListener('mouseup', endDrag);
     
     // Double tap to reset zoom on touch devices
     let lastTap = 0;
@@ -1321,74 +1541,154 @@ function showGalleryOverlay(galleryItems, startIndex) {
     
     // Enhanced touch event handlers with pinch-to-zoom support
     overlay.addEventListener('touchstart', (e) => {
-        // Only prevent default if we're handling a specific gesture
-        if (e.touches.length === 1) {
-            // Single touch - handle swipe navigation
-            startX = e.touches[0].clientX;
-            isPinching = false;
-            // Don't prevent default for single touch - let other interactions work
-        } else if (e.touches.length === 2) {
-            // Two touches - handle pinch-to-zoom
-            e.preventDefault(); // Only prevent default for pinch gestures
-            isPinching = true;
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            initialDistance = Math.sqrt(
-                Math.pow(touch2.clientX - touch1.clientX, 2) + 
-                Math.pow(touch2.clientY - touch1.clientY, 2)
-            );
-            initialZoom = zoomLevel;
+        try {
+            // Only prevent default if we're handling a specific gesture
+            if (e.touches.length === 1) {
+                // Single touch - handle drag or swipe navigation
+                startX = e.touches[0].clientX;
+                isPinching = false;
+                wasPinching = false; // Reset pinching flag for new single touch
+                
+                // If zoomed, start dragging instead of swipe navigation
+                if (isZoomed) {
+                    e.preventDefault();
+                    startDrag({
+                        clientX: e.touches[0].clientX,
+                        clientY: e.touches[0].clientY
+                    });
+                }
+            } else if (e.touches.length === 2) {
+                // Two touches - handle pinch-to-zoom
+                e.preventDefault(); // Only prevent default for pinch gestures
+                isPinching = true;
+                wasPinching = true; // Mark that we were pinching
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                initialDistance = Math.sqrt(
+                    Math.pow(touch2.clientX - touch1.clientX, 2) + 
+                    Math.pow(touch2.clientY - touch1.clientY, 2)
+                );
+                initialZoom = zoomLevel;
+            }
+        } catch (error) {
+            console.warn('Gallery touchstart error:', error);
         }
     }, { passive: false });
 
     overlay.addEventListener('touchmove', (e) => {
-        // Only prevent default if we're actively handling a gesture
-        if (isPinching && e.touches.length === 2) {
-            e.preventDefault(); // Only prevent default for pinch gestures
-            // Handle pinch-to-zoom
-            const touch1 = e.touches[0];
-            const touch2 = e.touches[1];
-            const currentDistance = Math.sqrt(
-                Math.pow(touch2.clientX - touch1.clientX, 2) + 
-                Math.pow(touch2.clientY - touch1.clientY, 2)
-            );
-            
-            if (initialDistance > 0 && currentDistance > 0) {
-                const scale = currentDistance / initialDistance;
-                const newZoom = Math.max(0.5, Math.min(3, initialZoom * scale));
-                setZoom(newZoom);
+        try {
+            // Only prevent default if we're actively handling a gesture
+            if (isPinching && e.touches.length === 2) {
+                e.preventDefault(); // Only prevent default for pinch gestures
+                // Handle pinch-to-zoom
+                const touch1 = e.touches[0];
+                const touch2 = e.touches[1];
+                const currentDistance = Math.sqrt(
+                    Math.pow(touch2.clientX - touch1.clientX, 2) + 
+                    Math.pow(touch2.clientY - touch1.clientY, 2)
+                );
+                
+                if (initialDistance > 0 && currentDistance > 0) {
+                    const scale = currentDistance / initialDistance;
+                    const newZoom = Math.max(0.5, Math.min(3, initialZoom * scale));
+                    
+                    // Calculate the center point between the two fingers
+                    const centerX = (touch1.clientX + touch2.clientX) / 2;
+                    const centerY = (touch1.clientY + touch2.clientY) / 2;
+                    
+                    setZoom(newZoom, centerX, centerY);
+                }
+            } else if (isDragging && e.touches.length === 1) {
+                // Handle dragging on touch devices
+                e.preventDefault();
+                doDrag({
+                    clientX: e.touches[0].clientX,
+                    clientY: e.touches[0].clientY
+                });
             }
+        } catch (error) {
+            console.warn('Gallery touchmove error:', error);
         }
     }, { passive: false });
 
     overlay.addEventListener('touchend', (e) => {
-        // Only prevent default if we're handling a specific gesture
-        if (isPinching && e.touches.length === 0) {
-            e.preventDefault(); // Only prevent default when ending pinch gesture
-        }
-        
-        if (e.touches.length === 0) {
-            // All touches ended
-            if (!isPinching && startX !== 0) {
-                // Single touch ended - handle swipe navigation
-                endX = e.changedTouches[0] ? e.changedTouches[0].clientX : startX;
-                handleSwipe();
+        try {
+            // Only prevent default if we're handling a specific gesture
+            if (isPinching && e.touches.length === 0) {
+                e.preventDefault(); // Only prevent default when ending pinch gesture
             }
             
-            // Reset pinch state
-            isPinching = false;
-            initialDistance = 0;
-            startX = 0;
-            endX = 0;
-        } else if (e.touches.length === 1) {
-            // One touch ended, but another remains - switch to single touch mode
-            isPinching = false;
-            startX = e.touches[0].clientX;
+            if (e.touches.length === 0) {
+                // All touches ended
+                if (isDragging) {
+                    // End dragging
+                    endDrag();
+                } else if (!isPinching && !wasPinching && startX !== 0 && !isZoomed) {
+                    // Single touch ended - handle swipe navigation only if not zoomed and not after pinching
+                    endX = e.changedTouches[0] ? e.changedTouches[0].clientX : startX;
+                    handleSwipe();
+                }
+                
+                // Reset pinch state
+                isPinching = false;
+                wasPinching = false; // Reset the pinching flag
+                initialDistance = 0;
+                startX = 0;
+                endX = 0;
+            } else if (e.touches.length === 1) {
+                // One touch ended, but another remains - switch to single touch mode
+                isPinching = false;
+                startX = e.touches[0].clientX;
+            }
+        } catch (error) {
+            console.warn('Gallery touchend error:', error);
         }
     }, { passive: false });
 
     // Add keydown listener to document but only handle when gallery is open
     document.addEventListener('keydown', handleKeyDown);
+    
+    // Add global error handler for gallery
+    const galleryErrorHandler = (event) => {
+        if (event.error && event.error.message && event.error.message.includes('STATUS_BREAKPOINT')) {
+            console.warn('Gallery STATUS_BREAKPOINT error detected, attempting recovery...');
+            event.preventDefault();
+            // Try to close gallery gracefully
+            try {
+                closeOverlay();
+            } catch (closeError) {
+                console.error('Error closing gallery after STATUS_BREAKPOINT:', closeError);
+            }
+            return false;
+        }
+    };
+    
+    window.addEventListener('error', galleryErrorHandler);
+    
+    // Clean up error handler when gallery closes
+    const originalCloseOverlay = closeOverlay;
+    closeOverlay = () => {
+        try {
+            // Clean up memory
+            imageCache.clear();
+            preloadedImages.clear();
+            
+            // Remove error handler
+            window.removeEventListener('error', galleryErrorHandler);
+            
+            // Call original close function
+            originalCloseOverlay();
+        } catch (error) {
+            console.warn('Error in enhanced closeOverlay:', error);
+            // Fallback to original close
+            try {
+                originalCloseOverlay();
+            } catch (fallbackError) {
+                console.error('Critical error closing gallery:', fallbackError);
+            }
+        }
+    };
+    
     updateGalleryView();
     setTimeout(() => {
         overlay.style.opacity = '1';
@@ -2693,7 +2993,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     display: flex;
     justify-content: center;
     align-items: center;
-    font-size: 0.95em;
+    font-size: 1.05em;
     text-align: center;
     color: inherit;
     margin: 0;
@@ -2763,7 +3063,9 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
 
 /* Touch feedback for pinch-to-zoom */
 .gallery-image-container.zoomed::after {
-    content: "🔍";
+    content: "\f002";
+    font-family: "Font Awesome 6 Pro", "Font Awesome 6 Free", "FontAwesome";
+    font-weight: 300;
     position: absolute;
     top: 10px;
     right: 10px;
@@ -2825,7 +3127,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
 /* Thumbnails instead of dots */
 .gallery-thumbnails {
     position: fixed;
-    bottom: 15px;
+    bottom: 10px;
     left: 50%;
     transform: translateX(-50%);
     z-index: 15;
@@ -2874,7 +3176,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
 /* Enhanced Caption */
 .gallery-caption {
     position: fixed;
-    bottom: 100px;
+    bottom: 80px;
     left: 0;
     right: 0;
     width: 100%;
@@ -2884,12 +3186,13 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     gap: 6px;
     text-align: center;
     color: #fff;
-background: #080000;
-background: linear-gradient(0deg, rgba(8, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.6) 50%, rgba(13, 0, 0, 0.25) 100%);
-    padding: 12px 20px;
+    background: #080000;
+    background: linear-gradient(0deg, rgba(8, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.9) 50%, rgba(13, 0, 0, 0.9) 100%);
+    padding: 15px 20px;
     border-radius: 0;
     box-sizing: border-box;
     z-index: 10;
+    min-height: 40px; /* Reduced height to minimize dead space */
 }
 
 /* Enhanced Navigation Buttons */
@@ -2904,10 +3207,6 @@ background: linear-gradient(0deg, rgba(8, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.6) 50%
 /* Smooth Transitions */
 #tampermonkey-gallery-overlay {
     transition: opacity 0.3s ease;
-}
-
-.gallery-content-wrapper {
-    transition: all 0.3s ease;
 }
 
 /* Responsive Design for Thumbnails */
@@ -3097,47 +3396,110 @@ td.copy-enabled.cell-copied {
 
         #tampermonkey-gallery-overlay {
             position:fixed;top:0;left:0;width:100%;height:100%;
-            background:rgba(0,0,0,.88);display:flex;justify-content:center;align-items:center;
+            background:rgba(0,0,0,.88);display:flex;flex-direction:column;justify-content:flex-start;align-items:center;padding-top:20px;
             z-index:20000;opacity:0;transition:opacity .3s ease
         }
-.gallery-content-wrapper {
+.gallery-image-container {
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
     max-width: 90vw;
-    max-height: calc(100vh - 145px); /* Max height for the wrapper too, matching image */
-    padding-bottom: 0;
-    text-align: center;
-    position: relative; /* Keep this if anything else needs relative positioning inside */
+    max-height: calc(100vh - 250px); /* Much more space for the image */
+    margin: 0 auto;
+    position: relative;
+    margin-bottom: 0; /* No margin between image and caption */
 }
-
 
 #tampermonkey-gallery-overlay img {
     display: block;
-    margin: 0 auto;
     max-width: 100%;
-    /* MODIFIED: Calculate max-height to leave space for BOTH fixed caption and dots */
-    /* Estimate caption height (padding + text height) + its own bottom margin, e.g., 70px + 10px = 80px */
-    /* Estimate dots height + its own bottom margin, e.g., 10px + 15px = 25px */
-    /* Total space needed below image: 80px (caption) + 25px (dots) = 105px */
-    /* Add some general top/bottom padding for the entire overlay content, say 40px (20px top, 20px bottom) */
-    /* So, total deduction: 105px + 40px = 145px (adjust 40px based on actual overall padding) */
-    max-height: calc(100vh - 145px); /* This will make the image smaller but non-overlapping */
+    max-height: 100%;
+    width: auto;
+    height: auto;
     object-fit: contain;
     border-radius: 8px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    transition: transform 0.1s ease-out;
+}
+
+.gallery-image-container.zoomed {
+    cursor: grab;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.gallery-image-container.zoomed:active {
+    cursor: grabbing;
 }
 
 
 
 
 .gallery-product-name {
-    font-size: 1.2em;
+    font-size: 1.5em;
+    font-weight: bold;
+    margin: 0 0 2px 0;
+    color: white;
+    text-align: center;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
+    position: relative;
+    z-index: 10;
+    padding: 8px;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 100%);
+    border-radius: 0;
+    box-sizing: border-box;
+}
+
+.gallery-product-info {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 20px;
+    margin: 0 0 5px 0;
+    padding: 6px 15px;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.3) 100%);
+    color: white;
+    text-align: center;
+    position: relative;
+    z-index: 10;
+    box-sizing: border-box;
+}
+
+.gallery-sku, .gallery-price {
+    font-size: 1.1em;
     font-weight: normal;
-    margin: 0; /* Remove existing margins */
-    color: LightGray;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.4); /* Subtle raised effect */
+    margin: 0;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
+.gallery-product-link {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 8px;
+    border-radius: 50%;
+    text-decoration: none;
+    z-index: 15;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    box-sizing: border-box;
+}
+
+.gallery-product-link:hover {
+    background: rgba(0, 0, 0, 0.9);
+    transform: scale(1.1);
+}
+
+.gallery-product-link i {
+    font-size: 16px;
 }
 
         .gallery-close, .gallery-nav {
