@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.0.5
+// @version      2.0.6
 // @description  Touch-friendly quantity input with smart animation and accessibility
 // @author       Adam Lee
 // @license      MIT
@@ -20,7 +20,7 @@
 
   // Configuration
   const CONFIG = {
-    VERSION: '2.0.4',
+    VERSION: '2.0.6',
     MIN_VALUE: -999,
     MAX_VALUE: 999999,
     HOLD_DELAY: 400,
@@ -28,7 +28,8 @@
     ANIMATION_DURATION: 300,
     BUTTON_SIZE: 32,
     MIN_INPUT_WIDTH: 'calc(6ch + 20px)',
-    ENABLE_HOLD_REPEAT: true
+    ENABLE_HOLD_REPEAT: true,
+    DEFAULT_VALUE: 1
   };
 
   // Error handling utility
@@ -307,6 +308,7 @@
     
     input.parentNode.insertBefore(row, input);
     row.append(minus, input, plus);
+    ensureNumeric();
 
     input.classList.add('lwq-input');
     input.dataset.lwq = '1';
@@ -347,8 +349,7 @@
 
     function ensureNumeric() {
       if (input.value === '' || isNaN(Number(input.value))) {
-        const { min } = cfg();
-        input.value = Number.isFinite(min) ? String(min) : '0';
+        input.value = String(CONFIG.DEFAULT_VALUE);
       }
     }
 

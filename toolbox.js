@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.5.0
+// @version      13.6.0
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -212,7 +212,7 @@ document.createElement = function(tagName) {
     `);
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.4.2"; // Fixed to match @version
+    const SCRIPT_VERSION = "13.6.0"; // Fixed to match @version
     console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // ---< Constants >---
@@ -1062,6 +1062,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
     let dragOffsetX = 0;
     let dragOffsetY = 0;
     
+    // Image wrapper for proper clipping during zoom/pan
+    let imageWrapper = null;
+    
     // Pinch-to-zoom variables
     let initialDistance = 0;
     let initialZoom = 1;
@@ -1073,24 +1076,59 @@ function showGalleryOverlay(galleryItems, startIndex) {
     
     const overlay = document.createElement('div');
     overlay.id = 'tampermonkey-gallery-overlay';
+    overlay.style.width = '100%';
+    overlay.style.height = '100vh';
+    overlay.style.maxHeight = '100vh';
+    overlay.style.boxSizing = 'border-box';
+    overlay.style.display = 'flex';
+    overlay.style.flexDirection = 'column';
+    overlay.style.alignItems = 'stretch';
+    overlay.style.justifyContent = 'flex-start';
+    overlay.style.background = 'rgba(0,0,0,0.88)';
+    overlay.style.position = 'fixed';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.zIndex = '20000';
+    overlay.style.opacity = '0';
+    overlay.style.transition = 'opacity 0.3s ease';
+    overlay.style.overflow = 'hidden';
     // Don't make it focusable by default - only when needed
 
     const imgElement = document.createElement('img');
-    const imgContainer = document.createElement('div');
-    imgContainer.className = 'gallery-image-container';
-    imgContainer.appendChild(imgElement);
-
+    // עיצוב תמונה - ללא borderRadius כי זה יהיה על ה-wrapper
+    imgElement.style.maxWidth = '100%';
+    imgElement.style.maxHeight = '100%';
+    imgElement.style.objectFit = 'contain';
+    imgElement.style.display = 'block';
+    imgElement.style.transition = 'transform 0.3s ease';
+    imgElement.style.pointerEvents = 'none'; // כדי למנוע בעיות תפעול
+    imgElement.style.userSelect = 'none';
+    
     // Loading indicator
     const loadingIndicator = document.createElement('div');
     loadingIndicator.className = 'gallery-loading';
     loadingIndicator.innerHTML = '<div class="spinner"></div>';
-    imgContainer.appendChild(loadingIndicator);
 
     const productNameElement = document.createElement('h3');
     productNameElement.className = 'gallery-product-name';
+    // עיצוב שם מוצר
+    productNameElement.style.zIndex = '10';
+    productNameElement.style.position = 'relative';
+    productNameElement.style.background = 'transparent';
+    productNameElement.style.color = 'white';
+    productNameElement.style.padding = '6px 12px';
+    productNameElement.style.borderTopLeftRadius = '8px';
+    productNameElement.style.borderTopRightRadius = '8px';
     
     const productInfoElement = document.createElement('div');
     productInfoElement.className = 'gallery-product-info';
+    // עיצוב מק"ט ומחיר
+    productInfoElement.style.zIndex = '10';
+    productInfoElement.style.position = 'relative';
+    productInfoElement.style.background = 'transparent';
+    productInfoElement.style.color = 'white';
+    productInfoElement.style.padding = '4px 8px';
+    productInfoElement.style.marginBottom = '8px';
     const skuElement = document.createElement('span');
     skuElement.className = 'gallery-sku';
     const priceElement = document.createElement('span');
@@ -1117,10 +1155,119 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
     // Zoom controls - removed as requested
 
-    // Append elements
+    // Create top info container
+    const topInfoContainer = document.createElement('div');
+    topInfoContainer.className = 'gallery-top-info';
+    topInfoContainer.style.padding = '12px';
+    topInfoContainer.style.background = 'transparent';
+    topInfoContainer.style.color = '#fff';
+    topInfoContainer.style.borderBottom = 'none';
+    topInfoContainer.style.flexShrink = '0';
+    topInfoContainer.style.boxSizing = 'border-box';
+
+    // Add product name and info to top container
     productInfoElement.append(skuElement, priceElement);
+    topInfoContainer.appendChild(productNameElement);
+    topInfoContainer.appendChild(productInfoElement);
+
+    // Create image container with proper structure
+    const galleryImageContainer = document.createElement('div');
+    galleryImageContainer.className = 'gallery-image-container';
+    galleryImageContainer.style.position = 'relative';
+    galleryImageContainer.style.flex = '1';
+    galleryImageContainer.style.display = 'flex';
+    galleryImageContainer.style.alignItems = 'center';
+    galleryImageContainer.style.justifyContent = 'center';
+    galleryImageContainer.style.padding = '16px';
+    galleryImageContainer.style.width = '100%';
+    galleryImageContainer.style.minHeight = '0'; // Important for flex child
+    galleryImageContainer.style.borderRadius = '12px';
+    galleryImageContainer.style.overflow = 'hidden';
+
+    // Create image wrapper for proper clipping during zoom/pan
+    imageWrapper = document.createElement('div');
+    imageWrapper.style.position = 'relative';
+    imageWrapper.style.width = '100%';
+    imageWrapper.style.height = '100%';
+    imageWrapper.style.borderRadius = '12px';
+    imageWrapper.style.overflow = 'hidden';
+    imageWrapper.style.display = 'flex';
+    imageWrapper.style.alignItems = 'center';
+    imageWrapper.style.justifyContent = 'center';
+    imageWrapper.style.cursor = 'grab'; // Add cursor for drag indication
+    imageWrapper.style.boxSizing = 'border-box'; // Ensure proper sizing
+
+    // Update image styling - maintain aspect ratio while fitting in wrapper
+    imgElement.style.width = 'auto';
+    imgElement.style.height = '100%';
+    imgElement.style.maxWidth = '100%';
+    imgElement.style.maxHeight = '100%';
+    imgElement.style.objectFit = 'contain'; // Use contain to maintain aspect ratio
+    imgElement.style.borderRadius = '12px'; // Add borderRadius to img for better clipping
+    // No position: relative on imgElement - let the wrapper handle positioning
+
+    // Add image to wrapper, then wrapper to container
+    imageWrapper.appendChild(imgElement);
+    galleryImageContainer.appendChild(imageWrapper);
+    
+    // Add event listener to reposition link when image loads
+    imgElement.addEventListener('load', () => {
+        const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
+        if (linkElement) {
+            setTimeout(() => {
+                const imgRect = imgElement.getBoundingClientRect();
+                const wrapperRect = imageWrapper.getBoundingClientRect();
+                
+                if (imgRect.width > 0 && imgRect.height > 0) {
+                    // Calculate the bottom-left corner of the actual image within the wrapper
+                    const imageBottom = imgRect.bottom - wrapperRect.top;
+                    const imageLeft = imgRect.left - wrapperRect.left;
+                    
+                    // Position the link at the bottom-left of the actual image
+                    linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
+                    linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
+                }
+            }, 50);
+        }
+    });
+
+    // Add loading indicator to image wrapper (not container)
+    imageWrapper.appendChild(loadingIndicator);
+
+    // Create footer container for caption and thumbnails
+    const footerContainer = document.createElement('div');
+    footerContainer.className = 'gallery-footer';
+    footerContainer.style.display = 'flex';
+    footerContainer.style.flexDirection = 'column';
+    footerContainer.style.alignItems = 'center';
+    footerContainer.style.gap = '10px';
+    footerContainer.style.padding = '10px';
+    footerContainer.style.flexShrink = '0';
+    footerContainer.style.background = 'transparent';
+    footerContainer.style.minHeight = '0'; // Important for flex child
+    footerContainer.style.boxSizing = 'border-box';
+    
+    // Append caption and thumbnails to footer
     captionElement.append(counterElement);
-    overlay.append(productNameElement, productInfoElement, imgContainer, captionElement, prevButton, nextButton, closeButton, thumbnailsContainer);
+    footerContainer.appendChild(captionElement);
+    footerContainer.appendChild(thumbnailsContainer);
+    
+    // Append elements in proper order - now with footer at bottom
+    overlay.append(topInfoContainer, galleryImageContainer, footerContainer, prevButton, nextButton, closeButton);
+
+    // Dynamic image height adjustment function
+    function adjustImageMaxHeight() {
+        // With the new flexbox layout, the image container will automatically
+        // take up the available space between top info and footer
+        // We just need to ensure the image fits properly within its container
+        
+        // Remove fixed height constraints and let flexbox handle the layout
+        imgElement.style.maxHeight = '100%';
+        imageWrapper.style.maxHeight = '100%';
+        imageWrapper.style.height = '100%';
+        galleryImageContainer.style.maxHeight = 'none';
+        galleryImageContainer.style.height = 'auto';
+    }
 
     // Preload images function
     function preloadImage(index) {
@@ -1198,15 +1345,20 @@ function showGalleryOverlay(galleryItems, startIndex) {
             
             // Update container class for visual feedback
             if (isZoomed) {
-                imgContainer.classList.add('zoomed');
+                galleryImageContainer.classList.add('zoomed');
             } else {
-                imgContainer.classList.remove('zoomed');
+                galleryImageContainer.classList.remove('zoomed');
             }
+            
+            // Adjust image height after zoom change
+            adjustImageMaxHeight();
         }, 10); // Small debounce for zoom operations
     }
 
     function resetZoom() {
         setZoom(1);
+        // Adjust image height after reset
+        adjustImageMaxHeight();
     }
     
     // Drag/pan functionality
@@ -1216,7 +1368,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         isDragging = true;
         dragStartX = e.clientX - dragOffsetX;
         dragStartY = e.clientY - dragOffsetY;
-        imgContainer.style.cursor = 'grabbing';
+        imageWrapper.style.cursor = 'grabbing';
     }
     
     // Drag/pan functionality with performance optimization
@@ -1243,7 +1395,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         if (!isDragging) return;
         
         isDragging = false;
-        imgContainer.style.cursor = 'grab';
+        imageWrapper.style.cursor = 'grab';
     }
 
     // Create thumbnails
@@ -1256,6 +1408,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             const thumbImg = document.createElement('img');
             thumbImg.src = item.thumbnailUrl || item.fullSizeUrl;
             thumbImg.alt = item.productName;
+            thumbImg.style.borderRadius = '8px';
             thumbImg.onerror = () => {
                 thumbImg.src = PLACEHOLDER_IMG_URL;
             };
@@ -1287,14 +1440,14 @@ function showGalleryOverlay(galleryItems, startIndex) {
             }
 
             // Add transition animation
-            imgContainer.style.opacity = '0';
+            galleryImageContainer.style.opacity = '0';
             navigationTimeout = setTimeout(() => {
                 try {
                     updateGalleryView();
-                    imgContainer.style.opacity = '1';
+                    galleryImageContainer.style.opacity = '1';
                 } catch (error) {
                     console.warn('Error in navigation update:', error);
-                    imgContainer.style.opacity = '1';
+                    galleryImageContainer.style.opacity = '1';
                 }
             }, 150);
 
@@ -1305,6 +1458,26 @@ function showGalleryOverlay(galleryItems, startIndex) {
             // Fallback: try to show current image without transition
             try {
                 updateGalleryView();
+                adjustImageMaxHeight();
+                
+                // Position the product link in fallback
+                const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
+                if (linkElement) {
+                    setTimeout(() => {
+                        const imgRect = imgElement.getBoundingClientRect();
+                        const wrapperRect = imageWrapper.getBoundingClientRect();
+                        
+                        if (imgRect.width > 0 && imgRect.height > 0) {
+                            // Calculate the bottom-left corner of the actual image within the wrapper
+                            const imageBottom = imgRect.bottom - wrapperRect.top;
+                            const imageLeft = imgRect.left - wrapperRect.left;
+                            
+                            // Position the link at the bottom-left of the actual image
+                            linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
+                            linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
+                        }
+                    }, 100);
+                }
             } catch (fallbackError) {
                 console.error('Critical navigation error:', fallbackError);
             }
@@ -1333,6 +1506,28 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 try {
                     loadingIndicator.style.display = 'none';
                     imgElement.style.opacity = '1';
+                    
+                    // Adjust image height after image loads
+                    adjustImageMaxHeight();
+                    
+                    // Position the product link relative to the new image
+                    const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
+                    if (linkElement) {
+                        setTimeout(() => {
+                            const imgRect = imgElement.getBoundingClientRect();
+                            const wrapperRect = imageWrapper.getBoundingClientRect();
+                            
+                            if (imgRect.width > 0 && imgRect.height > 0) {
+                                // Calculate the bottom-left corner of the actual image within the wrapper
+                                const imageBottom = imgRect.bottom - wrapperRect.top;
+                                const imageLeft = imgRect.left - wrapperRect.left;
+                                
+                                // Position the link at the bottom-left of the actual image
+                                linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
+                                linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
+                            }
+                        }, 100);
+                    }
                 } catch (error) {
                     console.warn('Error in image onload:', error);
                 }
@@ -1342,6 +1537,28 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     loadingIndicator.style.display = 'none';
                     imgElement.src = PLACEHOLDER_IMG_URL;
                     imgElement.style.opacity = '1';
+                    
+                    // Adjust image height after error image loads
+                    adjustImageMaxHeight();
+                    
+                    // Position the product link relative to the error image
+                    const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
+                    if (linkElement) {
+                        setTimeout(() => {
+                            const imgRect = imgElement.getBoundingClientRect();
+                            const wrapperRect = imageWrapper.getBoundingClientRect();
+                            
+                            if (imgRect.width > 0 && imgRect.height > 0) {
+                                // Calculate the bottom-left corner of the actual image within the wrapper
+                                const imageBottom = imgRect.bottom - wrapperRect.top;
+                                const imageLeft = imgRect.left - wrapperRect.left;
+                                
+                                // Position the link at the bottom-left of the actual image
+                                linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
+                                linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
+                            }
+                        }, 100);
+                    }
                 } catch (error) {
                     console.warn('Error in image onerror:', error);
                 }
@@ -1379,25 +1596,95 @@ function showGalleryOverlay(galleryItems, startIndex) {
             const linkElement = document.createElement('a');
             linkElement.href = item.link;
             linkElement.target = '_blank';
-            linkElement.className = 'gallery-product-link';
-            linkElement.innerHTML = '<i class="fa-light fa-external-link"></i>';
+            linkElement.className = 'gallery-product-link-bottom';
+            linkElement.innerHTML = '↗';
             linkElement.title = 'פתח מוצר באתר';
+            
+            // עיצוב כפתור "פתח מוצר באתר" - פינה שמאלית תחתונה של התמונה
+            linkElement.style.position = 'absolute';
+            linkElement.style.background = 'rgba(0,0,0,0.3)';
+            linkElement.style.color = '#fff';
+            linkElement.style.padding = '6px';
+            linkElement.style.borderRadius = '50%';
+            linkElement.style.textDecoration = 'none';
+            linkElement.style.zIndex = '10';
+            linkElement.style.fontSize = '16px';
+            linkElement.style.fontWeight = 'bold';
+            linkElement.style.opacity = '0.3';
+            linkElement.style.transition = 'opacity 0.2s, background 0.2s';
+            linkElement.style.pointerEvents = 'auto';
+            linkElement.style.display = 'flex';
+            linkElement.style.alignItems = 'center';
+            linkElement.style.justifyContent = 'center';
+            linkElement.style.width = '36px';
+            linkElement.style.height = '36px';
+            linkElement.style.boxSizing = 'border-box';
 
             // Replace existing link if any
-            const existingLink = imgContainer.querySelector('.gallery-product-link');
+            const existingLink = imageWrapper.querySelector('.gallery-product-link-bottom');
             if (existingLink) {
                 existingLink.remove();
             }
-            imgContainer.appendChild(linkElement);
+            
+            // Prevent link from interfering with zoom/drag
+            linkElement.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            
+            linkElement.addEventListener('mousedown', (e) => {
+                e.stopPropagation();
+            });
+            
+            linkElement.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+            });
+            
+            imageWrapper.appendChild(linkElement);
+            
+            // Position the link relative to the actual image after it loads
+            const positionLinkRelativeToImage = () => {
+                const imgRect = imgElement.getBoundingClientRect();
+                const wrapperRect = imageWrapper.getBoundingClientRect();
+                
+                if (imgRect.width > 0 && imgRect.height > 0) {
+                    // Calculate the bottom-left corner of the actual image within the wrapper
+                    const imageBottom = imgRect.bottom - wrapperRect.top;
+                    const imageLeft = imgRect.left - wrapperRect.left;
+                    
+                    // Position the link at the bottom-left of the actual image
+                    linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
+                    linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
+                }
+            };
+            
+            // Position immediately and after image loads
+            positionLinkRelativeToImage();
+            imgElement.addEventListener('load', positionLinkRelativeToImage);
+            
+            // Also position on window resize
+            const resizeHandler = () => {
+                setTimeout(positionLinkRelativeToImage, 100);
+            };
+            window.addEventListener('resize', resizeHandler);
+            
+            // Clean up event listener when link is removed
+            linkElement.addEventListener('remove', () => {
+                window.removeEventListener('resize', resizeHandler);
+                imgElement.removeEventListener('load', positionLinkRelativeToImage);
+            });
         }
 
         const quantity = item.quantity ? item.quantity.trim() : '';
         counterElement.textContent = '';
 
+        // Always show "לוקט" even if quantity is empty or doesn't contain "/"
+        const span = document.createElement('span');
+        
         if (quantity && quantity.includes('/')) {
+            // If quantity has "/" format, parse it and apply styling
             const [pickedStr, totalStr] = quantity.split('/').map(s => parseInt(s.trim(), 10));
-            const span = document.createElement('span');
             span.textContent = `לוקט ${quantity}`;
+            span.style.direction = 'rtl';
 
             if (pickedStr === totalStr) {
                 span.className = 'tampermonkey-picked-full';
@@ -1406,15 +1693,47 @@ function showGalleryOverlay(galleryItems, startIndex) {
             } else {
                 span.className = 'tampermonkey-picked-partial';
             }
-
-            counterElement.appendChild(span);
+        } else if (quantity) {
+            // If quantity exists but doesn't have "/" format, show it without special styling
+            span.textContent = `לוקט ${quantity}`;
+            span.style.direction = 'rtl';
+            span.className = 'tampermonkey-picked-partial'; // Default styling
+        } else {
+            // If no quantity, show "לוקט" without value
+            span.textContent = 'לוקט';
+            span.style.direction = 'rtl';
+            span.className = 'tampermonkey-picked-partial'; // Default styling
         }
+
+        counterElement.appendChild(span);
 
         // Update thumbnails
         createThumbnails();
 
         // Preload adjacent images
         preloadAdjacentImages();
+
+        // Adjust image height dynamically
+        adjustImageMaxHeight();
+        
+        // Position the product link relative to the new image
+        const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
+        if (linkElement) {
+            setTimeout(() => {
+                const imgRect = imgElement.getBoundingClientRect();
+                const wrapperRect = imageWrapper.getBoundingClientRect();
+                
+                if (imgRect.width > 0 && imgRect.height > 0) {
+                    // Calculate the bottom-left corner of the actual image within the wrapper
+                    const imageBottom = imgRect.bottom - wrapperRect.top;
+                    const imageLeft = imgRect.left - wrapperRect.left;
+                    
+                    // Position the link at the bottom-left of the actual image
+                    linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
+                    linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
+                }
+            }, 100);
+        }
         } catch (error) {
             console.warn('Error in updateGalleryView:', error);
             // Fallback: show placeholder
@@ -1422,6 +1741,28 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 loadingIndicator.style.display = 'none';
                 imgElement.src = PLACEHOLDER_IMG_URL;
                 imgElement.style.opacity = '1';
+                
+                // Adjust image height in fallback
+                adjustImageMaxHeight();
+                
+                // Position the product link relative to the fallback image
+                const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
+                if (linkElement) {
+                    setTimeout(() => {
+                        const imgRect = imgElement.getBoundingClientRect();
+                        const wrapperRect = imageWrapper.getBoundingClientRect();
+                        
+                        if (imgRect.width > 0 && imgRect.height > 0) {
+                            // Calculate the bottom-left corner of the actual image within the wrapper
+                            const imageBottom = imgRect.bottom - wrapperRect.top;
+                            const imageLeft = imgRect.left - wrapperRect.left;
+                            
+                            // Position the link at the bottom-left of the actual image
+                            linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
+                            linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
+                        }
+                    }, 100);
+                }
             } catch (fallbackError) {
                 console.error('Critical error in updateGalleryView fallback:', fallbackError);
             }
@@ -1433,6 +1774,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         document.removeEventListener('keydown', handleKeyDown);
         document.removeEventListener('mousemove', doDrag);
         document.removeEventListener('mouseup', endDrag);
+        window.removeEventListener('resize', resizeHandler);
         
         // Clear any pending timeouts
         if (wheelTimeout) {
@@ -1495,7 +1837,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
     // Mouse wheel zoom with debouncing
     let wheelTimeout;
-    imgContainer.addEventListener('wheel', (e) => {
+    imageWrapper.addEventListener('wheel', (e) => {
         e.preventDefault();
         
         // Clear existing timeout
@@ -1511,16 +1853,16 @@ function showGalleryOverlay(galleryItems, startIndex) {
     }, { passive: false });
 
     // Double click to reset zoom
-    imgElement.ondblclick = resetZoom;
+    imageWrapper.ondblclick = resetZoom;
     
-    // Drag/pan event listeners
-    imgContainer.addEventListener('mousedown', startDrag);
+    // Drag/pan event listeners - use imageWrapper for better interaction
+    imageWrapper.addEventListener('mousedown', startDrag);
     document.addEventListener('mousemove', doDrag);
     document.addEventListener('mouseup', endDrag);
     
     // Double tap to reset zoom on touch devices
     let lastTap = 0;
-    imgElement.addEventListener('touchend', (e) => {
+    imageWrapper.addEventListener('touchend', (e) => {
         const currentTime = new Date().getTime();
         const tapLength = currentTime - lastTap;
         
@@ -1648,6 +1990,14 @@ function showGalleryOverlay(galleryItems, startIndex) {
     // Add keydown listener to document but only handle when gallery is open
     document.addEventListener('keydown', handleKeyDown);
     
+    // Add resize listener to adjust image height when window is resized
+    const resizeHandler = () => {
+        if (document.getElementById('tampermonkey-gallery-overlay')) {
+            adjustImageMaxHeight();
+        }
+    };
+    window.addEventListener('resize', resizeHandler);
+    
     // Add global error handler for gallery
     const galleryErrorHandler = (event) => {
         if (event.error && event.error.message && event.error.message.includes('STATUS_BREAKPOINT')) {
@@ -1676,6 +2026,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
             // Remove error handler
             window.removeEventListener('error', galleryErrorHandler);
             
+            // Remove resize handler
+            window.removeEventListener('resize', resizeHandler);
+            
             // Call original close function
             originalCloseOverlay();
         } catch (error) {
@@ -1690,6 +2043,12 @@ function showGalleryOverlay(galleryItems, startIndex) {
     };
     
     updateGalleryView();
+    
+    // Adjust image height after initial view is set
+    setTimeout(() => {
+        adjustImageMaxHeight();
+    }, 50);
+    
     setTimeout(() => {
         overlay.style.opacity = '1';
     }, 10);
@@ -1802,37 +2161,49 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     return;
                 }
 
-            let name, sku;
+                let name, sku;
 
-            // Find cells by header content instead of hardcoded positions
-            const table = row.closest('table');
-            let nameEl = null;
+                // Find cells by header content instead of hardcoded positions
+                const table = row.closest('table');
+                let nameEl = null;
+                let quantityEl = null;
 
-            if (table) {
-                const thead = table.querySelector('thead tr');
-                if (thead) {
-                    const headers = Array.from(thead.querySelectorAll('th')).map(th => th.textContent.trim());
-                    const nameIndex = headers.findIndex(header => header.includes('שם'));
-                    if (nameIndex !== -1) {
-                        nameEl = row.cells[nameIndex];
+                if (table) {
+                    const thead = table.querySelector('thead tr');
+                    if (thead) {
+                        const headers = Array.from(thead.querySelectorAll('th')).map(th => th.textContent.trim());
+                        const nameIndex = headers.findIndex(header => header.includes('שם'));
+                        const quantityIndex = headers.findIndex(h => h.includes('כמות') || h.includes('לוקט'));
+                        
+                        if (nameIndex !== -1) {
+                            nameEl = row.cells[nameIndex];
+                        }
+                        if (quantityIndex !== -1) {
+                            quantityEl = row.cells[quantityIndex];
+                        }
                     }
                 }
-            }
 
-            // Fallback to original selectors if header method didn't work
-            if (!nameEl) {
-                nameEl = row.querySelector('td:nth-child(4), input.order-item-name, span.text-dark-75');
-            }
+                // Fallback to original selectors if header method didn't work
+                if (!nameEl) {
+                    nameEl = row.querySelector('td:nth-child(4), input.order-item-name, span.text-dark-75');
+                }
+                if (!quantityEl) {
+                    // Try multiple fallback strategies for quantity
+                    quantityEl = row.querySelector('td:nth-child(5)') || // Original fallback
+                               row.querySelector('[data-label*="כמות"], [data-label*="לוקט"]') || // Responsive labels
+                               row.querySelector('td[title*="כמות"], td[title*="לוקט"]'); // Title attributes
+                }
 
-            const skuEl = row.querySelector('td.text-nowrap, input.order-item-sku, span.text-muted');
-            if (!nameEl || !skuEl) return;
-            name = (nameEl.value || nameEl.textContent).trim();
-            sku = (skuEl.dataset.originalSku || skuEl.value || skuEl.textContent || '').trim();
-            if (sku.startsWith('0')) return;
-            const normalizedSku = normalizeSku(sku);
-            if (!normalizedSku || uniqueSkus.has(normalizedSku)) return;
-            const match = findImageMatch(sku, name);
-            if (match && match.image) {
+                const skuEl = row.querySelector('td.text-nowrap, input.order-item-sku, span.text-muted');
+                if (!nameEl || !skuEl) return;
+                name = (nameEl.value || nameEl.textContent).trim();
+                sku = (skuEl.dataset.originalSku || skuEl.value || skuEl.textContent || '').trim();
+                if (sku.startsWith('0')) return;
+                const normalizedSku = normalizeSku(sku);
+                if (!normalizedSku || uniqueSkus.has(normalizedSku)) return;
+                const match = findImageMatch(sku, name);
+                if (match && match.image) {
 
                     // Extract price from DOM - look for "מחיר ליחידה" column
                     let price = null;
@@ -1852,20 +2223,23 @@ function showGalleryOverlay(galleryItems, startIndex) {
                         }
                     }
 
-                items.push({
-  fullSizeUrl: getOptimizedImageUrl(getFullSizeImageUrl(match.image), Math.min(window.innerWidth, 1200)),
-  thumbnailUrl: getOptimizedImageUrl(match.image, 300), // Smaller thumbnails for better performance
-  productName: name,
-  sku: sku,
-  quantity: row.querySelector('td:nth-child(5)')?.textContent.trim() || '', // Updated to 5th column for quantity
-  price: price, // Use price from DOM instead of CSV
-  link: match.link || null // Add product link if available
-});
+                    // Extract quantity - use the found quantity element or fallback
+                    const quantity = quantityEl ? quantityEl.textContent.trim() : '';
 
-                uniqueSkus.add(normalizedSku);
-            }
-        });
-        return items;
+                    items.push({
+                        fullSizeUrl: getOptimizedImageUrl(getFullSizeImageUrl(match.image), Math.min(window.innerWidth, 1200)),
+                        thumbnailUrl: getOptimizedImageUrl(match.image, 300), // Smaller thumbnails for better performance
+                        productName: name,
+                        sku: sku,
+                        quantity: quantity, // Use the found quantity element
+                        price: price, // Use price from DOM instead of CSV
+                        link: match.link || null // Add product link if available
+                    });
+
+                    uniqueSkus.add(normalizedSku);
+                }
+            });
+            return items;
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error extracting gallery data:`, error);
             return [];
@@ -2584,7 +2958,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                             itemDiv.appendChild(img);
                             const textDiv = document.createElement('div');
                             let skuDisplay = `מק"ט: ${item.sku}`;
-                            if (settings.replaceBarcodes && item.barcode) {
+                            if (settings.replaceBarcodes && item.barcode && item.barcode !== item.sku) {
                                 skuDisplay = `מק"ט: <strong class="barcode-highlight" title="מקורי: ${item.sku}">${item.barcode}</strong>`;
                             }
                             // הוסף מחיר לתצוגה
@@ -2620,7 +2994,24 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                                 }
                             }
 
-                            textDiv.innerHTML = `<div class="font-weight-bold" style="font-size:0.9rem;">${item.name}</div><div class="text-muted" style="font-size:0.8rem;">${skuDisplay} | כמות: ${item.quantity}${priceDisplay}</div>`;
+                            // Highlight pick quantities in preview
+                            let highlightedQuantity = item.quantity;
+                            const quantityMatch = item.quantity.match(/^(\d+)\s*\/\s*(\d+)$/);
+                            if (quantityMatch) {
+                                const picked = parseInt(quantityMatch[1]);
+                                const total = parseInt(quantityMatch[2]);
+                                
+                                if (picked !== 0 || total !== 1) { // Skip 0/1
+                                    const quantityClass =
+                                        picked === total ? 'tampermonkey-picked-full' :
+                                        picked === 0 && total > 1 ? 'tampermonkey-picked-none' :
+                                        'tampermonkey-picked-partial';
+                                    
+                                    highlightedQuantity = `<span class="${quantityClass}">${item.quantity}</span>`;
+                                }
+                            }
+                            
+                            textDiv.innerHTML = `<div class="font-weight-bold" style="font-size:0.9rem;">${item.name}</div><div class="text-muted" style="font-size:0.8rem;">${skuDisplay} | כמות: ${highlightedQuantity}${priceDisplay}</div>`;
                             itemDiv.appendChild(textDiv); container.appendChild(itemDiv);
                         });
                         newCell.appendChild(container);
@@ -2784,6 +3175,9 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             if (settings && settings.replaceBarcodes) {
                 replaceBarcodesInViews(table);
             }
+            
+            // NEW: Also highlight pick quantities after adding responsive attributes
+            highlightPickQuantities();
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error adding responsive data attributes:`, error);
         }
@@ -2963,7 +3357,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
 
 .gallery-price {
     font-size: 1.1em;
-    color: #4CAF50;
+    color: #ccc;
     font-weight: bold;
     margin: 0;
     text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.4); /* Subtle raised effect */
@@ -3036,6 +3430,8 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     display: flex;
     justify-content: center;
     align-items: center;
+    height: 100vh; /* Full viewport height for maximum image display */
+    max-height: 100vh;
     overflow: hidden;
     cursor: zoom-in;
     touch-action: pan-x pan-y pinch-zoom; /* Allow pan and pinch-zoom, but prevent other gestures */
@@ -3053,8 +3449,10 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     -moz-user-select: none;
     -ms-user-select: none;
     user-select: none;
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
 }
 
 .gallery-image-container.zoomed img {
@@ -3126,25 +3524,24 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
 
 /* Thumbnails instead of dots */
 .gallery-thumbnails {
-    position: fixed;
-    bottom: 10px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 15;
+    position: relative;
     display: flex;
     gap: 8px;
     max-width: 80vw;
     overflow-x: auto;
     padding: 10px;
     background: rgba(0, 0, 0, 0.7);
-    border-radius: 8px;
+    border-radius: 12px;
+    margin: 0 auto;
+    justify-content: center;
+    box-sizing: border-box;
 }
 
 .gallery-thumbnail {
     width: 60px;
     height: 60px;
     border: 2px solid transparent;
-    border-radius: 4px;
+    border-radius: 8px;
     overflow: hidden;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -3167,6 +3564,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     height: 100%;
     object-fit: cover;
     transition: transform 0.3s ease;
+    border-radius: 8px;
 }
 
 .gallery-thumbnail:hover img {
@@ -3175,10 +3573,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
 
 /* Enhanced Caption */
 .gallery-caption {
-    position: fixed;
-    bottom: 80px;
-    left: 0;
-    right: 0;
+    position: relative;
     width: 100%;
     display: flex;
     flex-direction: column;
@@ -3186,14 +3581,38 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     gap: 6px;
     text-align: center;
     color: #fff;
-    background: #080000;
-    background: linear-gradient(0deg, rgba(8, 0, 0, 0.9) 0%, rgba(0, 0, 0, 0.9) 50%, rgba(13, 0, 0, 0.9) 100%);
+    background: transparent;
     padding: 15px 20px;
     border-radius: 0;
     box-sizing: border-box;
-    z-index: 10;
     min-height: 40px; /* Reduced height to minimize dead space */
+    flex-shrink: 0;
 }
+
+/* Footer container for caption and thumbnails */
+.gallery-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    flex-shrink: 0;
+    background: transparent;
+    min-height: 0;
+    box-sizing: border-box;
+}
+
+/* Top info container */
+.gallery-top-info {
+    padding: 12px;
+    background: transparent;
+    color: #fff;
+    border-bottom: none;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+
+
 
 /* Enhanced Navigation Buttons */
 .gallery-nav {
@@ -3214,6 +3633,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     .gallery-thumbnails {
         max-width: 90vw;
         gap: 4px;
+        padding: 8px;
     }
 
     .gallery-thumbnail {
@@ -3221,21 +3641,29 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
         height: 50px;
     }
 
-    .gallery-zoom {
-        padding: 6px 10px;
+    .gallery-caption {
+        padding: 10px 15px;
         font-size: 14px;
     }
-
-    .gallery-zoom.zoom-in {
-        right: 70px;
+    
+    .gallery-footer {
+        padding: 8px;
+        gap: 8px;
     }
-
-    .gallery-zoom.zoom-out {
-        right: 105px;
+    
+    .gallery-top-info {
+        padding: 8px;
     }
-
-    .gallery-zoom.reset-zoom {
-        right: 140px;
+    
+    .gallery-image-container {
+        padding: 12px;
+    }
+    
+    .gallery-product-link-bottom {
+        padding: 4px;
+        font-size: 14px;
+        width: 32px;
+        height: 32px;
     }
 }
 
@@ -3396,30 +3824,34 @@ td.copy-enabled.cell-copied {
 
         #tampermonkey-gallery-overlay {
             position:fixed;top:0;left:0;width:100%;height:100%;
-            background:rgba(0,0,0,.88);display:flex;flex-direction:column;justify-content:flex-start;align-items:center;padding-top:20px;
-            z-index:20000;opacity:0;transition:opacity .3s ease
+            background:rgba(0,0,0,.88);display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;padding:0;
+            z-index:20000;opacity:0;transition:opacity .3s ease;box-sizing:border-box;overflow:hidden
         }
 .gallery-image-container {
     display: flex;
     align-items: center;
     justify-content: center;
-    max-width: 90vw;
-    max-height: calc(100vh - 250px); /* Much more space for the image */
-    margin: 0 auto;
+    width: 100%;
     position: relative;
-    margin-bottom: 0; /* No margin between image and caption */
+    overflow: hidden;
+    z-index: 1;
+    flex: 1;
+    padding: 16px;
+    border-radius: 12px;
+    min-height: 0; /* Important for flex child */
+    box-sizing: border-box;
 }
 
 #tampermonkey-gallery-overlay img {
     display: block;
     max-width: 100%;
     max-height: 100%;
-    width: auto;
-    height: auto;
     object-fit: contain;
-    border-radius: 8px;
+    object-position: center;
+    border-radius: 12px;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     transition: transform 0.1s ease-out;
+    overflow: hidden;
 }
 
 .gallery-image-container.zoomed {
@@ -3438,18 +3870,21 @@ td.copy-enabled.cell-copied {
 
 
 .gallery-product-name {
+    position: relative;
     font-size: 1.5em;
     font-weight: bold;
-    margin: 0 0 2px 0;
     color: white;
     text-align: center;
     text-shadow: 0 2px 4px rgba(0, 0, 0, 0.8);
-    position: relative;
     z-index: 10;
-    padding: 8px;
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 100%);
-    border-radius: 0;
+    padding: 6px 12px;
+    background: transparent;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
     box-sizing: border-box;
+    margin: 0;
+    width: 100%;
+    flex-shrink: 0;
 }
 
 .gallery-product-info {
@@ -3457,33 +3892,35 @@ td.copy-enabled.cell-copied {
     justify-content: center;
     align-items: center;
     gap: 20px;
-    margin: 0 0 5px 0;
-    padding: 6px 15px;
-    background: linear-gradient(180deg, rgba(0, 0, 0, 0.6) 0%, rgba(0, 0, 0, 0.3) 100%);
+    margin: 10px 0;
+    padding: 4px 8px;
+    background: transparent;
     color: white;
     text-align: center;
     position: relative;
     z-index: 10;
     box-sizing: border-box;
+    border-radius: 8px;
+    flex-shrink: 0;
 }
 
 .gallery-sku, .gallery-price {
     font-size: 1.1em;
     font-weight: normal;
     margin: 0;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
 }
 
 .gallery-product-link {
     position: absolute;
-    top: 10px;
-    right: 10px;
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 8px;
+    top: 8px;
+    right: 8px;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    padding: 6px;
     border-radius: 50%;
     text-decoration: none;
-    z-index: 15;
+    z-index: 20;
     transition: all 0.3s ease;
     display: flex;
     align-items: center;
@@ -3491,6 +3928,8 @@ td.copy-enabled.cell-copied {
     width: 36px;
     height: 36px;
     box-sizing: border-box;
+    font-size: 14px;
+    font-weight: bold;
 }
 
 .gallery-product-link:hover {
@@ -3498,8 +3937,53 @@ td.copy-enabled.cell-copied {
     transform: scale(1.1);
 }
 
+/* New product link in bottom-left corner */
+.gallery-product-link-bottom {
+    position: absolute;
+    background: rgba(0, 0, 0, 0.3);
+    color: white;
+    padding: 6px;
+    border-radius: 50%;
+    text-decoration: none;
+    z-index: 10;
+    font-size: 16px;
+    font-weight: bold;
+    opacity: 0.3;
+    transition: opacity 0.2s, background 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    box-sizing: border-box;
+    pointer-events: auto;
+    cursor: pointer;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    touch-action: manipulation;
+    line-height: 1;
+}
+
+.gallery-product-link-bottom i {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.gallery-product-link-bottom:hover {
+    opacity: 0.9;
+    background: rgba(0, 0, 0, 0.6);
+    transform: scale(1.05);
+}
+
 .gallery-product-link i {
     font-size: 16px;
+}
+
+.gallery-product-link-bottom i {
+    font-size: 14px;
+    line-height: 1;
 }
 
         .gallery-close, .gallery-nav {
@@ -4152,7 +4636,7 @@ function prepareCopyElements() {
                         if (!window.readyTaskCache) window.readyTaskCache = {};
                         window.readyTaskCache[taskId] = true;
                         // Removed excessive logging to reduce console noise
-                        break;
+                        break; // Stop searching once found
                     }
                 }
 
@@ -4337,6 +4821,7 @@ function prepareCopyElements() {
             injectWhatsAppButtons();
             highlightMerlogRows(); // Add Merlog row highlighting
             highlightMerlogPanelView(); // Add Merlog panel view highlighting
+            highlightPickQuantities(); // Add pick quantities highlighting
             
             // Run ready highlighting in background to avoid blocking the UI
             setTimeout(() => {
@@ -4499,29 +4984,45 @@ function prepareCopyElements() {
 
 function highlightPickQuantities() {
     try {
-        const elements = document.querySelectorAll('td[data-label="כמות / לוקט"], div.text-muted');
+        // Target all tables with the "כמות / לוקט" column, not just the first one
+        const targetTables = document.querySelectorAll('table.table.table-hover[data-columns-tagged="true"]');
+        if (!targetTables || targetTables.length === 0) return;
 
-        elements.forEach(el => {
-            if (!el || !el.innerHTML) return;
+        targetTables.forEach(table => {
+            // Find cells with the specific data-label for pick quantities
+            const pickQuantityCells = table.querySelectorAll('td[data-label="כמות / לוקט"]');
+            
+            pickQuantityCells.forEach(el => {
+                if (!el || !el.innerHTML) return;
 
-            let html = el.innerHTML;
-            const match = html.match(/(\d+)\s*\/\s*(\d+)/);
-            if (!match) return;
+                // Skip if already processed (has tampermonkey classes)
+                if (el.querySelector('.tampermonkey-picked-full, .tampermonkey-picked-none, .tampermonkey-picked-partial')) {
+                    return;
+                }
 
-            const picked = parseInt(match[1]);
-            const total = parseInt(match[2]);
+                let html = el.innerHTML.trim();
+                
+                // More specific pattern for pick quantities: exactly 2 numbers separated by "/"
+                const match = html.match(/^(\d+)\s*\/\s*(\d+)$/);
+                if (!match) return;
 
-            // Skip 0 / 1
-            if (picked === 0 && total === 1) return;
+                const picked = parseInt(match[1]);
+                const total = parseInt(match[2]);
 
-            const replacementClass =
-                picked === total ? 'tampermonkey-picked-full' :
-                picked === 0 && total > 1 ? 'tampermonkey-picked-none' :
-                'tampermonkey-picked-partial';
+                // Skip 0 / 1
+                if (picked === 0 && total === 1) return;
 
-            // Replace the number portion only
-            html = html.replace(/(\d+\s*\/\s*\d+)/, `<span class="${replacementClass}">$1</span>`);
-            el.innerHTML = html;
+                // Additional validation - make sure these are reasonable pick quantities
+                if (picked > total || total > 1000) return;
+
+                const replacementClass =
+                    picked === total ? 'tampermonkey-picked-full' :
+                    picked === 0 && total > 1 ? 'tampermonkey-picked-none' :
+                    'tampermonkey-picked-partial';
+
+                // Replace the entire content with the highlighted version
+                el.innerHTML = `<span class="${replacementClass}">${html}</span>`;
+            });
         });
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error highlighting pick quantities:`, error);
