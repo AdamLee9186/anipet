@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.6.0
+// @version      13.7.0
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -66,6 +66,81 @@ window.addEventListener('error', function(e) {
     return false;
   }
 }, true);
+
+// === Copy feedback + guard ===
+window._tmCopying = false;
+
+function tmToast(msg = 'הועתק!', targetElement = null) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  
+  // Base styles
+  el.style.cssText = 'position:fixed;' +
+    'background:rgba(0,0,0,.85);color:#fff;padding:6px 10px;border-radius:6px;' +
+    'font:12px/1.2 sans-serif;z-index:999999;pointer-events:none;opacity:0;transition:opacity .15s';
+  
+  // Position the toast near the target element if provided
+  if (targetElement) {
+    try {
+      const rect = targetElement.getBoundingClientRect();
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      // Calculate position - show above the element with some offset
+      let left = rect.left + (rect.width / 2);
+      let top = rect.top - 35; // Show above the element
+      
+      // Ensure toast doesn't go outside viewport bounds
+      const toastWidth = 80; // Approximate toast width
+      if (left - toastWidth/2 < 10) {
+        left = toastWidth/2 + 10;
+      } else if (left + toastWidth/2 > viewportWidth - 10) {
+        left = viewportWidth - toastWidth/2 - 10;
+      }
+      
+      if (top < 10) {
+        top = rect.bottom + 10; // Show below if no space above
+      }
+      
+      el.style.left = left + 'px';
+      el.style.top = top + 'px';
+      el.style.transform = 'translateX(-50%)';
+    } catch (error) {
+      // Fallback to center bottom if positioning fails
+      el.style.left = '50%';
+      el.style.bottom = '24px';
+      el.style.transform = 'translateX(-50%)';
+    }
+  } else {
+    // Default position at bottom center
+    el.style.left = '50%';
+    el.style.bottom = '24px';
+    el.style.transform = 'translateX(-50%)';
+  }
+  
+  document.body.appendChild(el);
+  requestAnimationFrame(()=> el.style.opacity = '1');
+  setTimeout(()=>{ el.style.opacity = '0'; setTimeout(()=> el.remove(), 150); }, 900);
+}
+
+function withCopying(fn){
+  return (...args) => {
+    window._tmCopying = true;
+    try { return fn(...args); }
+    finally { setTimeout(()=>{ window._tmCopying = false; }, 150); }
+  };
+}
+
+// Throttling mechanism for heavy reflows
+let _tmObsTick = 0, _tmObsScheduled = false;
+function scheduleHeavy(fn){
+  if (_tmObsScheduled) return;
+  _tmObsScheduled = true;
+  requestAnimationFrame(() => {
+    _tmObsScheduled = false;
+    fn();
+  });
+}
 
 // Override fetch to handle blocked requests gracefully
 const originalFetch = window.fetch;
@@ -748,10 +823,8 @@ document.createElement = function(tagName) {
                 return null;
             }
 
-
             if (sku && !String(sku).trim().startsWith('0')) {
                 const normalizedSku = normalizeSku(sku);
-
                 if (normalizedSku) {
                     const skuMatch = productDataCache.find(p => p.skus.includes(normalizedSku));
                     if (skuMatch) {
@@ -762,13 +835,11 @@ document.createElement = function(tagName) {
 
             if (productName) {
                 const pageProductNameNormalized = productName.toLowerCase().trim();
-
                 const nameMatch = productDataCache.find(p => p.productName && p.productName.toLowerCase().trim() === pageProductNameNormalized);
                 if (nameMatch) {
                     return nameMatch;
                 }
             }
-
             return null;
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error finding image match:`, error);
@@ -785,23 +856,10 @@ document.createElement = function(tagName) {
                 return null;
             }
 
-            // Only log for the specific product we're looking for, and only once
-            const isTargetProduct = name && name.includes('רויאל קנין פאוץ') && name.includes('אינסטינקטיב');
-
-            // Use a static flag to prevent repeated logging
-            if (isTargetProduct && !window.targetProductLogged) {
-                                    // console.log(`[${SCRIPT_NAME}] 🔍 Searching for target product: "${name}"`);
-                window.targetProductLogged = true;
-            }
-
             // Try to find by SKU first (only if SKU is not null/empty)
             if (sku && sku.trim() && itemCodeToBarcodeMap.has(sku)) {
                 const barcode = itemCodeToBarcodeMap.get(sku);
                 if (barcode) {
-                    if (isTargetProduct && !window.targetProductFound) {
-                        console.log(`[${SCRIPT_NAME}] ✅ Found barcode by SKU: ${barcode}`);
-                        window.targetProductFound = true;
-                    }
                     return barcode;
                 }
             }
@@ -810,10 +868,6 @@ document.createElement = function(tagName) {
             if (name && name.trim() && descriptionToBarcodeMap.has(name)) {
                 const barcode = descriptionToBarcodeMap.get(name);
                 if (barcode) {
-                    if (isTargetProduct && !window.targetProductFound) {
-                        // console.log(`[${SCRIPT_NAME}] ✅ Found barcode by exact name match: ${barcode}`);
-                        window.targetProductFound = true;
-                    }
                     return barcode;
                 }
             }
@@ -824,10 +878,6 @@ document.createElement = function(tagName) {
                 for (const [productName, barcode] of descriptionToBarcodeMap.entries()) {
                     const normalizedProductName = productName.toLowerCase().trim();
                     if (normalizedProductName === normalizedName) {
-                        if (isTargetProduct && !window.targetProductFound) {
-                            console.log(`[${SCRIPT_NAME}] ✅ Found barcode by normalized name match: ${barcode}`);
-                            window.targetProductFound = true;
-                        }
                         return barcode;
                     }
                 }
@@ -836,18 +886,9 @@ document.createElement = function(tagName) {
                 for (const [productName, barcode] of descriptionToBarcodeMap.entries()) {
                     const normalizedProductName = productName.toLowerCase().trim();
                     if (normalizedProductName.includes(normalizedName) || normalizedName.includes(normalizedProductName)) {
-                        if (isTargetProduct && !window.targetProductFound) {
-                            console.log(`[${SCRIPT_NAME}] ✅ Found barcode by partial name match: ${barcode}`);
-                            window.targetProductFound = true;
-                        }
                         return barcode;
                     }
                 }
-            }
-
-            if (isTargetProduct && !window.targetProductNotFound) {
-                                    // console.log(`[${SCRIPT_NAME}] ❌ No barcode found for target product`);
-                window.targetProductNotFound = true;
             }
             return null;
         } catch (error) {
@@ -946,8 +987,23 @@ document.createElement = function(tagName) {
                 const hasSku = headers.some(h => h.includes('מק'));
                 const hasName = headers.some(h => h.includes('שם'));
 
+                // Check if this is an orders/deliveries table (should be excluded)
+                const isOrdersTable = headers.some(h => 
+                    h.includes('משלוח') || // delivery
+                    h.includes('הזמנה') || // order  
+                    h.includes('סטטוס') || // status
+                    h.includes('ליקוט') || // picking
+                    h.includes('נהג') || // driver
+                    h.includes('כתובת') || // address
+                    h.includes('עיר') || // city
+                    h.includes('טלפון') // phone
+                );
 
-                if (hasSku && hasName) {
+                // Also check if the table has the main orders table classes
+                const isMainOrdersTable = table.closest('.dataTables_wrapper') && 
+                                         table.closest('.dt-bootstrap4');
+
+                if (hasSku && hasName && !isOrdersTable && !isMainOrdersTable) {
                     return table;
                 }
             }
@@ -1210,26 +1266,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     imageWrapper.appendChild(imgElement);
     galleryImageContainer.appendChild(imageWrapper);
     
-    // Add event listener to reposition link when image loads
-    imgElement.addEventListener('load', () => {
-        const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
-        if (linkElement) {
-            setTimeout(() => {
-                const imgRect = imgElement.getBoundingClientRect();
-                const wrapperRect = imageWrapper.getBoundingClientRect();
-                
-                if (imgRect.width > 0 && imgRect.height > 0) {
-                    // Calculate the bottom-left corner of the actual image within the wrapper
-                    const imageBottom = imgRect.bottom - wrapperRect.top;
-                    const imageLeft = imgRect.left - wrapperRect.left;
-                    
-                    // Position the link at the bottom-left of the actual image
-                    linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
-                    linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
-                }
-            }, 50);
-        }
-    });
+    // Image load event handler (link positioning removed)
 
     // Add loading indicator to image wrapper (not container)
     imageWrapper.appendChild(loadingIndicator);
@@ -1460,24 +1497,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 updateGalleryView();
                 adjustImageMaxHeight();
                 
-                // Position the product link in fallback
-                const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
-                if (linkElement) {
-                    setTimeout(() => {
-                        const imgRect = imgElement.getBoundingClientRect();
-                        const wrapperRect = imageWrapper.getBoundingClientRect();
-                        
-                        if (imgRect.width > 0 && imgRect.height > 0) {
-                            // Calculate the bottom-left corner of the actual image within the wrapper
-                            const imageBottom = imgRect.bottom - wrapperRect.top;
-                            const imageLeft = imgRect.left - wrapperRect.left;
-                            
-                            // Position the link at the bottom-left of the actual image
-                            linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
-                            linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
-                        }
-                    }, 100);
-                }
+                // Product link positioning removed
             } catch (fallbackError) {
                 console.error('Critical navigation error:', fallbackError);
             }
@@ -1510,24 +1530,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     // Adjust image height after image loads
                     adjustImageMaxHeight();
                     
-                    // Position the product link relative to the new image
-                    const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
-                    if (linkElement) {
-                        setTimeout(() => {
-                            const imgRect = imgElement.getBoundingClientRect();
-                            const wrapperRect = imageWrapper.getBoundingClientRect();
-                            
-                            if (imgRect.width > 0 && imgRect.height > 0) {
-                                // Calculate the bottom-left corner of the actual image within the wrapper
-                                const imageBottom = imgRect.bottom - wrapperRect.top;
-                                const imageLeft = imgRect.left - wrapperRect.left;
-                                
-                                // Position the link at the bottom-left of the actual image
-                                linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
-                                linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
-                            }
-                        }, 100);
-                    }
+                    // Product link positioning removed
                 } catch (error) {
                     console.warn('Error in image onload:', error);
                 }
@@ -1541,24 +1544,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     // Adjust image height after error image loads
                     adjustImageMaxHeight();
                     
-                    // Position the product link relative to the error image
-                    const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
-                    if (linkElement) {
-                        setTimeout(() => {
-                            const imgRect = imgElement.getBoundingClientRect();
-                            const wrapperRect = imageWrapper.getBoundingClientRect();
-                            
-                            if (imgRect.width > 0 && imgRect.height > 0) {
-                                // Calculate the bottom-left corner of the actual image within the wrapper
-                                const imageBottom = imgRect.bottom - wrapperRect.top;
-                                const imageLeft = imgRect.left - wrapperRect.left;
-                                
-                                // Position the link at the bottom-left of the actual image
-                                linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
-                                linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
-                            }
-                        }, 100);
-                    }
+                    // Product link positioning removed
                 } catch (error) {
                     console.warn('Error in image onerror:', error);
                 }
@@ -1573,15 +1559,39 @@ function showGalleryOverlay(galleryItems, startIndex) {
             }
 
         // Update product info
-        productNameElement.textContent = item.productName;
+        // Clear existing content and rebuild with wrap+BDI
+        productNameElement.innerHTML = '';
+        const nameWrap = document.createElement('span');
+        nameWrap.className = 'tampermonkey-copy-wrap';
+        const nameBdi = document.createElement('bdi');
+        nameBdi.className = 'gallery-name-bdi';
+        nameBdi.dir = 'auto';
+        if (item.link) {
+          const nameLink = document.createElement('a');
+          nameLink.href = item.link;
+          nameLink.target = '_blank';
+          nameLink.rel = 'noopener';
+          nameLink.textContent = item.productName;
+          nameBdi.appendChild(nameLink);
+        } else {
+          nameBdi.textContent = item.productName || '';
+        }
+        nameWrap.appendChild(nameBdi);
+        nameWrap.appendChild(createCopyIcon(item.productName || ''));
+        productNameElement.appendChild(nameWrap);
         const originalSku = item.sku;
         const barcode = settings.replaceBarcodes ? findBarcode(originalSku, item.productName) : null;
-
-        if (barcode) {
-            skuElement.innerHTML = `מק"ט: <strong class="barcode-highlight-gallery" title="מקורי: ${originalSku}">${barcode}</strong>`;
-        } else {
-            skuElement.textContent = `מק"ט: ${originalSku}`;
-        }
+        // Build: "מק\"ט: " + [wrap(bdi+icon)]
+        skuElement.innerHTML = 'מק&quot;ט: ';
+        const skuWrap = document.createElement('span');
+        skuWrap.className = 'tampermonkey-copy-wrap';
+        const skuBdi = document.createElement('bdi');
+        skuBdi.className = 'gallery-barcode-bdi';
+        skuBdi.dir = 'ltr';
+        skuBdi.textContent = (barcode || originalSku || '').toString();
+        skuWrap.appendChild(skuBdi);
+        skuWrap.appendChild(createCopyIcon(skuBdi.textContent));
+        skuElement.appendChild(skuWrap);
 
         // Add price if available (you can extend this based on your data structure)
         if (item.price) {
@@ -1591,88 +1601,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             priceElement.style.display = 'none';
         }
 
-        // Add product link if available
-        if (item.link) {
-            const linkElement = document.createElement('a');
-            linkElement.href = item.link;
-            linkElement.target = '_blank';
-            linkElement.className = 'gallery-product-link-bottom';
-            linkElement.innerHTML = '↗';
-            linkElement.title = 'פתח מוצר באתר';
-            
-            // עיצוב כפתור "פתח מוצר באתר" - פינה שמאלית תחתונה של התמונה
-            linkElement.style.position = 'absolute';
-            linkElement.style.background = 'rgba(0,0,0,0.3)';
-            linkElement.style.color = '#fff';
-            linkElement.style.padding = '6px';
-            linkElement.style.borderRadius = '50%';
-            linkElement.style.textDecoration = 'none';
-            linkElement.style.zIndex = '10';
-            linkElement.style.fontSize = '16px';
-            linkElement.style.fontWeight = 'bold';
-            linkElement.style.opacity = '0.3';
-            linkElement.style.transition = 'opacity 0.2s, background 0.2s';
-            linkElement.style.pointerEvents = 'auto';
-            linkElement.style.display = 'flex';
-            linkElement.style.alignItems = 'center';
-            linkElement.style.justifyContent = 'center';
-            linkElement.style.width = '36px';
-            linkElement.style.height = '36px';
-            linkElement.style.boxSizing = 'border-box';
-
-            // Replace existing link if any
-            const existingLink = imageWrapper.querySelector('.gallery-product-link-bottom');
-            if (existingLink) {
-                existingLink.remove();
-            }
-            
-            // Prevent link from interfering with zoom/drag
-            linkElement.addEventListener('click', (e) => {
-                e.stopPropagation();
-            });
-            
-            linkElement.addEventListener('mousedown', (e) => {
-                e.stopPropagation();
-            });
-            
-            linkElement.addEventListener('touchstart', (e) => {
-                e.stopPropagation();
-            });
-            
-            imageWrapper.appendChild(linkElement);
-            
-            // Position the link relative to the actual image after it loads
-            const positionLinkRelativeToImage = () => {
-                const imgRect = imgElement.getBoundingClientRect();
-                const wrapperRect = imageWrapper.getBoundingClientRect();
-                
-                if (imgRect.width > 0 && imgRect.height > 0) {
-                    // Calculate the bottom-left corner of the actual image within the wrapper
-                    const imageBottom = imgRect.bottom - wrapperRect.top;
-                    const imageLeft = imgRect.left - wrapperRect.left;
-                    
-                    // Position the link at the bottom-left of the actual image
-                    linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
-                    linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
-                }
-            };
-            
-            // Position immediately and after image loads
-            positionLinkRelativeToImage();
-            imgElement.addEventListener('load', positionLinkRelativeToImage);
-            
-            // Also position on window resize
-            const resizeHandler = () => {
-                setTimeout(positionLinkRelativeToImage, 100);
-            };
-            window.addEventListener('resize', resizeHandler);
-            
-            // Clean up event listener when link is removed
-            linkElement.addEventListener('remove', () => {
-                window.removeEventListener('resize', resizeHandler);
-                imgElement.removeEventListener('load', positionLinkRelativeToImage);
-            });
-        }
+        // Bottom-left gallery link removed — we already provide the product link in the title
 
         const quantity = item.quantity ? item.quantity.trim() : '';
         counterElement.textContent = '';
@@ -1716,24 +1645,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         // Adjust image height dynamically
         adjustImageMaxHeight();
         
-        // Position the product link relative to the new image
-        const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
-        if (linkElement) {
-            setTimeout(() => {
-                const imgRect = imgElement.getBoundingClientRect();
-                const wrapperRect = imageWrapper.getBoundingClientRect();
-                
-                if (imgRect.width > 0 && imgRect.height > 0) {
-                    // Calculate the bottom-left corner of the actual image within the wrapper
-                    const imageBottom = imgRect.bottom - wrapperRect.top;
-                    const imageLeft = imgRect.left - wrapperRect.left;
-                    
-                    // Position the link at the bottom-left of the actual image
-                    linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
-                    linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
-                }
-            }, 100);
-        }
+        // Product link positioning removed
         } catch (error) {
             console.warn('Error in updateGalleryView:', error);
             // Fallback: show placeholder
@@ -1745,24 +1657,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 // Adjust image height in fallback
                 adjustImageMaxHeight();
                 
-                // Position the product link relative to the fallback image
-                const linkElement = imageWrapper.querySelector('.gallery-product-link-bottom');
-                if (linkElement) {
-                    setTimeout(() => {
-                        const imgRect = imgElement.getBoundingClientRect();
-                        const wrapperRect = imageWrapper.getBoundingClientRect();
-                        
-                        if (imgRect.width > 0 && imgRect.height > 0) {
-                            // Calculate the bottom-left corner of the actual image within the wrapper
-                            const imageBottom = imgRect.bottom - wrapperRect.top;
-                            const imageLeft = imgRect.left - wrapperRect.left;
-                            
-                            // Position the link at the bottom-left of the actual image
-                            linkElement.style.bottom = `${Math.max(12, imageBottom - wrapperRect.height + 12)}px`;
-                            linkElement.style.left = `${Math.max(12, imageLeft + 12)}px`;
-                        }
-                    }, 100);
-                }
+                // Product link positioning removed
             } catch (fallbackError) {
                 console.error('Critical error in updateGalleryView fallback:', fallbackError);
             }
@@ -2237,6 +2132,40 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     });
 
                     uniqueSkus.add(normalizedSku);
+                } else {
+                    // No image → include item with placeholder so gallery always opens
+                    
+                    // Extract price from DOM - look for "מחיר ליחידה" column
+                    let price = null;
+                    if (table) {
+                        const thead = table.querySelector('thead tr');
+                        if (thead) {
+                            const headers = Array.from(thead.querySelectorAll('th')).map(th => th.textContent.trim());
+                            const priceIndex = headers.findIndex(header => header.includes('מחיר ליחידה'));
+                            if (priceIndex !== -1 && row.cells[priceIndex]) {
+                                const priceText = row.cells[priceIndex].textContent.trim();
+                                // Extract numeric value from price text
+                                const priceMatch = priceText.match(/[\d,]+\.?\d*/);
+                                if (priceMatch) {
+                                    price = priceMatch[0].replace(/,/g, '');
+                                }
+                            }
+                        }
+                    }
+
+                    // Extract quantity - use the found quantity element or fallback
+                    const quantity = quantityEl ? quantityEl.textContent.trim() : '';
+
+                    items.push({
+                        fullSizeUrl: PLACEHOLDER_IMG_URL,
+                        thumbnailUrl: PLACEHOLDER_IMG_URL,
+                        productName: name,
+                        sku: sku,
+                        quantity: quantity || '',
+                        price: price,
+                        link: null
+                    });
+                    uniqueSkus.add(normalizedSku);
                 }
             });
             return items;
@@ -2244,6 +2173,26 @@ function showGalleryOverlay(galleryItems, startIndex) {
             console.error(`[${SCRIPT_NAME}] Error extracting gallery data:`, error);
             return [];
         }
+    }
+
+    // DRY helper function to attach gallery opener to placeholder images
+    function attachGalleryOpener(imgEl, sku, fallbackScopeEl) {
+        imgEl.title = 'Open gallery';
+        imgEl.style.cursor = 'pointer';
+        imgEl.onclick = (e) => {
+            e.stopPropagation();
+            const searchScope =
+                e.target.closest('.modal') ||
+                e.target.closest('table') ||
+                e.target.closest('.table-responsive, .modal-body, .nested-fields') ||
+                e.target.closest('tr, .order-item-row, .pick-order-item-row')?.closest('table, .nested-fields') ||
+                fallbackScopeEl ||
+                document.body;
+
+            const galleryItems = extractDataForGallery(searchScope);
+            const clickedIndex = galleryItems.findIndex(item => normalizeSku(item.sku) === normalizeSku(sku));
+            showGalleryOverlay(galleryItems, Math.max(0, clickedIndex));
+        };
     }
 
     // MODIFICATION START: Updated injectImagesAndLinks to accept a scope parameter
@@ -2258,6 +2207,10 @@ function showGalleryOverlay(galleryItems, startIndex) {
             const rows = scope.querySelectorAll('tr:not([data-image-processed])');
 
             rows.forEach((row, index) => {
+                // Skip rows from main orders table
+                if (row.closest('.dataTables_wrapper.dt-bootstrap4')) {
+                    return;
+                }
 
                 // Look for SKU data in the row
                 const skuTd = row.querySelector('[data-original-sku]');
@@ -2297,6 +2250,22 @@ function showGalleryOverlay(galleryItems, startIndex) {
                         }
                     }
                 } else {
+                    const firstTd = row.querySelector('td');
+                    if (firstTd) {
+                        firstTd.innerHTML = '';
+                        const ph = document.createElement('img');
+                        ph.src = PLACEHOLDER_IMG_URL;
+                        ph.alt = 'No image';
+                        Object.assign(ph.style, {
+                            width: 'auto',
+                            maxHeight: '80px',
+                            maxWidth: '80px',
+                            objectFit: 'contain',
+                            borderRadius: '4px'
+                        });
+                        attachGalleryOpener(ph, sku, scope);
+                        firstTd.appendChild(ph);
+                    }
                 }
 
                 row.setAttribute('data-image-processed', 'true');
@@ -2314,6 +2283,24 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     const wrapper = document.createElement('div');
                     wrapper.style.marginRight = '10px';
                     wrapper.append(createImageElement(match, name, sku, { maxHeight: '50px', maxWidth: '50px', padding: '5px' }));
+                    imageContainer.prepend(wrapper);
+                } else {
+                    const wrapper = document.createElement('div');
+                    wrapper.style.marginRight = '10px';
+
+                    const ph = document.createElement('img');
+                    ph.src = PLACEHOLDER_IMG_URL;
+                    ph.alt = 'No image';
+                    Object.assign(ph.style, {
+                        maxHeight: '50px',
+                        maxWidth: '50px',
+                        objectFit: 'contain',
+                        borderRadius: '4px',
+                        padding: '5px'
+                    });
+                    attachGalleryOpener(ph, sku, imageContainer.closest('.modal') || document.body);
+
+                    wrapper.append(ph);
                     imageContainer.prepend(wrapper);
                 }
                 cell.setAttribute('data-image-processed', 'true');
@@ -2342,6 +2329,18 @@ function showGalleryOverlay(galleryItems, startIndex) {
                         const match = findImageMatch(sku, name);
                         if (match && match.image) {
                             placeholder.append(createImageElement(match, name, sku, { maxHeight: '70px', maxWidth: '80px' }));
+                        } else {
+                            const ph = document.createElement('img');
+                            ph.src = PLACEHOLDER_IMG_URL;
+                            ph.alt = 'No image';
+                            Object.assign(ph.style, {
+                                maxHeight: '70px',
+                                maxWidth: '80px',
+                                objectFit: 'contain',
+                                borderRadius: '4px'
+                            });
+                            attachGalleryOpener(ph, sku, placeholder.closest('.modal') || document.body);
+                            placeholder.append(ph);
                         }
                     }
                     row.setAttribute('data-image-processed', 'true');
@@ -2411,16 +2410,44 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
                             // Only create link if there's no Anipet button
                             if (!hasAnipetButton) {
+                                const productName = nameCell.textContent.trim();
+                                
+                                // Clear the cell content
+                                nameCell.innerHTML = '';
+                                
+                                // Create copy icon with enhanced feedback
+                                const copyIcon = createCopyIcon(productName);
+                                
+                                // Create link
                                 const link = document.createElement('a');
                                 link.href = match.link;
                                 link.target = '_blank';
                                 link.rel = 'noopener noreferrer';
-                                link.innerHTML = nameCell.innerHTML;
-                                nameCell.innerHTML = '';
+                                link.textContent = productName;
+                                
+                                // Append link first, then copy icon (icon will float left)
                                 nameCell.appendChild(link);
+                                nameCell.appendChild(copyIcon);
+                                
+                                // Do not add copy-enabled to this cell since it has its own copy mechanism
                             }
                         }
                     } else {
+                        if (targetCell && !targetCell.querySelector('img')) {
+                            targetCell.innerHTML = '';
+                            const ph = document.createElement('img');
+                            ph.src = PLACEHOLDER_IMG_URL;
+                            ph.alt = 'No image';
+                            Object.assign(ph.style, {
+                                width: 'auto',
+                                maxHeight: '80px',
+                                maxWidth: '80px',
+                                objectFit: 'contain',
+                                borderRadius: '4px'
+                            });
+                            attachGalleryOpener(ph, sku, scope);
+                            targetCell.appendChild(ph);
+                        }
                     }
                     row.setAttribute('data-image-processed', 'true');
                 });
@@ -2527,7 +2554,10 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 scope.querySelector('.table.table-hover'),
                 scope.querySelector('.modal-body .table'),
                 scope.querySelector('.nested-fields'),
-                scope.querySelector('.pick-order-item-row')
+                scope.querySelector('.pick-order-item-row'),
+                scope.querySelector('.offcanvas .table'),
+                scope.querySelector('.panel_view .table'),
+                scope.querySelector('#task_offcanvas .table')
             ].filter(Boolean);
 
             if (foundContexts.length === 0) return;
@@ -2621,36 +2651,50 @@ function showGalleryOverlay(galleryItems, startIndex) {
                                 // Picking modal: SKU cell is the span with barcode-highlight class
                                 skuCell = row.querySelector('.barcode-highlight[data-original-sku]');
                             } else {
-                                // Other tables: SKU cell is at td.text-nowrap
-                                skuCell = row.querySelector('td.text-nowrap');
+                                // Other tables (including sidepanel): SKU cell is at td.text-nowrap or td[data-label="מק״ט"]
+                                skuCell = row.querySelector('td.text-nowrap, td[data-label="מק״ט"]');
                             }
                             if (!skuCell) return;
 
                             // Check if SKU cell is empty or has minimal content
                             const skuContent = skuCell.textContent.trim();
                             const hasSkuElement = skuCell.querySelector('input, span, strong');
+                            const barcodeElement = skuCell.querySelector('.tampermonkey-barcode-bdi');
 
                             // Skip if already processed
                             if (isElementProcessed(skuCell)) return;
 
-                            if ((skuContent === '' || skuContent.length < 3) && !hasSkuElement) {
+                            if ((skuContent === '' || skuContent.length < 3) && (!hasSkuElement || barcodeElement)) {
                                 // Try to find barcode by name
                                 const barcode = findBarcode(null, name);
                                 if (barcode) {
-                                    // Create a text element to display the barcode
-                                    const barcodeSpan = document.createElement('span');
-                                    barcodeSpan.textContent = barcode;
-                                    barcodeSpan.className = 'barcode-highlight';
-                                    barcodeSpan.title = `הוחלף אוטומטית לפי שם. מקורי: לא ידוע`;
-                                    barcodeSpan.style.cssText = `
-                                        color: #006400 !important;
-                                        font-weight: bold !important;
-                                        cursor: help !important;
-                                    `;
+                                    // Check if there's a specific barcode element to update (sidepanel case)
+                                    if (barcodeElement) {
+                                        // Update the existing barcode element in sidepanel
+                                        barcodeElement.innerHTML = `<span class="barcode-highlight" title="הוחלף אוטומטית לפי שם. מקורי: לא ידוע" style="color: rgb(0, 100, 0) !important; font-weight: bold !important; cursor: help !important;">${barcode}</span>`;
+                                    } else {
+                                        // Create a text element to display the barcode
+                                        const barcodeSpan = document.createElement('span');
+                                        barcodeSpan.textContent = barcode;
+                                        barcodeSpan.className = 'barcode-highlight';
+                                        barcodeSpan.title = `הוחלף אוטומטית לפי שם. מקורי: לא ידוע`;
+                                        barcodeSpan.style.cssText = `
+                                            color: #006400 !important;
+                                            font-weight: bold !important;
+                                            cursor: help !important;
+                                        `;
 
-                                    // Clear the cell and add the barcode
-                                    skuCell.innerHTML = '';
-                                    skuCell.appendChild(barcodeSpan);
+                                        // Clear the cell and add the barcode
+                                        skuCell.innerHTML = '';
+                                        skuCell.appendChild(barcodeSpan);
+                                        
+                                        // Add copy icon for newly created barcode
+                                        const barcodeCopyIcon = createCopyIcon(barcode);
+                                        barcodeCopyIcon.style.marginLeft = '4px';
+                                        barcodeCopyIcon.style.marginRight = '0px';
+                                        skuCell.appendChild(barcodeCopyIcon);
+                                    }
+                                    
                                     markElementAsProcessed(skuCell);
                                 }
                             }
@@ -2696,6 +2740,20 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
             // Remove any inline background color from the element itself to let CSS handle it
             el.style.backgroundColor = '';
+            
+            // Add copy icon for dynamically replaced barcodes (if not already present)
+            if (el.tagName !== 'INPUT' && parentTd && !parentTd.querySelector('i.fa-clone')) {
+                const barcodeCopyIcon = createCopyIcon(barcode);
+                barcodeCopyIcon.style.marginLeft = '4px';
+                barcodeCopyIcon.style.marginRight = '0px';
+                
+                // Insert the copy icon after the barcode element
+                if (el.nextSibling) {
+                    parentTd.insertBefore(barcodeCopyIcon, el.nextSibling);
+                } else {
+                    parentTd.appendChild(barcodeCopyIcon);
+                }
+            }
         } catch (error) {
             console.warn(`[${SCRIPT_NAME}] Failed to process barcode element:`, error);
             // Continue without failing the entire process
@@ -2887,8 +2945,15 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                                     }
                                 }
 
-                                const imageMatch = findImageMatch(sku, name);
+                                // Try to find image match - first with original SKU, then with replaced barcode
+                                let imageMatch = findImageMatch(sku, name);
                                 const barcodeMatch = findBarcode(sku, name);
+                                
+                                // If no image found with original SKU, try with the barcode
+                                if (!imageMatch && barcodeMatch) {
+                                    imageMatch = findImageMatch(barcodeMatch, name);
+                                }
+                                
                                 allItems.push({
                                     name,
                                     sku,
@@ -3021,21 +3086,29 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                         minimizedIconsContainer.className = 'preview-minimized-icons';
                         minimizedIconsContainer.style.cssText = 'display: flex; gap: 8px; margin-top: 15px;';
 
-                        // Create calculator icon button
-                        const calculatorButton = document.createElement('button');
-                        calculatorButton.className = 'btn btn-sm btn-icon btn-light-primary preview-icon-btn calculator-btn';
-                        calculatorButton.innerHTML = '<i class="fa-light fa-calculator"></i>';
-                        calculatorButton.title = 'סה"כ הזמנה';
-                        calculatorButton.style.cssText = 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;';
-
-                        // Add click handler for calculator icon
-                        calculatorButton.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            togglePreviewSection(calculatorButton, 'calculator');
+                        // Check if there are items with prices first
+                        const itemsWithPrice = allItems.filter(item => {
+                            const price = parseFloat(item.price);
+                            return item.price && !isNaN(price) && price > 0;
                         });
 
-                        minimizedIconsContainer.appendChild(calculatorButton);
+                        // Only create calculator icon button if there are items with prices
+                        if (itemsWithPrice.length > 0) {
+                            const calculatorButton = document.createElement('button');
+                            calculatorButton.className = 'btn btn-sm btn-icon btn-light-primary preview-icon-btn calculator-btn';
+                            calculatorButton.innerHTML = '<i class="fa-light fa-calculator"></i>';
+                            calculatorButton.title = 'סה"כ הזמנה';
+                            calculatorButton.style.cssText = 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;';
+
+                            // Add click handler for calculator icon
+                            calculatorButton.addEventListener('click', (e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                togglePreviewSection(calculatorButton, 'calculator');
+                            });
+
+                            minimizedIconsContainer.appendChild(calculatorButton);
+                        }
                         
                         // Only create sticky note button if there are notes
                         if (notesText && notesText.trim()) {
@@ -3054,7 +3127,10 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                             minimizedIconsContainer.appendChild(stickyNoteButton);
                         }
                         
-                        newCell.appendChild(minimizedIconsContainer);
+                        // Only append the icons container if it has any buttons
+                        if (minimizedIconsContainer.children.length > 0) {
+                            newCell.appendChild(minimizedIconsContainer);
+                        }
 
                         // Append sticky note section after items and icons
                         if (stickyNoteSection) {
@@ -3062,10 +3138,6 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                         }
 
                         // הוסף סיכום מחירים
-                        const itemsWithPrice = allItems.filter(item => {
-                            const price = parseFloat(item.price);
-                            return item.price && !isNaN(price) && price > 0;
-                        });
                         if (itemsWithPrice.length > 0) {
                             // חשב סה"כ הזמנה לפי הכמות השנייה (המלוקטת) או הראשונה אם אין שנייה
                             const totalPrice = itemsWithPrice.reduce((sum, item) => {
@@ -3320,8 +3392,68 @@ function injectWhatsAppButtons() {
 
 // ---< Global Styles >---
 
-   function injectGlobalStyles() {
-    try {
+function initializeSidePanelResizeObserver() {
+  try {
+    (function () {
+      // CONFIG
+      const PANEL_SELECTOR = '.offcanvas.offcanvas-right.offcanvas-custom.resizable';
+      const GAP_BUFFER_PX = 16; // small safety margin for margins/borders/shadows
+
+      const root = document.documentElement;
+
+      function measurePanelWidth() {
+        // Try the specific selector first
+        let panel = document.querySelector(PANEL_SELECTOR);
+        
+        // If not found, try finding via desktop-map-container (fallback)
+        if (!panel) {
+          const container = document.getElementById('desktop-map-container');
+          if (container) {
+            panel = container.closest('.offcanvas') || container;
+          }
+        }
+        
+        if (!panel) return 0;
+        
+        const rect = panel.getBoundingClientRect();
+        
+        // Check if panel is actually visible and has dimensions
+        if (rect.width <= 0 || rect.height <= 0) return 0;
+        
+        return Math.max(0, Math.round(rect.width)); // integer px
+      }
+
+      function applyGapVars() {
+        const gap = measurePanelWidth();
+        root.style.setProperty('--map-gap', `${gap}px`);
+        root.style.setProperty('--map-gap-buffered', `${gap + GAP_BUFFER_PX}px`);
+      }
+
+      // Initial apply
+      applyGapVars();
+
+      // Re-apply on window resize
+      window.addEventListener('resize', applyGapVars, { passive: true });
+
+      // Re-apply on panel resize (live drag)
+      const panel = document.querySelector(PANEL_SELECTOR) || 
+                   document.getElementById('desktop-map-container')?.closest('.offcanvas');
+      if (panel) {
+        const ro = new ResizeObserver(() => applyGapVars());
+        ro.observe(panel);
+      }
+
+      // Optional: if the preview rows are injected later, re-apply when they appear
+      const mo = new MutationObserver(() => applyGapVars());
+      mo.observe(document.body, { childList: true, subtree: true });
+    })();
+  } catch (err) {
+    console.error('[Toolbox] Error initializing side panel ResizeObserver:', err);
+  }
+}
+
+function injectGlobalStyles() {
+        try {
         if (document.getElementById('tampermonkey-styles')) return;
     const css = `
 
@@ -3659,12 +3791,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
         padding: 12px;
     }
     
-    .gallery-product-link-bottom {
-        padding: 4px;
-        font-size: 14px;
-        width: 32px;
-        height: 32px;
-    }
+
 }
 
 .tampermonkey-picked-none {
@@ -3710,6 +3837,12 @@ td.copy-enabled {
 
 td.copy-enabled:hover {
     background-color: #F5FAFF !important;
+}
+
+/* Prevent blue hover on quantity/לוקט cells even if copy-enabled is accidentally added */
+td.copy-enabled[data-label="כמות / לוקט"]:hover,
+td.copy-enabled[data-label="כמות / לוקט"]:active {
+    background-color: transparent !important;
 }
 
 td.copy-enabled.cell-copied {
@@ -3887,21 +4020,84 @@ td.copy-enabled.cell-copied {
     flex-shrink: 0;
 }
 
+/* Product name link styles for tables and gallery */
+td[data-label="שם"] a,
+.gallery-product-name a {
+    text-decoration: none;
+}
+
+td[data-label="שם"] a:hover,
+.gallery-product-name a:hover {
+    text-decoration: underline;
+}
+
+.fa-light.fa-clone,
+.fa-light.fa-check {
+    font-size: 0.9em;
+    vertical-align: middle;
+    transition: color 0.2s ease;
+}
+
+/* Ensure copy icons are positioned correctly for tooltips */
+.fa-light.fa-clone,
+.fa-light.fa-check {
+    position: relative;
+}
+
+/* Copy icons positioning - inline with text */
+.copy-icon-left {
+    display: inline !important;
+    vertical-align: middle !important;
+}
+
+/* Simple positioning for barcode cells - keep natural table flow */
+td[data-label="מק״ט"] {
+    white-space: nowrap !important;
+}
+
+td[data-label="מק״ט"] .fa-light.fa-clone,
+td[data-label="מק״ט"] .fa-light.fa-check {
+    margin-left: 4px !important;
+    margin-right: 0px !important;
+    font-size: 0.85em;
+}
+
+/* Simple positioning for product name cells - keep natural table flow */
+td[data-label="שם"] {
+    text-align: right !important;
+}
+
+td[data-label="שם"] .fa-light.fa-clone,
+td[data-label="שם"] .fa-light.fa-check {
+    float: left !important; /* Float to the left (end of RTL text) */
+    margin-left: 0px !important;
+    margin-right: 4px !important;
+    font-size: 0.85em;
+}
+
+/* עטיפה אחידה לטקסט+אייקון, כמו בטבלה */
+.tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;unicode-bidi:plaintext}
+.gallery-barcode-bdi{direction:ltr;unicode-bidi:plaintext}
+.gallery-name-bdi{direction:auto;unicode-bidi:plaintext}
+.gallery-product-name .fa-light.fa-clone{font-size:.85em;cursor:pointer;color:#3699ff}
+.gallery-product-info .fa-light.fa-clone{margin-left:4px;margin-right:0;cursor:pointer;color:#3699ff}
+.gallery-product-name .fa-light.fa-clone:hover{color:#0073e9}
+.gallery-product-info .fa-light.fa-clone:hover{color:#0073e9}
+
+/* Gallery SKU line: תן לכיווניות להיגזר מהתוכן; נבודד את הספרות עם BDI */
 .gallery-product-info {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 20px;
+    text-align: center;
+    position: relative !important;
     margin: 10px 0;
     padding: 4px 8px;
     background: transparent;
     color: white;
-    text-align: center;
-    position: relative;
-    z-index: 10;
-    box-sizing: border-box;
-    border-radius: 8px;
-    flex-shrink: 0;
+}
+
+.gallery-product-info .fa-light.fa-clone,
+.gallery-product-info .fa-light.fa-check {
+    margin-left: 4px !important;
+    margin-right: 0px !important;
 }
 
 .gallery-sku, .gallery-price {
@@ -3937,54 +4133,13 @@ td.copy-enabled.cell-copied {
     transform: scale(1.1);
 }
 
-/* New product link in bottom-left corner */
-.gallery-product-link-bottom {
-    position: absolute;
-    background: rgba(0, 0, 0, 0.3);
-    color: white;
-    padding: 6px;
-    border-radius: 50%;
-    text-decoration: none;
-    z-index: 10;
-    font-size: 16px;
-    font-weight: bold;
-    opacity: 0.3;
-    transition: opacity 0.2s, background 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    box-sizing: border-box;
-    pointer-events: auto;
-    cursor: pointer;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    touch-action: manipulation;
-    line-height: 1;
-}
-
-.gallery-product-link-bottom i {
-    font-size: 14px;
-    line-height: 1;
-}
-
-.gallery-product-link-bottom:hover {
-    opacity: 0.9;
-    background: rgba(0, 0, 0, 0.6);
-    transform: scale(1.05);
-}
+/* Gallery product link removed - using link in title instead */
 
 .gallery-product-link i {
     font-size: 16px;
 }
 
-.gallery-product-link-bottom i {
-    font-size: 14px;
-    line-height: 1;
-}
+
 
         .gallery-close, .gallery-nav {
             position:absolute;background:rgba(0,0,0,.3);color:#fff;border:none;
@@ -4375,6 +4530,47 @@ tr[id^="preview-for-"] *:focus {
     outline: none !important;
     box-shadow: none !important;
 }
+
+/* Responsive Preview Grid Layout - Targeted padding approach */
+:root { 
+    --map-gap: 0px; 
+}
+
+/* Preview flex-wrap container (the div with display:flex inside the preview row) */
+tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+  /* Constrain container width by the live panel width */
+  max-width: calc(100% - var(--map-gap, 0px)) !important;
+
+  /* Push content away from the map edge (left) with a small buffer */
+  padding-left: var(--map-gap-buffered, 0px) !important;
+
+  /* Ensure padding is part of the width calc */
+  box-sizing: border-box !important;
+
+  /* Ensure natural multi-row wrapping */
+  flex-wrap: wrap !important;
+  align-content: flex-start !important;
+  gap: 8px !important; /* use container gap instead of external margins when possible */
+}
+
+/* Individual item cards inside the preview (keeps predictable wrapping) */
+tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+  /* Adjust 340px if you're using a different card width */
+  flex: 0 1 340px !important;
+  max-width: 340px !important;
+}
+
+/* 2-line text clamp for product titles in preview cards */
+tr[id^="preview-for-"] .font-weight-bold{
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    line-height: 1.2em;
+    max-height: calc(1.2em * 2);
+}
   `;
 
   GM_addStyle(css);
@@ -4406,7 +4602,40 @@ function prepareCopyElements() {
             strong.barcode-highlight-gallery,
             .font-weight-bold,
             .gallery-product-name
-        `).forEach(enableCopyStyling);
+        `).forEach(el => {
+            // Skip adding copy-enabled to quantity/לוקט cells to prevent flicker
+            if (el.getAttribute('data-label') === 'כמות / לוקט') {
+                return;
+            }
+            // Skip adding copy-enabled to name cells in store visits table
+            if (el.getAttribute('data-label') === 'שם') {
+                const table = el.closest('table');
+                if (table && (table.id === 'operator-store-visits-table' || 
+                              table.closest('#operator-store-visits-table_wrapper'))) {
+                    return; // Skip name cells in store visits table
+                }
+                // Skip adding copy-enabled to name cells that already have links with copy icons
+                if (el.querySelector('a') || el.querySelector('i.fa-clone')) {
+                    return;
+                }
+            }
+            // Skip adding copy-enabled to gallery product names that have links with copy icons
+            if (el.classList.contains('gallery-product-name') && (el.querySelector('a') || el.querySelector('i.fa-clone'))) {
+                return;
+            }
+            // Skip adding copy-enabled to barcode cells that already have copy icons
+            if (el.getAttribute('data-label') === 'מק״ט' && el.querySelector('i.fa-clone')) {
+                return;
+            }
+            // Skip adding copy-enabled to barcode elements that already have copy icons nearby
+            if (el.classList.contains('barcode-highlight') || el.classList.contains('barcode-highlight-gallery')) {
+                const parentCell = el.closest('td');
+                if (parentCell && parentCell.querySelector('i.fa-clone')) {
+                    return;
+                }
+            }
+            enableCopyStyling(el);
+        });
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error preparing copy elements:`, error);
     }
@@ -4866,6 +5095,17 @@ function prepareCopyElements() {
             if (editTaskModal && !editTaskModal.hasAttribute('data-columns-hidden-observer-active')) {
                 const observerConfig = { childList: true, subtree: true };
                 const modalObserver = new MutationObserver((mutationsList, observer) => {
+                    // 1) skip while copy feedback is active
+                    if (window._tmCopying) return;
+
+                    // 2) ignore mutations coming from the copy icon area
+                    if (mutationsList.some(m => {
+                      const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+                      return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+                    })) {
+                      return;
+                    }
+
                     clearTimeout(modalObserver.debounceTimer);
                     modalObserver.debounceTimer = setTimeout(() => {
                         const modalForm = editTaskModal.querySelector('form[id^="edit_task_"]');
@@ -4899,6 +5139,17 @@ function prepareCopyElements() {
                     debouncedHighlightReadyRows();
                 }, 100);
                 const panelObserver = new MutationObserver((mutations) => {
+                    // 1) skip while copy feedback is active
+                    if (window._tmCopying) return;
+
+                    // 2) ignore mutations coming from the copy icon area
+                    if (mutations.some(m => {
+                      const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+                      return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+                    })) {
+                      return;
+                    }
+
                     clearTimeout(panelObserver.debounceTimer);
                     panelObserver.debounceTimer = setTimeout(() => {
                         highlightMerlogPanelView();
@@ -4927,6 +5178,17 @@ function prepareCopyElements() {
             let readyHighlightTimeout = null;
             let tableObserverActive = false;
             const tableObserver = new MutationObserver((mutations) => {
+                // 1) skip while copy feedback is active
+                if (window._tmCopying) return;
+
+                // 2) ignore mutations coming from the copy icon area
+                if (mutations.some(m => {
+                  const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+                  return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+                })) {
+                  return;
+                }
+
                 if (tableObserverActive) return; // Prevent multiple simultaneous calls
                 
                 let shouldCheckReady = false;
@@ -5055,15 +5317,92 @@ async function initialize() {
 
     injectGlobalStyles();
 
+    // Initialize ResizeObserver for side panel width tracking
+    initializeSidePanelResizeObserver();
+
     await Promise.all([ getProductData(), loadBarcodeCsv() ]);
 
     runMainLogic(); // ← הרצת ההזרקות הראשוניות
+
+  prepareCopyElements();
+
+  highlightPickQuantities();
+  
+  // Add clickable links to all tables (including non-visit-row tables)
+  addClickableLinksToAllTables();
+
+  // === Apply Copy Icon RTL/LTR Fix ===
+  requestAnimationFrame(() => applyCopyIconFix());
+
+  // Set up MutationObserver to keep copy icons fixed on dynamic updates
+  (function observeTableForCopyIconFix(){
+    const tables = document.querySelectorAll('table[data-columns-tagged="true"]');
+    if (tables.length === 0) {
+      // If no tagged tables found yet, wait and try again
+      setTimeout(() => {
+        const retryTables = document.querySelectorAll('table[data-columns-tagged="true"]');
+        retryTables.forEach(table => {
+          if (table && table.nodeType === Node.ELEMENT_NODE) {
+            const mo = new MutationObserver((muts) => {
+              // 1) skip while copy feedback is active
+              if (window._tmCopying) return;
+
+              // 2) ignore mutations coming from the copy icon area
+              if (muts.some(m => {
+                const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+                return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+              })) {
+                return;
+              }
+
+              // Any row/cell/text change -> re-apply (idempotent)
+              scheduleHeavy(() => applyCopyIconFix());
+            });
+            mo.observe(table, {childList:true, subtree:true});
+          }
+        });
+      }, 1000);
+      return;
+    }
+    
+    tables.forEach(table => {
+      if (table && table.nodeType === Node.ELEMENT_NODE) {
+        const mo = new MutationObserver((muts) => {
+          // 1) skip while copy feedback is active
+          if (window._tmCopying) return;
+
+          // 2) ignore mutations coming from the copy icon area
+          if (muts.some(m => {
+            const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+            return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+          })) {
+            return;
+          }
+
+          // Any row/cell/text change -> re-apply (idempotent)
+          scheduleHeavy(() => applyCopyIconFix());
+        });
+        mo.observe(table, {childList:true, subtree:true});
+      }
+    });
+  })();
 
   // ◂ הגנה פשוטה - מונע הסרת PREVIEW לחלוטין
   const table = document.querySelector('#operator-store-visits-table');
   if (table) {
     let tableObserverTimeout = null;
     const tableObserver = new MutationObserver((mutations) => {
+      // 1) skip while copy feedback is active
+      if (window._tmCopying) return;
+
+      // 2) ignore mutations coming from the copy icon area
+      if (mutations.some(m => {
+        const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+        return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+      })) {
+        return;
+      }
+
       // השתמש ב-debounce כדי למנוע לולאה אינסופית
       clearTimeout(tableObserverTimeout);
       tableObserverTimeout = setTimeout(() => {
@@ -5114,13 +5453,57 @@ async function initialize() {
 
   // ◂ המשך הקוד שלך – MutationObserver וכו׳
   const observer = new MutationObserver((mutationsList) => {
+    // 1) skip while copy feedback is active
+    if (window._tmCopying) return;
+
+    // 2) ignore mutations coming from the copy icon area
+    if (mutationsList.some(m => {
+      const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+      return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+    })) {
+      return;
+    }
+
     clearTimeout(observer.debounceTimer);
     observer.debounceTimer = setTimeout(() => {
       if (!window.runMainLogicExecuting) {
         runMainLogic();
       }
       prepareCopyElements();
-      highlightPickQuantities();
+      
+      // Add clickable links to all tables (including non-visit-row tables)
+      addClickableLinksToAllTables();
+
+      // Apply Copy Icon RTL/LTR Fix on DOM changes
+      applyCopyIconFix();
+      
+      // Only trigger highlightPickQuantities if relevant nodes changed
+      const hasQuantityChanges = mutationsList.some(mutation => {
+        if (mutation.type === 'childList') {
+          // Check added nodes
+          for (let node of mutation.addedNodes) {
+            if (node.nodeType === Node.ELEMENT_NODE) {
+              if (node.querySelector && node.querySelector('td[data-label="כמות / לוקט"]')) {
+                return true;
+              }
+              if (node.matches && node.matches('td[data-label="כמות / לוקט"]')) {
+                return true;
+              }
+            }
+          }
+        }
+        // Check if the changed node itself is a quantity cell
+        if (mutation.target && mutation.target.getAttribute && 
+            mutation.target.getAttribute('data-label') === 'כמות / לוקט') {
+          return true;
+        }
+        return false;
+      });
+      
+      if (hasQuantityChanges) {
+        highlightPickQuantities();
+      }
+      
       // NEW: Also replace barcodes for any DOM changes
       if (settings && settings.replaceBarcodes) {
         replaceBarcodesInViews();
@@ -5179,6 +5562,258 @@ document.body.addEventListener('click', function (e) {
     }
 }, { passive: true });
 
+// Inject minimal CSS once (if your project has a CSS pipeline, העבר לשם)
+(function injectCopyCSS(){
+  if (document.getElementById('tm-copy-css')) return;
+  const style = document.createElement('style');
+  style.id = 'tm-copy-css';
+  style.textContent = `
+    .tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;unicode-bidi:plaintext}
+    .tampermonkey-barcode-bdi{direction:ltr;unicode-bidi:plaintext}
+    .tampermonkey-name-bdi{direction:auto;unicode-bidi:plaintext}
+    .copy-icon{color:#3699ff;cursor:pointer;line-height:1;flex:0 0 auto}
+  `;
+  document.head.appendChild(style);
+})();
+
+// === Core Copy Icon Fix Function ===
+function applyCopyIconFix(root = document){
+  const rows = root.querySelectorAll('table[data-columns-tagged="true"] tbody tr');
+  rows.forEach(tr => {
+    fixBarcodeCell(tr);
+    fixNameCell(tr);
+  });
+
+  function ensureWrap(td){
+    let wrap = td.querySelector(':scope > .tampermonkey-copy-wrap');
+    if (!wrap){
+      wrap = document.createElement('span');
+      wrap.className = 'tampermonkey-copy-wrap';
+      while (td.firstChild) wrap.appendChild(td.firstChild);
+      td.appendChild(wrap);
+    }
+    return wrap;
+  }
+
+  function ensureCopyIcon(wrap, getText){
+    let icon = wrap.querySelector(':scope > i.fa-clone');
+    const text = (getText?.() || '').trim();
+    
+    // If no text content, hide or remove the icon
+    if (!text) {
+      if (icon) {
+        icon.style.display = 'none';
+      }
+      return null;
+    }
+    
+    if (!icon){
+      icon = document.createElement('i');
+      icon.className = 'fa-light fa-clone copy-icon';
+      icon.title = 'העתק';
+      icon.addEventListener('click', withCopying((e) => {
+        e.preventDefault(); e.stopPropagation();
+        const t = (getText?.() || '').trim();
+        if (!t) return;
+        navigator.clipboard.writeText(t).then(()=> tmToast('הועתק!', icon)).catch(console.warn);
+      }));
+    }else{
+      icon.classList.add('copy-icon');
+      icon.style.display = ''; // Show the icon if it was hidden
+    }
+    // וידוא שהאיקון בסוף הוויזואלי (מיד אחרי הטקסט/BDI)
+    if (wrap.lastChild !== icon) wrap.appendChild(icon);
+    return icon;
+  }
+
+  function fixBarcodeCell(tr){
+    const td = tr.querySelector('td[data-label="מק״ט"]');
+    if (!td) return;
+    const wrap = ensureWrap(td);
+
+    // Find current value element
+    let valEl = wrap.querySelector('.barcode-highlight') ||
+                wrap.querySelector('span, b, strong') ||
+                Array.from(wrap.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
+
+    if (!valEl) return;
+
+    // Ensure BDI LTR around the barcode
+    let bdi = wrap.querySelector(':scope > .tampermonkey-barcode-bdi');
+    if (!bdi){
+      bdi = document.createElement('bdi');
+      bdi.className = 'tampermonkey-barcode-bdi';
+      // Move the value node inside the BDI
+      bdi.appendChild(valEl.parentNode ? valEl.parentNode.removeChild(valEl) : valEl);
+      // Insert BDI as first child
+      if (wrap.firstChild) wrap.insertBefore(bdi, wrap.firstChild); else wrap.appendChild(bdi);
+    }
+
+    // Check if barcode has content before showing icon
+    const barcodeText = bdi.textContent.trim();
+    if (barcodeText) {
+      // Ensure icon comes immediately after the BDI (visually at the end)
+      ensureCopyIcon(wrap, () => bdi.textContent);
+    } else {
+      // Hide icon if no barcode content
+      ensureCopyIcon(wrap, () => '');
+    }
+  }
+
+  function fixNameCell(tr){
+    const td = tr.querySelector('td[data-label="שם"]');
+    if (!td) return;
+    
+    // Check if this is the store visits table - if so, don't add copy icon for name cells
+    const table = tr.closest('table');
+    if (table && (table.id === 'operator-store-visits-table' || 
+                  table.closest('#operator-store-visits-table_wrapper'))) {
+      return; // Skip adding copy icon for name cells in store visits table
+    }
+    
+    const wrap = ensureWrap(td);
+
+    // Prefer <a>, else first child/text
+    let nameNode = wrap.querySelector(':scope > a') || wrap.firstChild;
+    if (!nameNode) return;
+
+    // Ensure BDI AUTO around the name/link for mixed RTL/LTR
+    let bdi = wrap.querySelector(':scope > .tampermonkey-name-bdi');
+    if (!bdi){
+      bdi = document.createElement('bdi');
+      bdi.className = 'tampermonkey-name-bdi';
+      bdi.dir = 'auto';
+      bdi.appendChild(nameNode.parentNode ? nameNode.parentNode.removeChild(nameNode) : nameNode);
+      if (wrap.firstChild) wrap.insertBefore(bdi, wrap.firstChild); else wrap.appendChild(bdi);
+    }
+
+    // Check if name has content before showing icon
+    const nameText = (bdi.innerText || bdi.textContent || '').trim();
+    if (nameText) {
+      // Ensure icon right after the BDI (i.e., at the visual end of the name)
+      ensureCopyIcon(wrap, () => bdi.innerText || bdi.textContent);
+    } else {
+      // Hide icon if no name content
+      ensureCopyIcon(wrap, () => '');
+    }
+  }
+}
+
+function createCopyIcon(textToCopy, { title='העתק' } = {}){
+  const text = (textToCopy || '').trim();
+  
+  // Don't create icon if no text content
+  if (!text) {
+    const hiddenIcon = document.createElement('i');
+    hiddenIcon.className = 'fa-light fa-clone';
+    hiddenIcon.style.display = 'none';
+    return hiddenIcon;
+  }
+  
+  const i = document.createElement('i');
+  i.className = 'fa-light fa-clone';
+  i.title = title;
+  i.addEventListener('click', withCopying((e) => {
+    e.preventDefault(); e.stopPropagation();
+    const text = (textToCopy || '').trim();
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(()=> tmToast('הועתק!', i)).catch(console.warn);
+  }));
+  return i;
+}
+
+function addClickableLinksToAllTables() {
+    try {
+        // Find all tables with data-label="שם" cells (not just visit-row tables)
+        const allTables = document.querySelectorAll('table.table.table-hover[data-columns-tagged="true"]');
+        
+        allTables.forEach(table => {
+            // Skip store visits table - don't add copy icons for names there
+            if (table.id === 'operator-store-visits-table' || 
+                table.closest('#operator-store-visits-table_wrapper')) {
+                return;
+            }
+            
+            const rows = table.querySelectorAll('tbody tr:not([data-links-processed])');
+            
+            rows.forEach(row => {
+                // Find name cell by data-label
+                const nameCell = row.querySelector('td[data-label="שם"]');
+                if (!nameCell || nameCell.querySelector('a') || nameCell.querySelector('i.fa-clone')) return; // Skip if already processed
+                
+                // Find SKU cell to get product info
+                const skuCell = row.querySelector('td[data-label="מק״ט"]');
+                if (!skuCell) return;
+                
+                const productName = nameCell.textContent.trim();
+                const sku = (skuCell.dataset.originalSku || skuCell.textContent || '').trim();
+                
+                if (!productName || !sku) return;
+                
+                // Check if there's an Anipet button in this cell or nearby
+                const hasAnipetButton = nameCell.querySelector('.anipet-alternatives-btn') ||
+                                       nameCell.closest('tr').querySelector('.anipet-alternatives-btn');
+                
+                // Only process if there's no Anipet button
+                if (!hasAnipetButton) {
+                    // Try to find a match for this product
+                    const match = findImageMatch(sku, productName);
+                    
+                    if (match && match.link) {
+                        // Clear the cell content
+                        nameCell.innerHTML = '';
+                        
+                        // Create copy icon with enhanced feedback
+                        const copyIcon = createCopyIcon(productName);
+                        
+                        // Create link
+                        const link = document.createElement('a');
+                        link.href = match.link;
+                        link.target = '_blank';
+                        link.rel = 'noopener noreferrer';
+                        link.textContent = productName;
+                        
+                        // Append link first, then copy icon (icon will float left)
+                        nameCell.appendChild(link);
+                        nameCell.appendChild(copyIcon);
+                    } else {
+                        // Even if no link, add copy icon for the product name
+                        const originalContent = nameCell.innerHTML;
+                        nameCell.innerHTML = '';
+                        
+                        // Create copy icon with enhanced feedback
+                        const copyIcon = createCopyIcon(productName);
+                        
+                        // Append text first, then copy icon (icon will float left)
+                        nameCell.appendChild(document.createTextNode(productName));
+                        nameCell.appendChild(copyIcon);
+                    }
+                }
+                
+                // Add copy icon to barcode cell if it has barcode-highlight
+                const skuCellBarcode = skuCell.querySelector('.barcode-highlight, span.barcode-highlight');
+                if (skuCellBarcode && !skuCell.querySelector('i.fa-clone')) {
+                    const barcodeText = skuCellBarcode.textContent.trim();
+                    if (barcodeText) {
+                        // Create copy icon for barcode
+                        const barcodeCopyIcon = createCopyIcon(barcodeText);
+                        barcodeCopyIcon.style.marginLeft = '4px';
+                        barcodeCopyIcon.style.marginRight = '0px';
+                        
+                        // Insert the copy icon after the barcode
+                        skuCellBarcode.parentNode.insertBefore(barcodeCopyIcon, skuCellBarcode.nextSibling);
+                    }
+                }
+                
+                // Mark row as processed
+                row.setAttribute('data-links-processed', 'true');
+            });
+        });
+    } catch (error) {
+        console.error(`[${SCRIPT_NAME}] Error in addClickableLinksToAllTables:`, error);
+    }
+}
+
 function copyWithFeedback(element, text) {
     try {
         if (!element || !text) return;
@@ -5231,7 +5866,18 @@ window.highlightReadyRows = highlightReadyRows;
 window.debouncedHighlightReadyRows = debouncedHighlightReadyRows;
 
 // פתרון: מאזין לפתיחה של modal ואז מוסיף תמונות לאחר שה-Enhanced סיים
-const enhancedSafeObserver = new MutationObserver(() => {
+const enhancedSafeObserver = new MutationObserver((mutations) => {
+    // 1) skip while copy feedback is active
+    if (window._tmCopying) return;
+
+    // 2) ignore mutations coming from the copy icon area
+    if (mutations.some(m => {
+      const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+      return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+    })) {
+      return;
+    }
+
     const modal = document.querySelector('#order-items-edit-modal.show');
     if (!modal) return;
 
@@ -5246,7 +5892,18 @@ const enhancedSafeObserver = new MutationObserver(() => {
             clearInterval(interval);
 
             // ✅ Start observing tbody for changes — to reinject if rows are replaced
-            const observer = new MutationObserver(() => {
+            const observer = new MutationObserver((mutations) => {
+                // 1) skip while copy feedback is active
+                if (window._tmCopying) return;
+
+                // 2) ignore mutations coming from the copy icon area
+                if (mutations.some(m => {
+                  const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+                  return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+                })) {
+                  return;
+                }
+
                 injectImagesAndLinks(modal);
                 injectImagesInRegularTables(modal);
                 injectImagesInOrderItemRows(modal);
@@ -5277,7 +5934,18 @@ window.addEventListener('enhanced-modal-ready', () => {
             clearInterval(interval);
 
             // ✅ Start observing tbody for changes — to reinject if rows are replaced
-            const observer = new MutationObserver(() => {
+            const observer = new MutationObserver((mutations) => {
+                // 1) skip while copy feedback is active
+                if (window._tmCopying) return;
+
+                // 2) ignore mutations coming from the copy icon area
+                if (mutations.some(m => {
+                  const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+                  return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+                })) {
+                  return;
+                }
+
                 injectImagesAndLinks(modal);
                 injectImagesInRegularTables(modal);
                 injectImagesInOrderItemRows(modal);
@@ -5297,6 +5965,7 @@ window.dispatchEvent(new CustomEvent('toolbox-ready'));
 async function openPreviewForTask(taskId) {
     const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
     if (!row) {
+        console.log(`[${SCRIPT_NAME}] ❌ Row not found for task: ${taskId}`);
         return;
     }
 
@@ -5355,15 +6024,20 @@ async function openPreviewForTask(taskId) {
         }
 
         const productTable = findProductTableInScope(doc);
+
         if (productTable) {
             const headers = Array.from(productTable.querySelectorAll('thead th')).map(th => th.textContent.trim());
+
             // שיפור: זיהוי גמיש יותר של כותרות - מזהה גם וריאציות של הכותרות
             const skuIndex = headers.findIndex(h => h.includes('מק')),
                   nameIndex = headers.findIndex(h => h.includes('שם')),
                   quantityIndex = headers.findIndex(h => h.includes('כמות') || h.includes('לוקט')),
                   priceIndex = headers.findIndex(h => h.includes('מחיר ליחידה'));
+
             if (skuIndex !== -1 && nameIndex !== -1 && quantityIndex !== -1) {
-                productTable.querySelectorAll('tbody tr').forEach(itemRow => {
+                const rows = productTable.querySelectorAll('tbody tr');
+
+                rows.forEach((itemRow, index) => {
                     const cells = itemRow.cells;
                     const name = cells[nameIndex].textContent.trim(),
                           sku = cells[skuIndex].textContent.trim(),
@@ -5379,7 +6053,17 @@ async function openPreviewForTask(taskId) {
                         }
                     }
 
-                    const imageMatch = findImageMatch(sku, name);
+                    // Try to find image match - first with original SKU, then with replaced barcode
+                    let imageMatch = findImageMatch(sku, name);
+                    
+                    // If no image found with original SKU, try with replaced barcode
+                    if (!imageMatch) {
+                        const replacedBarcode = findBarcode(sku, name);
+                        if (replacedBarcode && replacedBarcode !== sku) {
+                            imageMatch = findImageMatch(replacedBarcode, name);
+                        }
+                    }
+                    
                     const barcodeMatch = findBarcode(sku, name);
                     allItems.push({
                         name,
@@ -5392,6 +6076,7 @@ async function openPreviewForTask(taskId) {
                 });
             }
         }
+        
         const newRow = document.createElement('tr'); newRow.id = `preview-for-${taskId}`;
         if (isReady) {
             newRow.classList.add('ready-row-highlight');
@@ -5534,6 +6219,17 @@ function togglePreviewSection(button, sectionType) {
     }
 
     const observer = new MutationObserver((mutations) => {
+    // 1) skip while copy feedback is active
+    if (window._tmCopying) return;
+
+    // 2) ignore mutations coming from the copy icon area
+    if (mutations.some(m => {
+      const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+      return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+    })) {
+      return;
+    }
+
     // בדוק אם יש previews פתוחים ב-sessionStorage
     const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
     if (openPreviews.length === 0) {

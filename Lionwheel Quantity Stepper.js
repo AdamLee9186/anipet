@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.0.7
+// @version      2.0.8
 // @description  Touch-friendly quantity input with smart animation and accessibility
 // @author       Adam Lee
 // @license      MIT
@@ -23,7 +23,7 @@
 
   // Configuration
   const CONFIG = {
-    VERSION: '2.0.7',
+    VERSION: '2.0.8',
     MIN_VALUE: -999,
     MAX_VALUE: 999999,
     HOLD_DELAY: 400,
@@ -153,21 +153,21 @@
       transform: translateY(-1px) !important;
       box-shadow: 0 2px 6px rgba(0,0,0,.16) !important;
     }
-    .lwq-btn:active { 
-      transform: scale(0.95) translateY(1px) !important; 
-      background: #f6f6f6 !important; 
+    .lwq-btn:active {
+      transform: scale(0.95) translateY(1px) !important;
+      background: #f6f6f6 !important;
     }
     .lwq-disabled { opacity:.45; pointer-events:none; }
 
     .lwq-btn svg { width: 16px; height: 16px; }
-    
+
     /* Visual feedback for drag prevention */
     .lwq-btn.lwq-dragging {
       opacity: 0.6 !important;
       transform: scale(0.95) translateY(1px) !important;
       background: #f0f0f0 !important;
     }
-    
+
     /* Input feedback animations */
     .lwq-input.form-control {
       transition: transform 0.15s ease, background-color 0.3s ease, border-color 0.2s ease;
@@ -186,7 +186,7 @@
       50% { transform: scale(1.05); }
       100% { transform: scale(1); }
     }
-    
+
     /* Display wrapper for number animation */
     .lwq-display-wrapper {
       position: relative;
@@ -240,7 +240,7 @@
       51%  { transform: translateY(-150%); opacity: 0; }
       100% { transform: translateY(-50%); opacity: 1; }
     }
-    
+
     /* Prevent line breaks in quantity max indicators */
     .col-sm-4 .mx-1,
     .d-flex.align-items-center .mx-1 {
@@ -314,7 +314,7 @@
       console.warn('[Lionwheel Stepper] Input is not an HTMLInputElement, skipping enhancement');
       return;
     }
-    
+
     if (!isQtyInput(input) || already(input) || input.readOnly) {
       return;
     }
@@ -336,7 +336,7 @@
     minus.setAttribute('role', 'button');
     minus.setAttribute('tabindex', '0');
     minus.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg>`;
-    
+
     const plus = document.createElement('button');
     plus.type = 'button';
     plus.className = 'lwq-btn lwq-plus';
@@ -344,7 +344,7 @@
     plus.setAttribute('role', 'button');
     plus.setAttribute('tabindex', '0');
     plus.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>`;
-    
+
     /* ensure buttons maintain touch-friendly size */
     [minus, plus].forEach(btn => {
       btn.style.width = '32px';
@@ -361,7 +361,7 @@
       console.warn('[Lionwheel Stepper] Input parent disconnected during enhancement');
       return;
     }
-    
+
     input.parentNode.insertBefore(row, input);
     row.append(minus, input, plus);
 
@@ -384,13 +384,13 @@
     const displayWrapper = document.createElement('div');
     displayWrapper.className = 'lwq-display-wrapper';
     displayWrapper.innerHTML = `<span class="lwq-display-value">${input.value || '0'}</span>`;
-    
+
     /* Replace input with wrapper and put input inside */
     if (!input.parentNode || !input.parentNode.isConnected) {
       console.warn('[Lionwheel Stepper] Input parent disconnected during wrapper creation');
       return;
     }
-    
+
     input.parentNode.insertBefore(displayWrapper, input);
     displayWrapper.appendChild(input);
 
@@ -398,7 +398,7 @@
     const displaySpan = displayWrapper.querySelector('.lwq-display-value');
     const syncDisplay = () => { if (displaySpan) displaySpan.textContent = input.value || '0'; };
     syncDisplay();
-    
+
     // Immediate sync and short early watch to catch late programmatic value sets
     const watchUntil = performance.now() + 1500;
     (function rafWatch() {
@@ -407,7 +407,7 @@
         requestAnimationFrame(rafWatch);
       }
     })();
-    
+
     // Add more event hooks to keep display in sync
     ['change','keyup','keydown','blur','focus','pointerdown'].forEach(ev => {
       input.addEventListener(ev, syncDisplay, { passive: true });
@@ -416,7 +416,7 @@
     /* responsive width - let flex handle the sizing */
     const isInModal = input.closest('.modal') !== null;
     const padding = isInModal ? '16px' : '8px';
-    
+
     input.style.minWidth = 'calc(6ch + 20px)';
     input.style.paddingInline = padding;
     input.style.flex = '1 1 auto';
@@ -448,22 +448,22 @@
       const cur = Number(input.value);
       let next = clamp(cur + steps * s, min, max);
       next = snapTo(next, s, min);
-      if (next !== cur) { 
+      if (next !== cur) {
                 // Apply vertical slide animation based on direction
         const oldValue = cur;
         const newValue = next;
-        
+
         // Update the display value and animate it
         const displaySpan = input.closest('.lwq-display-wrapper')?.querySelector('.lwq-display-value');
         if (displaySpan) {
           displaySpan.textContent = String(newValue);
-          
+
           // Add slide animation
           const slideClass = newValue > oldValue ? 'lwq-slide-up' : 'lwq-slide-down';
           displaySpan.classList.add(slideClass);
           setTimeout(() => displaySpan.classList.remove(slideClass), CONFIG.ANIMATION_DURATION);
         }
-        
+
         if (newValue > oldValue) {
           input.style.backgroundColor = '#d0f0d0';
           setTimeout(() => input.style.backgroundColor = '', CONFIG.ANIMATION_DURATION);
@@ -471,10 +471,10 @@
           input.style.backgroundColor = '#fce0e0';
           setTimeout(() => input.style.backgroundColor = '', CONFIG.ANIMATION_DURATION);
         }
-        
-        input.value = String(next); 
+
+        input.value = String(next);
         fire(input);
-        
+
         // Visual feedback
         input.classList.add('lwq-feedback');
         setTimeout(() => input.classList.remove('lwq-feedback'), CONFIG.ANIMATION_DURATION);
@@ -495,19 +495,19 @@
 
       const startHoldRepeat = () => {
         if (!CONFIG.ENABLE_HOLD_REPEAT) return;
-        
+
         // Initial delay before starting repeat
         holdTimer = setTimeout(() => {
           repeatIntervalIndex = 0;
           const repeat = () => {
             if (!isPressed || input.disabled || input.readOnly) return;
-            
+
             adjust(dir);
-            
+
             // Use next interval, or stay at the last one
-            const interval = CONFIG.REPEAT_INTERVALS[repeatIntervalIndex] || 
+            const interval = CONFIG.REPEAT_INTERVALS[repeatIntervalIndex] ||
                            CONFIG.REPEAT_INTERVALS[CONFIG.REPEAT_INTERVALS.length - 1];
-            
+
             repeatIntervalIndex++;
             repeatTimer = setTimeout(repeat, interval);
           };
@@ -536,11 +536,11 @@
         if (!navigator.maxTouchPoints || e.pointerType !== 'touch') {
           input.focus({ preventScroll: true });
         }
-        
+
         // Start hold-to-repeat timer
         startHoldRepeat();
       };
-      
+
       const move = e => {
         if (!isPressed || input.disabled || input.readOnly) return;
         const deltaX = Math.abs(e.clientX - startX);
@@ -551,15 +551,15 @@
           stopHoldRepeat(); // Stop repeat if dragging
         }
       };
-      
+
       const up = e => {
         if (!isPressed || input.disabled || input.readOnly) return;
         isPressed = false;
         btn.classList.remove('lwq-dragging');
-        
+
         // Stop hold-to-repeat
         stopHoldRepeat();
-        
+
         // Only trigger if it wasn't a drag and the pointer is still over the button
         if (!hasMoved && btn.contains(e.target)) {
           const now = Date.now();
@@ -601,15 +601,15 @@
       if (e.key === 'ArrowUp')   { e.preventDefault(); adjust(+1); }
       if (e.key === 'ArrowDown') { e.preventDefault(); adjust(-1); }
     });
-    
+
     // Note: 'input' event is already covered by the syncDisplay event listeners above
-    
+
     // Enhanced focus handling
     input.addEventListener('focus', () => {
       input.style.borderColor = '#007bff';
       input.style.boxShadow = '0 0 0 0.2rem rgba(0,123,255,.25)';
     });
-    
+
     input.addEventListener('blur', () => {
       input.style.borderColor = '';
       input.style.boxShadow = '';
@@ -626,9 +626,9 @@
     // Use requestAnimationFrame for better performance
     requestAnimationFrame(() => {
       const inputs = root.querySelectorAll('input[type="number"]');
-      inputs.forEach(el => { 
+      inputs.forEach(el => {
         if (isQtyInput(el)) {
-          enhance(el); 
+          enhance(el);
         }
       });
     });
@@ -638,9 +638,9 @@
     if (forceImmediate) {
       // Immediate scan without debouncing
       const inputs = root.querySelectorAll('input[type="number"]');
-      inputs.forEach(el => { 
+      inputs.forEach(el => {
         if (isQtyInput(el)) {
-          enhance(el); 
+          enhance(el);
         }
       });
     } else {
@@ -673,7 +673,7 @@
   const observer = new MutationObserver(muts => {
     let shouldScan = false;
     const inputsToEnhance = [];
-    
+
     for (const m of muts) {
       if (m.type === 'childList' && m.addedNodes.length > 0) {
         shouldScan = true;
@@ -683,14 +683,14 @@
         inputsToEnhance.push(m.target);
       }
     }
-    
+
     // Batch DOM queries using requestAnimationFrame
     if (inputsToEnhance.length > 0) {
       requestAnimationFrame(() => {
         inputsToEnhance.forEach(input => enhance(input));
       });
     }
-    
+
     if (shouldScan) {
       scan();
     }
@@ -699,11 +699,11 @@
   // Defer MutationObserver start until DOM is fully ready
   const startObserver = () => {
     safeExecute(() => {
-      observer.observe(document.documentElement, { 
-        childList: true, 
-        subtree: true, 
-        attributes: true, 
-        attributeFilter: ['type','name','id'] 
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['type','name','id']
       });
     }, 'mutation observer setup');
   };
@@ -734,21 +734,21 @@
     const start = performance.now();
     let attempts = 0;
     let lastInputCount = 0;
-    
+
     while (performance.now() - start < timeout) {
       attempts++;
       const inputs = modal.querySelectorAll('input[type="number"]');
       const inputCount = inputs.length;
-      
+
       if (inputCount > 0) {
         scan(modal, true); // Force immediate scan
-        
+
         // Wait a bit and check if enhancement worked
         await new Promise(r => setTimeout(r, 200));
-        
+
         const enhancedInputs = modal.querySelectorAll('input[type="number"][data-lwq="1"]');
         const unenhancedInputs = modal.querySelectorAll('input[type="number"]:not([data-lwq="1"])');
-        
+
         if (unenhancedInputs.length > 0) {
           // Force immediate scan without debouncing
           const inputsToEnhance = modal.querySelectorAll('input[type="number"]:not([data-lwq="1"])');
@@ -759,13 +759,13 @@
           return;
         }
       }
-      
+
       // If input count changed, reset the attempt counter
       if (inputCount !== lastInputCount) {
         attempts = 0;
         lastInputCount = inputCount;
       }
-      
+
       // More aggressive polling for the first few attempts
       const delay = attempts <= 5 ? 50 : 100;
       await new Promise(r => setTimeout(r, delay));
@@ -818,7 +818,7 @@
     mutations.forEach(mutation => {
       if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
         const modal = mutation.target;
-        if (modal && modal.matches('.modal') && 
+        if (modal && modal.matches('.modal') &&
             (modal.style.display === 'block' || modal.classList.contains('show'))) {
           setTimeout(() => waitForInputsInModal(modal).then(() => resetAllQtyToDefault(modal)), 50);
         }
