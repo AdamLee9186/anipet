@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.0.6
+// @version      2.0.7
 // @description  Touch-friendly quantity input with smart animation and accessibility
 // @author       Adam Lee
 // @license      MIT
 // @match        https://members.lionwheel.com/*
 // @match        https://lionwheel.com/*
 // @grant        GM_addStyle
-// @run-at       document-end
+// @run-at       document-start
 // @homepage     https://github.com/AdamLee9186/anipet
 // @supportURL   https://github.com/AdamLee9186/anipet
 // @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/Lionwheel%20Quantity%20Stepper.js
@@ -18,9 +18,12 @@
 (function () {
   'use strict';
 
+  // Add a global booting class ASAP to prevent first-paint value flash
+  document.documentElement.classList.add('lwq-booting');
+
   // Configuration
   const CONFIG = {
-    VERSION: '2.0.6',
+    VERSION: '2.0.7',
     MIN_VALUE: -999,
     MAX_VALUE: 999999,
     HOLD_DELAY: 400,
@@ -56,6 +59,34 @@
   };
 
   GM_addStyle(`
+    /* Global booting: hide digits before enhancement/first scan */
+    .lwq-booting input[type="number"][name*="[quantity]"],
+    .lwq-booting input[type="number"][id$="_quantity"] {
+      color: transparent !important;
+      caret-color: transparent !important;
+      text-shadow: none !important;
+    }
+
+    /* Modal-scoped booting (no global flicker) */
+    .modal.lwq-booting input[type="number"][name*="[quantity]"],
+    .modal.lwq-booting input[type="number"][id$="_quantity"] {
+      color: transparent !important;
+      caret-color: transparent !important;
+      text-shadow: none !important;
+    }
+
+    /* Keep current per-input hiding as a second safety net */
+    input[type="number"][name*="[quantity]"]:not([data-lwq="1"]),
+    input[type="number"][id$="_quantity"]:not([data-lwq="1"]) {
+      color: transparent !important;
+      caret-color: transparent !important;
+      text-shadow: none !important;
+    }
+    input[type="number"][name*="[quantity]"]:not([data-lwq="1"])::placeholder,
+    input[type="number"][id$="_quantity"]:not([data-lwq="1"])::placeholder {
+      color: transparent !important;
+    }
+
     /* Give the quantity column enough room for [-][###][+] with proper spacing */
     .order-item-input.order-item-small:has([name*="[quantity]"]),
     .order-item-input.order-item-small:has([id$="_quantity"]) {
@@ -252,6 +283,31 @@
     }, 'fire events');
   };
 
+  function resetAllQtyToDefault(root = document) {
+    root.querySelectorAll('input[type="number"][data-lwq="1"]').forEach((el) => {
+      el.value = String(CONFIG.DEFAULT_VALUE);
+      el.defaultValue = el.value;
+      el.setAttribute('value', el.value);
+      const span = el.closest('.lwq-display-wrapper')?.querySelector('.lwq-display-value');
+      if (span) span.textContent = el.value;
+    });
+  }
+
+  function liftBootingWhenReady(root = document) {
+    // If no target inputs remain unenhanced, lift the booting class
+    const pending = root.querySelector('input[type="number"][name*="[quantity]"]:not([data-lwq="1"]), input[type="number"][id$="_quantity"]:not([data-lwq="1"])');
+    if (!pending) {
+      document.documentElement.classList.remove('lwq-booting');
+      return true;
+    }
+    return false;
+  }
+
+  function setModalBooting(modal, on) {
+    if (!modal) return;
+    modal.classList.toggle('lwq-booting', !!on);
+  }
+
   function enhance(input) {
     // Strict feature detection
     if (!(input instanceof HTMLInputElement)) {
@@ -308,10 +364,21 @@
     
     input.parentNode.insertBefore(row, input);
     row.append(minus, input, plus);
+
+    // Force default to 1 on first enhancement (even if DOM/browser restored 5)
+    input.value = String(CONFIG.DEFAULT_VALUE);
+    input.defaultValue = input.value;
+    input.setAttribute('value', input.value);
+
+    // Keep ensureNumeric for safety
     ensureNumeric();
 
     input.classList.add('lwq-input');
     input.dataset.lwq = '1';
+    input.setAttribute('autocomplete', 'off');
+    input.setAttribute('autocorrect', 'off');
+    input.setAttribute('autocapitalize', 'off');
+    input.setAttribute('spellcheck', 'false');
 
     /* Create display wrapper for number animation */
     const displayWrapper = document.createElement('div');
@@ -326,6 +393,25 @@
     
     input.parentNode.insertBefore(displayWrapper, input);
     displayWrapper.appendChild(input);
+
+    // Make sure overlay shows the forced default now
+    const displaySpan = displayWrapper.querySelector('.lwq-display-value');
+    const syncDisplay = () => { if (displaySpan) displaySpan.textContent = input.value || '0'; };
+    syncDisplay();
+    
+    // Immediate sync and short early watch to catch late programmatic value sets
+    const watchUntil = performance.now() + 1500;
+    (function rafWatch() {
+      syncDisplay();
+      if (performance.now() < watchUntil) {
+        requestAnimationFrame(rafWatch);
+      }
+    })();
+    
+    // Add more event hooks to keep display in sync
+    ['change','keyup','keydown','blur','focus','pointerdown'].forEach(ev => {
+      input.addEventListener(ev, syncDisplay, { passive: true });
+    });
 
     /* responsive width - let flex handle the sizing */
     const isInModal = input.closest('.modal') !== null;
@@ -350,6 +436,8 @@
     function ensureNumeric() {
       if (input.value === '' || isNaN(Number(input.value))) {
         input.value = String(CONFIG.DEFAULT_VALUE);
+        // NEW: align defaultValue so the browser doesn't "revert" visually
+        input.defaultValue = input.value;
       }
     }
 
@@ -514,13 +602,7 @@
       if (e.key === 'ArrowDown') { e.preventDefault(); adjust(-1); }
     });
     
-    // Sync display value when user types manually
-    input.addEventListener('input', () => {
-      const displaySpan = input.closest('.lwq-display-wrapper')?.querySelector('.lwq-display-value');
-      if (displaySpan) {
-        displaySpan.textContent = input.value || '0';
-      }
-    });
+    // Note: 'input' event is already covered by the syncDisplay event listeners above
     
     // Enhanced focus handling
     input.addEventListener('focus', () => {
@@ -575,6 +657,18 @@
   }
   console.log(`[Lionwheel Stepper] v${CONFIG.VERSION} initialized`);
 
+  // After initial scan scheduling, lift booting when ready
+  const deadline = performance.now() + 1500; // up to ~1.5s window
+  (function tick() {
+    if (liftBootingWhenReady()) return;
+    if (performance.now() < deadline) {
+      requestAnimationFrame(tick);
+    } else {
+      // Failsafe: lift anyway to avoid locking UI
+      document.documentElement.classList.remove('lwq-booting');
+    }
+  })();
+
   // Optimized mutation observer with batched DOM queries
   const observer = new MutationObserver(muts => {
     let shouldScan = false;
@@ -621,7 +715,18 @@
   }
 
   // Event listeners
-  window.addEventListener('turbo:load', () => scan(), { passive: true });
+  window.addEventListener('turbo:load', () => {
+    document.documentElement.classList.add('lwq-booting');
+    resetAllQtyToDefault();
+    scan();
+    // Let enhancement settle, then lift
+    const deadline = performance.now() + 1200;
+    (function tick(){
+      if (liftBootingWhenReady()) return;
+      if (performance.now() < deadline) requestAnimationFrame(tick);
+      else document.documentElement.classList.remove('lwq-booting');
+    })();
+  }, { passive: true });
   window.addEventListener('popstate', () => requestAnimationFrame(() => scan()), { passive: true });
 
     // Async polling function to wait for inputs in modal
@@ -683,21 +788,27 @@
     'modal.show'           // Alternative
   ];
 
-  // Add listeners for all possible modal events
-  modalEvents.forEach(eventName => {
-    document.addEventListener(eventName, event => {
-      const modal = event.target;
-      if (modal && modal.matches('.modal')) {
-        setTimeout(() => waitForInputsInModal(modal), 10);
-      }
-    }, { passive: true });
-  });
-
+  // Add booting on show events
   showEvents.forEach(eventName => {
     document.addEventListener(eventName, event => {
       const modal = event.target;
       if (modal && modal.matches('.modal')) {
+        setModalBooting(modal, true);
+        resetAllQtyToDefault(modal);
         scan(modal);
+      }
+    }, { passive: true });
+  });
+
+  // Remove booting on shown events (after enhancement completes)
+  modalEvents.forEach(eventName => {
+    document.addEventListener(eventName, event => {
+      const modal = event.target;
+      if (modal && modal.matches('.modal')) {
+        // After enhancement + reset, lift
+        waitForInputsInModal(modal)
+          .then(() => { resetAllQtyToDefault(modal); })
+          .finally(() => { setModalBooting(modal, false); });
       }
     }, { passive: true });
   });
@@ -709,7 +820,7 @@
         const modal = mutation.target;
         if (modal && modal.matches('.modal') && 
             (modal.style.display === 'block' || modal.classList.contains('show'))) {
-          setTimeout(() => waitForInputsInModal(modal), 50);
+          setTimeout(() => waitForInputsInModal(modal).then(() => resetAllQtyToDefault(modal)), 50);
         }
       }
     });
@@ -741,7 +852,7 @@
       setTimeout(() => {
         const modal = document.getElementById('order-items-edit-modal');
         if (modal) {
-          waitForInputsInModal(modal);
+          waitForInputsInModal(modal).then(() => resetAllQtyToDefault(modal));
         }
       }, 100);
     }
@@ -756,7 +867,7 @@
         setTimeout(() => {
           const modal = document.querySelector(modalId);
           if (modal) {
-            waitForInputsInModal(modal);
+            waitForInputsInModal(modal).then(() => resetAllQtyToDefault(modal));
           }
         }, 100);
       }
