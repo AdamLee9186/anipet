@@ -1,15 +1,17 @@
 // ==UserScript==
 // @name         LionWheel Refresh Button
 // @namespace    http://tampermonkey.net/
-// @version      6.4
+// @version      6.5
 // @description  Combined script: Auto-redirect to full open range in LionWheel with refresh button and loading animation
 // @match        https://members.lionwheel.com/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_log
-// @homepageURL  https://github.com/youruser/lionwheel-combined
-// @supportURL   https://github.com/youruser/lionwheel-combined/issues
+// @homepageURL  https://github.com/AdamLee9186/anipet
+// @supportURL   https://github.com/AdamLee9186/anipet
+// @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/LionWheel-Refresh-Button.js
+// @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/LionWheel-Refresh-Button.js
 // @run-at       document-idle
 // ==/UserScript==
 
