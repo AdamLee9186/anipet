@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.7.0
+// @version      13.7.1
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -913,6 +913,10 @@ document.createElement = function(tagName) {
                 const filename = filenameParts[0]; const query = filenameParts.length > 1 ? `?${filenameParts[1]}` : '';
                 if (filename.startsWith('tn_')) { const newFilename = filename.substring(3); return parts.join('/') + '/' + newFilename + query; }
             }
+            if (thumbnailUrl.includes('speedog.co.il')) {
+                // Remove size parameters like -100x100 from the end of the filename
+                return thumbnailUrl.replace(/-\d+x\d+(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/-\d+x\d+$/, '');
+            }
             return thumbnailUrl;
         } catch (e) {
             console.warn(`[${SCRIPT_NAME}] ⚠️ Error processing thumbnail URL, returning original:`, thumbnailUrl, e);
@@ -962,6 +966,13 @@ document.createElement = function(tagName) {
                     const newFilename = filename.substring(3);
                     return `${parts.join('/')}/${newFilename}?w=${targetWidth}${query}`;
                 }
+            }
+
+            if (originalUrl.includes('speedog.co.il')) {
+                // Remove size parameters and add width parameter for optimization
+                const baseUrl = originalUrl.replace(/-\d+x\d+(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/-\d+x\d+$/, '');
+                const separator = baseUrl.includes('?') ? '&' : '?';
+                return `${baseUrl}${separator}w=${targetWidth}`;
             }
 
             // For other URLs, try to add width parameter
