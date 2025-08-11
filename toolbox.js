@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.7.1
+// @version      13.7.2
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -287,13 +287,13 @@ document.createElement = function(tagName) {
     `);
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.6.0"; // Fixed to match @version
+    const SCRIPT_VERSION = "13.7.2"; // Fixed to match @version
     console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // ---< Constants >---
     const IMAGE_FINDER_CSV_URL = "https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v1.csv";
     const BARCODE_REPLACER_CSV_URL = 'https://raw.githubusercontent.com/AdamLee9186/anipet/main/backoffice_catalog.csv';
-    const PLACEHOLDER_IMG_URL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="70" viewBox="0 0 80 70"><rect width="80" height="70" fill="#fafafa"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="14px" fill="#d4d4d4">X</text></svg>');
+    const PLACEHOLDER_IMG_URL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="70" viewBox="0 0 80 70"><rect width="80" height="70" fill="#fafafa"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="12px" fill="#d4d4d4">אין תמונה</text></svg>');
 
     const SETTINGS_KEY = 'anipet_toolbox_settings';
     const PRODUCT_DATA_CACHE_KEY = 'anipet_product_data_cache';
@@ -823,7 +823,8 @@ document.createElement = function(tagName) {
                 return null;
             }
 
-            if (sku && !String(sku).trim().startsWith('0')) {
+            // Try to find by SKU first (for all SKUs, not just those not starting with '0')
+            if (sku && sku.trim()) {
                 const normalizedSku = normalizeSku(sku);
                 if (normalizedSku) {
                     const skuMatch = productDataCache.find(p => p.skus.includes(normalizedSku));
@@ -833,7 +834,8 @@ document.createElement = function(tagName) {
                 }
             }
 
-            if (productName) {
+            // Try to find by product name (only if productName is not empty)
+            if (productName && productName.trim()) {
                 const pageProductNameNormalized = productName.toLowerCase().trim();
                 const nameMatch = productDataCache.find(p => p.productName && p.productName.toLowerCase().trim() === pageProductNameNormalized);
                 if (nameMatch) {
@@ -1069,6 +1071,12 @@ function showGalleryOverlay(galleryItems, startIndex) {
             return;
         }
         
+        // Ensure any existing loading indicators are hidden
+        const existingLoadingIndicators = document.querySelectorAll('.gallery-loading');
+        existingLoadingIndicators.forEach(indicator => {
+            indicator.style.display = 'none';
+        });
+        
         // Image cache for performance with memory management
         const imageCache = new Map();
         let preloadedImages = new Set();
@@ -1173,8 +1181,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     
     // Loading indicator
     const loadingIndicator = document.createElement('div');
-    loadingIndicator.className = 'gallery-loading';
-    loadingIndicator.innerHTML = '<div class="spinner"></div>';
+    loadingIndicator.className = 'gallery-loading gallery-spinner';
 
     const productNameElement = document.createElement('h3');
     productNameElement.className = 'gallery-product-name';
@@ -1487,6 +1494,10 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 currentIndex = Math.max(0, Math.min(galleryItems.length - 1, currentIndex));
             }
 
+            // Show loading indicator immediately for better UX
+            loadingIndicator.style.display = 'block';
+            imgElement.style.opacity = '0';
+
             // Add transition animation
             galleryImageContainer.style.opacity = '0';
             navigationTimeout = setTimeout(() => {
@@ -1525,9 +1536,15 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 return;
             }
 
-            // Show loading indicator
-            loadingIndicator.style.display = 'block';
-            imgElement.style.opacity = '0';
+            // Ensure loading indicator is properly reset
+            loadingIndicator.style.display = 'none';
+            
+            // Loading indicator is already shown in navigate() function
+            // Only show it here if this is the initial load (not navigation)
+            if (imgElement.style.opacity !== '0') {
+                loadingIndicator.style.display = 'block';
+                imgElement.style.opacity = '0';
+            }
 
             // Reset zoom
             resetZoom();
@@ -1535,6 +1552,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             // Update image with transition
             imgElement.onload = () => {
                 try {
+                    // Ensure loading indicator is hidden
                     loadingIndicator.style.display = 'none';
                     imgElement.style.opacity = '1';
                     
@@ -1544,10 +1562,19 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     // Product link positioning removed
                 } catch (error) {
                     console.warn('Error in image onload:', error);
+                    // Ensure loading indicator is hidden even on error
+                    loadingIndicator.style.display = 'none';
                 }
             };
+            
+            // Also check if image is already loaded
+            if (imgElement.complete && imgElement.naturalWidth > 0) {
+                loadingIndicator.style.display = 'none';
+                imgElement.style.opacity = '1';
+            }
             imgElement.onerror = () => {
                 try {
+                    // Ensure loading indicator is hidden
                     loadingIndicator.style.display = 'none';
                     imgElement.src = PLACEHOLDER_IMG_URL;
                     imgElement.style.opacity = '1';
@@ -1558,15 +1585,29 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     // Product link positioning removed
                 } catch (error) {
                     console.warn('Error in image onerror:', error);
+                    // Ensure loading indicator is hidden even on error
+                    loadingIndicator.style.display = 'none';
                 }
             };
 
             // Validate URL before setting
             if (item.fullSizeUrl && typeof item.fullSizeUrl === 'string') {
                 imgElement.src = item.fullSizeUrl;
+                
+                // Add timeout to ensure loading indicator doesn't stay forever
+                setTimeout(() => {
+                    if (loadingIndicator.style.display !== 'none') {
+                        console.warn('Loading timeout - hiding indicator');
+                        loadingIndicator.style.display = 'none';
+                        imgElement.style.opacity = '1';
+                    }
+                }, 10000); // 10 seconds timeout
             } else {
                 console.warn('Invalid image URL:', item.fullSizeUrl);
                 imgElement.src = PLACEHOLDER_IMG_URL;
+                // Hide loading indicator immediately for invalid URLs
+                loadingIndicator.style.display = 'none';
+                imgElement.style.opacity = '1';
             }
 
         // Update product info
@@ -1676,6 +1717,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
     };
 
     let closeOverlay = () => {
+        // Hide loading indicator immediately when closing
+        if (loadingIndicator) {
+            loadingIndicator.style.display = 'none';
+        }
+        
         // Remove event listeners to prevent memory leaks
         document.removeEventListener('keydown', handleKeyDown);
         document.removeEventListener('mousemove', doDrag);
@@ -3553,7 +3599,7 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     z-index: 5;
 }
 
-.gallery-loading .spinner {
+.gallery-spinner {
     width: 40px;
     height: 40px;
     border: 4px solid rgba(255, 255, 255, 0.3);
