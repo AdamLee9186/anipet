@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.0.8
+// @version      2.0.9
 // @description  Touch-friendly quantity input with smart animation and accessibility
 // @author       Adam Lee
 // @license      MIT
