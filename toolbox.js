@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.7.2
+// @version      13.7.3
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -16,6 +16,7 @@
 // @grant        GM_registerMenuCommand
 // @grant        window.close
 // @connect      raw.githubusercontent.com
+// @connect      *
 // @require      https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js
 // @run-at       document-end
 // ==/UserScript==
@@ -73,23 +74,23 @@ window._tmCopying = false;
 function tmToast(msg = 'הועתק!', targetElement = null) {
   const el = document.createElement('div');
   el.textContent = msg;
-  
+
   // Base styles
   el.style.cssText = 'position:fixed;' +
     'background:rgba(0,0,0,.85);color:#fff;padding:6px 10px;border-radius:6px;' +
     'font:12px/1.2 sans-serif;z-index:999999;pointer-events:none;opacity:0;transition:opacity .15s';
-  
+
   // Position the toast near the target element if provided
   if (targetElement) {
     try {
       const rect = targetElement.getBoundingClientRect();
       const viewportWidth = window.innerWidth;
       const viewportHeight = window.innerHeight;
-      
+
       // Calculate position - show above the element with some offset
       let left = rect.left + (rect.width / 2);
       let top = rect.top - 35; // Show above the element
-      
+
       // Ensure toast doesn't go outside viewport bounds
       const toastWidth = 80; // Approximate toast width
       if (left - toastWidth/2 < 10) {
@@ -97,11 +98,11 @@ function tmToast(msg = 'הועתק!', targetElement = null) {
       } else if (left + toastWidth/2 > viewportWidth - 10) {
         left = viewportWidth - toastWidth/2 - 10;
       }
-      
+
       if (top < 10) {
         top = rect.bottom + 10; // Show below if no space above
       }
-      
+
       el.style.left = left + 'px';
       el.style.top = top + 'px';
       el.style.transform = 'translateX(-50%)';
@@ -117,7 +118,7 @@ function tmToast(msg = 'הועתק!', targetElement = null) {
     el.style.bottom = '24px';
     el.style.transform = 'translateX(-50%)';
   }
-  
+
   document.body.appendChild(el);
   requestAnimationFrame(()=> el.style.opacity = '1');
   setTimeout(()=>{ el.style.opacity = '0'; setTimeout(()=> el.remove(), 150); }, 900);
@@ -167,7 +168,7 @@ const originalXHRSend = XMLHttpRequest.prototype.send;
 XMLHttpRequest.prototype.send = function(...args) {
   const xhr = this;
   const originalOnError = xhr.onerror;
-  
+
   xhr.onerror = function(event) {
     // Check if it's a blocked request
     if (xhr._url && (
@@ -181,13 +182,13 @@ XMLHttpRequest.prototype.send = function(...args) {
       console.debug('XHR Request blocked by client (likely ad blocker):', xhr._url);
       return;
     }
-    
+
     // Call original error handler if it exists
     if (originalOnError) {
       originalOnError.call(xhr, event);
     }
   };
-  
+
   return originalXHRSend.apply(this, args);
 };
 
@@ -195,7 +196,7 @@ XMLHttpRequest.prototype.send = function(...args) {
 const originalCreateElement = document.createElement;
 document.createElement = function(tagName) {
   const element = originalCreateElement.call(document, tagName);
-  
+
   if (tagName.toLowerCase() === 'script') {
     const originalSetAttribute = element.setAttribute;
     element.setAttribute = function(name, value) {
@@ -216,7 +217,7 @@ document.createElement = function(tagName) {
       return originalSetAttribute.call(this, name, value);
     };
   }
-  
+
   return element;
 };
 
@@ -234,18 +235,18 @@ document.createElement = function(tagName) {
     // ---< Merlog Panel View Highlighting >---
     GM_addStyle(`
         /* Offcanvas highlighting disabled - only panel_view will be highlighted */
-        
+
         /* Green highlighting for "מוכן" status */
         .ready-highlight {
             background-color: #f0fff4 !important;
             border: 2px solid #9ae6b4 !important;
         }
-        
+
         .ready-highlight .tab-content,
         .ready-highlight .tab-pane {
             background-color: #f0fff4 !important;
         }
-        
+
         .ready-highlight a.ready-highlight {
             background-color: #dcfce7 !important;
             color: #166534 !important;
@@ -253,12 +254,12 @@ document.createElement = function(tagName) {
             border-radius: 3px !important;
             text-decoration: none !important;
         }
-        
+
         .ready-highlight a.ready-highlight:hover {
             background-color: #bbf7d0 !important;
             color: #15803d !important;
         }
-        
+
         .ready-highlight span.ready-highlight,
         .ready-highlight div.ready-highlight,
         .ready-highlight p.ready-highlight {
@@ -268,19 +269,19 @@ document.createElement = function(tagName) {
             border-radius: 2px !important;
             font-weight: bold !important;
         }
-        
+
         /* Table row green highlighting */
         tr.ready-row-highlight {
             background-color: #f0fff4 !important;
         }
-        
+
         td.ready-highlight {
             background-color: #dcfce7 !important;
             border-radius: 4px;
             padding: 4px 8px;
             margin: 2px 0;
         }
-        
+
         td.ready-highlight:hover {
             background-color: #bbf7d0 !important;
         }
@@ -294,6 +295,13 @@ document.createElement = function(tagName) {
     const IMAGE_FINDER_CSV_URL = "https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v1.csv";
     const BARCODE_REPLACER_CSV_URL = 'https://raw.githubusercontent.com/AdamLee9186/anipet/main/backoffice_catalog.csv';
     const PLACEHOLDER_IMG_URL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="70" viewBox="0 0 80 70"><rect width="80" height="70" fill="#fafafa"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="12px" fill="#d4d4d4">אין תמונה</text></svg>');
+    // Optional webhook to silently receive image report emails without opening a mail client
+    // Example: 'https://hooks.zapier.com/hooks/catch/XXXX/YYYY'
+    const IMAGE_REPORT_WEBHOOK_URL = '';
+    const IMAGE_REPORT_WEBHOOK_TOKEN = '';
+    // Easiest path: send directly to this email via FormSubmit without opening any mail app
+    // The first submission will send you a confirmation email from FormSubmit — click Confirm once, ואז כל הדיווחים יישלחו אוטומטית
+    const IMAGE_REPORT_DIRECT_EMAIL = 'adam.lee.9186@gmail.com';
 
     const SETTINGS_KEY = 'anipet_toolbox_settings';
     const PRODUCT_DATA_CACHE_KEY = 'anipet_product_data_cache';
@@ -1001,9 +1009,9 @@ document.createElement = function(tagName) {
                 const hasName = headers.some(h => h.includes('שם'));
 
                 // Check if this is an orders/deliveries table (should be excluded)
-                const isOrdersTable = headers.some(h => 
+                const isOrdersTable = headers.some(h =>
                     h.includes('משלוח') || // delivery
-                    h.includes('הזמנה') || // order  
+                    h.includes('הזמנה') || // order
                     h.includes('סטטוס') || // status
                     h.includes('ליקוט') || // picking
                     h.includes('נהג') || // driver
@@ -1013,7 +1021,7 @@ document.createElement = function(tagName) {
                 );
 
                 // Also check if the table has the main orders table classes
-                const isMainOrdersTable = table.closest('.dataTables_wrapper') && 
+                const isMainOrdersTable = table.closest('.dataTables_wrapper') &&
                                          table.closest('.dt-bootstrap4');
 
                 if (hasSku && hasName && !isOrdersTable && !isMainOrdersTable) {
@@ -1070,17 +1078,17 @@ function showGalleryOverlay(galleryItems, startIndex) {
             console.warn('Gallery already open, ignoring new request');
             return;
         }
-        
+
         // Ensure any existing loading indicators are hidden
         const existingLoadingIndicators = document.querySelectorAll('.gallery-loading');
         existingLoadingIndicators.forEach(indicator => {
             indicator.style.display = 'none';
         });
-        
+
         // Image cache for performance with memory management
         const imageCache = new Map();
         let preloadedImages = new Set();
-        
+
         // Memory management: limit cache size to prevent memory leaks
         const MAX_CACHE_SIZE = 10;
         const cleanupImageCache = () => {
@@ -1113,7 +1121,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         }
 
         if (!galleryItems || galleryItems.length === 0) return;
-        
+
         // Remove any existing gallery overlay to prevent conflicts
         const existingOverlay = document.getElementById('tampermonkey-gallery-overlay');
         if (existingOverlay) {
@@ -1125,30 +1133,30 @@ function showGalleryOverlay(galleryItems, startIndex) {
     let endX = 0;
     let isZoomed = false;
     let zoomLevel = 1;
-    
+
     // Zoom-to-point variables
     let zoomOriginX = 0;
     let zoomOriginY = 0;
-    
+
     // Drag/pan variables
     let isDragging = false;
     let dragStartX = 0;
     let dragStartY = 0;
     let dragOffsetX = 0;
     let dragOffsetY = 0;
-    
+
     // Image wrapper for proper clipping during zoom/pan
     let imageWrapper = null;
-    
+
     // Pinch-to-zoom variables
     let initialDistance = 0;
     let initialZoom = 1;
     let isPinching = false;
     let wasPinching = false; // Track if we were pinching to prevent swipe interference
-    
+
     // Timeout management to prevent memory leaks
     let navigationTimeout = null;
-    
+
     const overlay = document.createElement('div');
     overlay.id = 'tampermonkey-gallery-overlay';
     overlay.style.width = '100%';
@@ -1178,7 +1186,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     imgElement.style.transition = 'transform 0.3s ease';
     imgElement.style.pointerEvents = 'none'; // כדי למנוע בעיות תפעול
     imgElement.style.userSelect = 'none';
-    
+
     // Loading indicator
     const loadingIndicator = document.createElement('div');
     loadingIndicator.className = 'gallery-loading gallery-spinner';
@@ -1193,7 +1201,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     productNameElement.style.padding = '6px 12px';
     productNameElement.style.borderTopLeftRadius = '8px';
     productNameElement.style.borderTopRightRadius = '8px';
-    
+
     const productInfoElement = document.createElement('div');
     productInfoElement.className = 'gallery-product-info';
     // עיצוב מק"ט ומחיר
@@ -1207,7 +1215,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     skuElement.className = 'gallery-sku';
     const priceElement = document.createElement('span');
     priceElement.className = 'gallery-price';
-    
+
     const captionElement = document.createElement('div');
     captionElement.className = 'gallery-caption';
     const counterElement = document.createElement('div');
@@ -1226,6 +1234,8 @@ function showGalleryOverlay(galleryItems, startIndex) {
     const closeButton = document.createElement('button');
     closeButton.className = 'gallery-close';
     closeButton.innerHTML = '&times;';
+
+
 
     // Zoom controls - removed as requested
 
@@ -1283,7 +1293,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     // Add image to wrapper, then wrapper to container
     imageWrapper.appendChild(imgElement);
     galleryImageContainer.appendChild(imageWrapper);
-    
+
     // Image load event handler (link positioning removed)
 
     // Add loading indicator to image wrapper (not container)
@@ -1301,12 +1311,12 @@ function showGalleryOverlay(galleryItems, startIndex) {
     footerContainer.style.background = 'transparent';
     footerContainer.style.minHeight = '0'; // Important for flex child
     footerContainer.style.boxSizing = 'border-box';
-    
+
     // Append caption and thumbnails to footer
     captionElement.append(counterElement);
     footerContainer.appendChild(captionElement);
     footerContainer.appendChild(thumbnailsContainer);
-    
+
     // Append elements in proper order - now with footer at bottom
     overlay.append(topInfoContainer, galleryImageContainer, footerContainer, prevButton, nextButton, closeButton);
 
@@ -1315,7 +1325,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         // With the new flexbox layout, the image container will automatically
         // take up the available space between top info and footer
         // We just need to ensure the image fits properly within its container
-        
+
         // Remove fixed height constraints and let flexbox handle the layout
         imgElement.style.maxHeight = '100%';
         imageWrapper.style.maxHeight = '100%';
@@ -1370,12 +1380,12 @@ function showGalleryOverlay(galleryItems, startIndex) {
         if (zoomTimeout) {
             clearTimeout(zoomTimeout);
         }
-        
+
         // Debounce zoom operations to prevent excessive DOM manipulation
         zoomTimeout = setTimeout(() => {
             const oldZoom = zoomLevel;
             zoomLevel = Math.max(0.5, Math.min(3, level));
-            
+
             // If zoom origin is provided, calculate the transform origin
             if (originX !== null && originY !== null && zoomLevel !== 1) {
                 // Cache getBoundingClientRect to avoid multiple calls
@@ -1383,7 +1393,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 if (rect.width > 0 && rect.height > 0) {
                     const x = ((originX - rect.left) / rect.width) * 100;
                     const y = ((originY - rect.top) / rect.height) * 100;
-                    
+
                     imgElement.style.transformOrigin = `${x}% ${y}%`;
                 }
             } else if (zoomLevel === 1) {
@@ -1393,18 +1403,18 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 dragOffsetX = 0;
                 dragOffsetY = 0;
             }
-            
+
             // Apply both zoom and pan transforms
             imgElement.style.transform = `scale(${zoomLevel}) translate(${dragOffsetX}px, ${dragOffsetY}px)`;
             isZoomed = zoomLevel !== 1;
-            
+
             // Update container class for visual feedback
             if (isZoomed) {
                 galleryImageContainer.classList.add('zoomed');
             } else {
                 galleryImageContainer.classList.remove('zoomed');
             }
-            
+
             // Adjust image height after zoom change
             adjustImageMaxHeight();
         }, 10); // Small debounce for zoom operations
@@ -1415,40 +1425,40 @@ function showGalleryOverlay(galleryItems, startIndex) {
         // Adjust image height after reset
         adjustImageMaxHeight();
     }
-    
+
     // Drag/pan functionality
     function startDrag(e) {
         if (!isZoomed) return;
-        
+
         isDragging = true;
         dragStartX = e.clientX - dragOffsetX;
         dragStartY = e.clientY - dragOffsetY;
         imageWrapper.style.cursor = 'grabbing';
     }
-    
+
     // Drag/pan functionality with performance optimization
     let dragTimeout;
     function doDrag(e) {
         if (!isDragging || !isZoomed) return;
-        
+
         // Clear any pending drag operation
         if (dragTimeout) {
             clearTimeout(dragTimeout);
         }
-        
+
         // Debounce drag operations to prevent excessive DOM manipulation
         dragTimeout = setTimeout(() => {
             dragOffsetX = e.clientX - dragStartX;
             dragOffsetY = e.clientY - dragStartY;
-            
+
             // Apply the drag transform
             imgElement.style.transform = `scale(${zoomLevel}) translate(${dragOffsetX}px, ${dragOffsetY}px)`;
         }, 16); // ~60fps for smooth dragging
     }
-    
+
     function endDrag() {
         if (!isDragging) return;
-        
+
         isDragging = false;
         imageWrapper.style.cursor = 'grab';
     }
@@ -1484,7 +1494,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             if (navigationTimeout) {
                 clearTimeout(navigationTimeout);
             }
-            
+
             const oldIndex = currentIndex;
             currentIndex = (currentIndex + delta + galleryItems.length) % galleryItems.length;
 
@@ -1518,7 +1528,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             try {
                 updateGalleryView();
                 adjustImageMaxHeight();
-                
+
                 // Product link positioning removed
             } catch (fallbackError) {
                 console.error('Critical navigation error:', fallbackError);
@@ -1529,7 +1539,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     const updateGalleryView = () => {
         try {
             const item = galleryItems[currentIndex];
-            
+
             // Validate item exists
             if (!item) {
                 console.warn('Invalid gallery item at index:', currentIndex);
@@ -1538,7 +1548,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
             // Ensure loading indicator is properly reset
             loadingIndicator.style.display = 'none';
-            
+
             // Loading indicator is already shown in navigate() function
             // Only show it here if this is the initial load (not navigation)
             if (imgElement.style.opacity !== '0') {
@@ -1555,10 +1565,10 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     // Ensure loading indicator is hidden
                     loadingIndicator.style.display = 'none';
                     imgElement.style.opacity = '1';
-                    
+
                     // Adjust image height after image loads
                     adjustImageMaxHeight();
-                    
+
                     // Product link positioning removed
                 } catch (error) {
                     console.warn('Error in image onload:', error);
@@ -1566,7 +1576,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     loadingIndicator.style.display = 'none';
                 }
             };
-            
+
             // Also check if image is already loaded
             if (imgElement.complete && imgElement.naturalWidth > 0) {
                 loadingIndicator.style.display = 'none';
@@ -1578,10 +1588,10 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     loadingIndicator.style.display = 'none';
                     imgElement.src = PLACEHOLDER_IMG_URL;
                     imgElement.style.opacity = '1';
-                    
+
                     // Adjust image height after error image loads
                     adjustImageMaxHeight();
-                    
+
                     // Product link positioning removed
                 } catch (error) {
                     console.warn('Error in image onerror:', error);
@@ -1593,7 +1603,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             // Validate URL before setting
             if (item.fullSizeUrl && typeof item.fullSizeUrl === 'string') {
                 imgElement.src = item.fullSizeUrl;
-                
+
                 // Add timeout to ensure loading indicator doesn't stay forever
                 setTimeout(() => {
                     if (loadingIndicator.style.display !== 'none') {
@@ -1660,7 +1670,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
         // Always show "לוקט" even if quantity is empty or doesn't contain "/"
         const span = document.createElement('span');
-        
+
         if (quantity && quantity.includes('/')) {
             // If quantity has "/" format, parse it and apply styling
             const [pickedStr, totalStr] = quantity.split('/').map(s => parseInt(s.trim(), 10));
@@ -1696,7 +1706,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
         // Adjust image height dynamically
         adjustImageMaxHeight();
-        
+
         // Product link positioning removed
         } catch (error) {
             console.warn('Error in updateGalleryView:', error);
@@ -1705,10 +1715,10 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 loadingIndicator.style.display = 'none';
                 imgElement.src = PLACEHOLDER_IMG_URL;
                 imgElement.style.opacity = '1';
-                
+
                 // Adjust image height in fallback
                 adjustImageMaxHeight();
-                
+
                 // Product link positioning removed
             } catch (fallbackError) {
                 console.error('Critical error in updateGalleryView fallback:', fallbackError);
@@ -1721,13 +1731,13 @@ function showGalleryOverlay(galleryItems, startIndex) {
         if (loadingIndicator) {
             loadingIndicator.style.display = 'none';
         }
-        
+
         // Remove event listeners to prevent memory leaks
         document.removeEventListener('keydown', handleKeyDown);
         document.removeEventListener('mousemove', doDrag);
         document.removeEventListener('mouseup', endDrag);
         window.removeEventListener('resize', resizeHandler);
-        
+
         // Clear any pending timeouts
         if (wheelTimeout) {
             clearTimeout(wheelTimeout);
@@ -1741,7 +1751,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         if (navigationTimeout) {
             clearTimeout(navigationTimeout);
         }
-        
+
         overlay.style.opacity = '0';
         setTimeout(() => {
             if (document.body.contains(overlay)) {
@@ -1787,16 +1797,18 @@ function showGalleryOverlay(galleryItems, startIndex) {
     nextButton.onclick = () => navigate(1);
     closeButton.onclick = closeOverlay;
 
+
+
     // Mouse wheel zoom with debouncing
     let wheelTimeout;
     imageWrapper.addEventListener('wheel', (e) => {
         e.preventDefault();
-        
+
         // Clear existing timeout
         if (wheelTimeout) {
             clearTimeout(wheelTimeout);
         }
-        
+
         // Debounce wheel events to prevent rapid-fire zooming
         wheelTimeout = setTimeout(() => {
             const delta = e.deltaY > 0 ? -0.2 : 0.2;
@@ -1806,18 +1818,18 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
     // Double click to reset zoom
     imageWrapper.ondblclick = resetZoom;
-    
+
     // Drag/pan event listeners - use imageWrapper for better interaction
     imageWrapper.addEventListener('mousedown', startDrag);
     document.addEventListener('mousemove', doDrag);
     document.addEventListener('mouseup', endDrag);
-    
+
     // Double tap to reset zoom on touch devices
     let lastTap = 0;
     imageWrapper.addEventListener('touchend', (e) => {
         const currentTime = new Date().getTime();
         const tapLength = currentTime - lastTap;
-        
+
         if (tapLength < 500 && tapLength > 0) {
             // Double tap detected
             e.preventDefault();
@@ -1832,7 +1844,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     };
 
     document.body.appendChild(overlay);
-    
+
     // Enhanced touch event handlers with pinch-to-zoom support
     overlay.addEventListener('touchstart', (e) => {
         try {
@@ -1842,7 +1854,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 startX = e.touches[0].clientX;
                 isPinching = false;
                 wasPinching = false; // Reset pinching flag for new single touch
-                
+
                 // If zoomed, start dragging instead of swipe navigation
                 if (isZoomed) {
                     e.preventDefault();
@@ -1859,7 +1871,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 const touch1 = e.touches[0];
                 const touch2 = e.touches[1];
                 initialDistance = Math.sqrt(
-                    Math.pow(touch2.clientX - touch1.clientX, 2) + 
+                    Math.pow(touch2.clientX - touch1.clientX, 2) +
                     Math.pow(touch2.clientY - touch1.clientY, 2)
                 );
                 initialZoom = zoomLevel;
@@ -1878,18 +1890,18 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 const touch1 = e.touches[0];
                 const touch2 = e.touches[1];
                 const currentDistance = Math.sqrt(
-                    Math.pow(touch2.clientX - touch1.clientX, 2) + 
+                    Math.pow(touch2.clientX - touch1.clientX, 2) +
                     Math.pow(touch2.clientY - touch1.clientY, 2)
                 );
-                
+
                 if (initialDistance > 0 && currentDistance > 0) {
                     const scale = currentDistance / initialDistance;
                     const newZoom = Math.max(0.5, Math.min(3, initialZoom * scale));
-                    
+
                     // Calculate the center point between the two fingers
                     const centerX = (touch1.clientX + touch2.clientX) / 2;
                     const centerY = (touch1.clientY + touch2.clientY) / 2;
-                    
+
                     setZoom(newZoom, centerX, centerY);
                 }
             } else if (isDragging && e.touches.length === 1) {
@@ -1911,7 +1923,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             if (isPinching && e.touches.length === 0) {
                 e.preventDefault(); // Only prevent default when ending pinch gesture
             }
-            
+
             if (e.touches.length === 0) {
                 // All touches ended
                 if (isDragging) {
@@ -1922,7 +1934,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     endX = e.changedTouches[0] ? e.changedTouches[0].clientX : startX;
                     handleSwipe();
                 }
-                
+
                 // Reset pinch state
                 isPinching = false;
                 wasPinching = false; // Reset the pinching flag
@@ -1941,7 +1953,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
     // Add keydown listener to document but only handle when gallery is open
     document.addEventListener('keydown', handleKeyDown);
-    
+
     // Add resize listener to adjust image height when window is resized
     const resizeHandler = () => {
         if (document.getElementById('tampermonkey-gallery-overlay')) {
@@ -1949,7 +1961,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         }
     };
     window.addEventListener('resize', resizeHandler);
-    
+
     // Add global error handler for gallery
     const galleryErrorHandler = (event) => {
         if (event.error && event.error.message && event.error.message.includes('STATUS_BREAKPOINT')) {
@@ -1964,9 +1976,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
             return false;
         }
     };
-    
+
     window.addEventListener('error', galleryErrorHandler);
-    
+
     // Clean up error handler when gallery closes
     const originalCloseOverlay = closeOverlay;
     closeOverlay = () => {
@@ -1974,13 +1986,13 @@ function showGalleryOverlay(galleryItems, startIndex) {
             // Clean up memory
             imageCache.clear();
             preloadedImages.clear();
-            
+
             // Remove error handler
             window.removeEventListener('error', galleryErrorHandler);
-            
+
             // Remove resize handler
             window.removeEventListener('resize', resizeHandler);
-            
+
             // Call original close function
             originalCloseOverlay();
         } catch (error) {
@@ -1993,14 +2005,14 @@ function showGalleryOverlay(galleryItems, startIndex) {
             }
         }
     };
-    
+
     updateGalleryView();
-    
+
     // Adjust image height after initial view is set
     setTimeout(() => {
         adjustImageMaxHeight();
     }, 50);
-    
+
     setTimeout(() => {
         overlay.style.opacity = '1';
     }, 10);
@@ -2126,7 +2138,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                         const headers = Array.from(thead.querySelectorAll('th')).map(th => th.textContent.trim());
                         const nameIndex = headers.findIndex(header => header.includes('שם'));
                         const quantityIndex = headers.findIndex(h => h.includes('כמות') || h.includes('לוקט'));
-                        
+
                         if (nameIndex !== -1) {
                             nameEl = row.cells[nameIndex];
                         }
@@ -2191,7 +2203,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     uniqueSkus.add(normalizedSku);
                 } else {
                     // No image → include item with placeholder so gallery always opens
-                    
+
                     // Extract price from DOM - look for "מחיר ליחידה" column
                     let price = null;
                     if (table) {
@@ -2468,24 +2480,24 @@ function showGalleryOverlay(galleryItems, startIndex) {
                             // Only create link if there's no Anipet button
                             if (!hasAnipetButton) {
                                 const productName = nameCell.textContent.trim();
-                                
+
                                 // Clear the cell content
                                 nameCell.innerHTML = '';
-                                
+
                                 // Create copy icon with enhanced feedback
                                 const copyIcon = createCopyIcon(productName);
-                                
+
                                 // Create link
                                 const link = document.createElement('a');
                                 link.href = match.link;
                                 link.target = '_blank';
                                 link.rel = 'noopener noreferrer';
                                 link.textContent = productName;
-                                
+
                                 // Append link first, then copy icon (icon will float left)
                                 nameCell.appendChild(link);
                                 nameCell.appendChild(copyIcon);
-                                
+
                                 // Do not add copy-enabled to this cell since it has its own copy mechanism
                             }
                         }
@@ -2744,14 +2756,14 @@ function showGalleryOverlay(galleryItems, startIndex) {
                                         // Clear the cell and add the barcode
                                         skuCell.innerHTML = '';
                                         skuCell.appendChild(barcodeSpan);
-                                        
+
                                         // Add copy icon for newly created barcode
                                         const barcodeCopyIcon = createCopyIcon(barcode);
                                         barcodeCopyIcon.style.marginLeft = '4px';
                                         barcodeCopyIcon.style.marginRight = '0px';
                                         skuCell.appendChild(barcodeCopyIcon);
                                     }
-                                    
+
                                     markElementAsProcessed(skuCell);
                                 }
                             }
@@ -2797,13 +2809,13 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
             // Remove any inline background color from the element itself to let CSS handle it
             el.style.backgroundColor = '';
-            
+
             // Add copy icon for dynamically replaced barcodes (if not already present)
             if (el.tagName !== 'INPUT' && parentTd && !parentTd.querySelector('i.fa-clone')) {
                 const barcodeCopyIcon = createCopyIcon(barcode);
                 barcodeCopyIcon.style.marginLeft = '4px';
                 barcodeCopyIcon.style.marginRight = '0px';
-                
+
                 // Insert the copy icon after the barcode element
                 if (el.nextSibling) {
                     parentTd.insertBefore(barcodeCopyIcon, el.nextSibling);
@@ -3005,12 +3017,12 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                                 // Try to find image match - first with original SKU, then with replaced barcode
                                 let imageMatch = findImageMatch(sku, name);
                                 const barcodeMatch = findBarcode(sku, name);
-                                
+
                                 // If no image found with original SKU, try with the barcode
                                 if (!imageMatch && barcodeMatch) {
                                     imageMatch = findImageMatch(barcodeMatch, name);
                                 }
-                                
+
                                 allItems.push({
                                     name,
                                     sku,
@@ -3039,7 +3051,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
                     // Create sticky note section variable (will be null if no notes)
                     let stickyNoteSection = null;
-                    
+
                     // Only create sticky note section if there are notes
                     if (notesText && notesText.trim()) {
                         stickyNoteSection = document.createElement('div');
@@ -3122,17 +3134,17 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                             if (quantityMatch) {
                                 const picked = parseInt(quantityMatch[1]);
                                 const total = parseInt(quantityMatch[2]);
-                                
+
                                 if (picked !== 0 || total !== 1) { // Skip 0/1
                                     const quantityClass =
                                         picked === total ? 'tampermonkey-picked-full' :
                                         picked === 0 && total > 1 ? 'tampermonkey-picked-none' :
                                         'tampermonkey-picked-partial';
-                                    
+
                                     highlightedQuantity = `<span class="${quantityClass}">${item.quantity}</span>`;
                                 }
                             }
-                            
+
                             textDiv.innerHTML = `<div class="font-weight-bold" style="font-size:0.9rem;">${item.name}</div><div class="text-muted" style="font-size:0.8rem;">${skuDisplay} | כמות: ${highlightedQuantity}${priceDisplay}</div>`;
                             itemDiv.appendChild(textDiv); container.appendChild(itemDiv);
                         });
@@ -3166,7 +3178,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
                             minimizedIconsContainer.appendChild(calculatorButton);
                         }
-                        
+
                         // Only create sticky note button if there are notes
                         if (notesText && notesText.trim()) {
                             const stickyNoteButton = document.createElement('button');
@@ -3183,7 +3195,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
                             minimizedIconsContainer.appendChild(stickyNoteButton);
                         }
-                        
+
                         // Only append the icons container if it has any buttons
                         if (minimizedIconsContainer.children.length > 0) {
                             newCell.appendChild(minimizedIconsContainer);
@@ -3304,7 +3316,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             if (settings && settings.replaceBarcodes) {
                 replaceBarcodesInViews(table);
             }
-            
+
             // NEW: Also highlight pick quantities after adding responsive attributes
             highlightPickQuantities();
         } catch (error) {
@@ -3454,14 +3466,14 @@ function initializeSidePanelResizeObserver() {
     (function () {
       // CONFIG
       const PANEL_SELECTOR = '.offcanvas.offcanvas-right.offcanvas-custom.resizable';
-      const GAP_BUFFER_PX = 16; // small safety margin for margins/borders/shadows
+      const GAP_BUFFER_PX = 20; // reduced buffer to prevent premature breaking
 
       const root = document.documentElement;
 
       function measurePanelWidth() {
         // Try the specific selector first
         let panel = document.querySelector(PANEL_SELECTOR);
-        
+
         // If not found, try finding via desktop-map-container (fallback)
         if (!panel) {
           const container = document.getElementById('desktop-map-container');
@@ -3469,31 +3481,58 @@ function initializeSidePanelResizeObserver() {
             panel = container.closest('.offcanvas') || container;
           }
         }
-        
+
         if (!panel) return 0;
-        
+
         const rect = panel.getBoundingClientRect();
-        
+
         // Check if panel is actually visible and has dimensions
         if (rect.width <= 0 || rect.height <= 0) return 0;
-        
+
         return Math.max(0, Math.round(rect.width)); // integer px
       }
 
       function applyGapVars() {
         const gap = measurePanelWidth();
+        const screenWidth = window.innerWidth;
+        
+        // Much smaller buffer to prevent premature breaking
+        let dynamicBuffer = 20; // Reduced from 50
+        if (screenWidth >= 1600) {
+          dynamicBuffer = 30; // Reduced from 80
+        } else if (screenWidth >= 1200) {
+          dynamicBuffer = 25; // Reduced from 60
+        } else if (screenWidth >= 768) {
+          dynamicBuffer = 20; // Reduced from 40
+        }
+        
         root.style.setProperty('--map-gap', `${gap}px`);
-        root.style.setProperty('--map-gap-buffered', `${gap + GAP_BUFFER_PX}px`);
+        root.style.setProperty('--map-gap-buffered', `${gap + dynamicBuffer}px`);
       }
 
       // Initial apply
       applyGapVars();
+      
+      // Also apply after a short delay to ensure all elements are loaded
+      setTimeout(applyGapVars, 500);
+      
+      // Apply again after DOM is fully loaded
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+          setTimeout(applyGapVars, 100);
+        });
+      }
 
       // Re-apply on window resize
       window.addEventListener('resize', applyGapVars, { passive: true });
+      
+      // Also re-apply when screen orientation changes
+      window.addEventListener('orientationchange', () => {
+        setTimeout(applyGapVars, 100); // Small delay to ensure orientation change is complete
+      });
 
       // Re-apply on panel resize (live drag)
-      const panel = document.querySelector(PANEL_SELECTOR) || 
+      const panel = document.querySelector(PANEL_SELECTOR) ||
                    document.getElementById('desktop-map-container')?.closest('.offcanvas');
       if (panel) {
         const ro = new ResizeObserver(() => applyGapVars());
@@ -3503,6 +3542,63 @@ function initializeSidePanelResizeObserver() {
       // Optional: if the preview rows are injected later, re-apply when they appear
       const mo = new MutationObserver(() => applyGapVars());
       mo.observe(document.body, { childList: true, subtree: true });
+      
+      // Monitor for map panel visibility changes
+      const mapObserver = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          if (mutation.type === 'attributes' && 
+              (mutation.attributeName === 'class' || mutation.attributeName === 'style')) {
+            const target = mutation.target;
+            if (target.matches && target.matches('.offcanvas, .offcanvas-right, .offcanvas-custom')) {
+              setTimeout(applyGapVars, 50); // Small delay to ensure DOM is updated
+            }
+          }
+        });
+      });
+      
+      // Observe the map panel for class/style changes
+      const mapPanel = document.querySelector(PANEL_SELECTOR) ||
+                      document.getElementById('desktop-map-container')?.closest('.offcanvas');
+      if (mapPanel) {
+        mapObserver.observe(mapPanel, { 
+          attributes: true, 
+          attributeFilter: ['class', 'style'] 
+        });
+      }
+      
+      // Monitor for map toggle buttons
+      document.addEventListener('click', (e) => {
+        const target = e.target;
+        if (target.matches && (
+          target.matches('[data-bs-toggle="offcanvas"]') ||
+          target.matches('[data-toggle="offcanvas"]') ||
+          target.closest('[data-bs-toggle="offcanvas"]') ||
+          target.closest('[data-toggle="offcanvas"]') ||
+          target.matches('.btn-map') ||
+          target.closest('.btn-map')
+        )) {
+          setTimeout(applyGapVars, 100); // Delay to allow offcanvas to open/close
+        }
+      });
+      
+      // Monitor for offcanvas events
+      document.addEventListener('shown.bs.offcanvas', applyGapVars);
+      document.addEventListener('hidden.bs.offcanvas', applyGapVars);
+      
+      // Periodic check for map panel changes (fallback)
+      setInterval(() => {
+        const currentGap = measurePanelWidth();
+        const currentGapVar = parseInt(getComputedStyle(root).getPropertyValue('--map-gap')) || 0;
+        if (Math.abs(currentGap - currentGapVar) > 10) { // Only update if difference is significant
+          applyGapVars();
+        }
+      }, 2000); // Check every 2 seconds
+      
+      // Debug logging (only in development)
+      if (window.DEBUG_TOOLBOX) {
+        console.log('[Toolbox] Side panel resize observer initialized');
+        console.log('[Toolbox] Initial map gap:', measurePanelWidth(), 'px');
+      }
     })();
   } catch (err) {
     console.error('[Toolbox] Error initializing side panel ResizeObserver:', err);
@@ -3834,20 +3930,20 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
         padding: 10px 15px;
         font-size: 14px;
     }
-    
+
     .gallery-footer {
         padding: 8px;
         gap: 8px;
     }
-    
+
     .gallery-top-info {
         padding: 8px;
     }
-    
+
     .gallery-image-container {
         padding: 12px;
     }
-    
+
 
 }
 
@@ -4133,7 +4229,44 @@ td[data-label="שם"] .fa-light.fa-check {
 }
 
 /* עטיפה אחידה לטקסט+אייקון, כמו בטבלה */
-.tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;unicode-bidi:plaintext}
+.tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;unicode-bidi:plaintext}
+/* תאי ברקוד - לא לשבור שורות */
+td[data-label="מק״ט"] .tampermonkey-copy-wrap{white-space:nowrap}
+/* תאי שם - לאפשר שבירת שורות */
+td[data-label="שם"] .tampermonkey-copy-wrap{white-space:normal;word-wrap:break-word}
+/* וידוא שתאי השם יכולים להישבר לשורות */
+td[data-label="שם"]{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהקישורים בתאי השם יכולים להישבר לשורות */
+td[data-label="שם"] a{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שה-BDI של השם יכול להישבר לשורות */
+td[data-label="שם"] .tampermonkey-name-bdi{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שכל תאי השם בטבלאות יכולים להישבר לשורות */
+table td[data-label="שם"], table td:nth-child(3){white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהקישורים בטבלאות יכולים להישבר לשורות */
+table td[data-label="שם"] a, table td:nth-child(3) a{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] span, table td:nth-child(3) span{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] bdi, table td:nth-child(3) bdi{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] strong, table td:nth-child(3) strong{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] b, table td:nth-child(3) b{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] div, table td:nth-child(3) div{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] p, table td:nth-child(3) p{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] i, table td:nth-child(3) i{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] em, table td:nth-child(3) em{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
+table td[data-label="שם"] u, table td:nth-child(3) u{white-space:normal;word-wrap:break-word;word-break:break-word}
+/* מניעת שבירת שורות בטבלת ביקורי חנות */
+#operator-store-visits-table_wrapper table td[data-label="שם"],
+#operator-store-visits-table_wrapper table td:nth-child(12),
+#operator-store-visits-table_wrapper table td[data-label="שם"] *,
+#operator-store-visits-table_wrapper table td:nth-child(12) *{white-space:nowrap !important;word-wrap:normal !important;word-break:normal !important}
 .gallery-barcode-bdi{direction:ltr;unicode-bidi:plaintext}
 .gallery-name-bdi{direction:auto;unicode-bidi:plaintext}
 .gallery-product-name .fa-light.fa-clone{font-size:.85em;cursor:pointer;color:#3699ff}
@@ -4213,6 +4346,37 @@ td[data-label="שם"] .fa-light.fa-check {
         }
         .gallery-nav.prev { right:15px }
         .gallery-nav.next { left:15px }
+
+        /* Report Button */
+        .gallery-report {
+            position: absolute;
+            top: 10px;
+            right: 80px;
+            background: rgba(255, 193, 7, 0.9);
+            color: #000;
+            border: none;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        .gallery-report:hover {
+            background: rgba(255, 193, 7, 1);
+            transform: scale(1.1);
+        }
+
+        .gallery-report:active {
+            transform: scale(0.95);
+        }
 
 
         .preview-cell {
@@ -4589,16 +4753,16 @@ tr[id^="preview-for-"] *:focus {
 }
 
 /* Responsive Preview Grid Layout - Targeted padding approach */
-:root { 
-    --map-gap: 0px; 
+:root {
+    --map-gap: 0px;
 }
 
 /* Preview flex-wrap container (the div with display:flex inside the preview row) */
 tr[id^="preview-for-"] > td > div[style*="display: flex"] {
-  /* Constrain container width by the live panel width */
-  max-width: calc(100% - var(--map-gap, 0px)) !important;
+  /* Much more generous width calculation to prevent premature breaking */
+  max-width: calc(100% - var(--map-gap-buffered, 0px) - 20px) !important;
 
-  /* Push content away from the map edge (left) with a small buffer */
+  /* Push content away from the map edge (left) with a buffer */
   padding-left: var(--map-gap-buffered, 0px) !important;
 
   /* Ensure padding is part of the width calc */
@@ -4612,9 +4776,10 @@ tr[id^="preview-for-"] > td > div[style*="display: flex"] {
 
 /* Individual item cards inside the preview (keeps predictable wrapping) */
 tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
-  /* Adjust 340px if you're using a different card width */
-  flex: 0 1 340px !important;
-  max-width: 340px !important;
+  /* Allow cards to grow and fill available space efficiently */
+  flex: 1 1 300px !important;
+  max-width: none !important;
+  min-width: 280px !important;
 }
 
 /* 2-line text clamp for product titles in preview cards */
@@ -4627,6 +4792,134 @@ tr[id^="preview-for-"] .font-weight-bold{
     white-space: normal;
     line-height: 1.2em;
     max-height: calc(1.2em * 2);
+}
+
+/* Additional responsive adjustments for wider screens */
+@media (min-width: 1200px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+    max-width: calc(100% - var(--map-gap-buffered, 0px) - 30px) !important;
+  }
+  
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+    flex: 1 1 320px !important;
+    max-width: none !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+    max-width: calc(100% - var(--map-gap-buffered, 0px) - 40px) !important;
+  }
+  
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+    flex: 1 1 350px !important;
+    max-width: none !important;
+  }
+}
+
+/* When map panel is very small or closed, give more space to cards */
+@media (min-width: 768px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+    max-width: calc(100% - max(var(--map-gap-buffered, 0px), 20px)) !important;
+  }
+}
+
+/* Ensure minimum usable space for cards even when map is very wide */
+@media (min-width: 768px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+    min-width: 600px !important;
+  }
+}
+
+/* Smooth transitions for responsive changes */
+tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+  transition: max-width 0.3s ease-in-out !important;
+}
+
+tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+  transition: flex-basis 0.3s ease-in-out, max-width 0.3s ease-in-out !important;
+}
+
+/* Additional responsive breakpoints for better card layout */
+@media (min-width: 768px) and (max-width: 1199px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+    flex: 1 1 280px !important;
+    max-width: none !important;
+  }
+}
+
+@media (min-width: 1200px) and (max-width: 1599px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+    flex: 1 1 300px !important;
+    max-width: none !important;
+  }
+}
+
+/* Ensure cards don't break too early on very wide screens */
+@media (min-width: 1600px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+    max-width: calc(100% - var(--map-gap-buffered, 0px) - 50px) !important;
+  }
+  
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+    flex: 1 1 380px !important;
+    max-width: none !important;
+  }
+}
+
+/* Fallback for when map panel is not detected */
+@media (min-width: 768px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+    max-width: calc(100% - 40px) !important;
+  }
+}
+
+/* Force better space utilization */
+@media (min-width: 768px) {
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+    width: calc(100% - var(--map-gap-buffered, 0px)) !important;
+    justify-content: space-between !important;
+  }
+  
+  /* Ensure cards distribute evenly */
+  tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+    flex: 1 1 auto !important;
+    max-width: calc((100% - 16px) / 3) !important; /* Account for gaps */
+  }
+  
+  /* When map is wide, allow more cards per row */
+  @media (min-width: 768px) {
+    tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+      max-width: calc((100% - 24px) / 4) !important; /* Allow 4 cards when space permits */
+    }
+  }
+}
+
+/* Ensure proper spacing and layout for preview cards */
+tr[id^="preview-for-"] > td > div[style*="display: flex"] {
+  justify-content: flex-start !important;
+  align-items: stretch !important;
+  width: 100% !important;
+}
+
+/* Improve card spacing and prevent overcrowding */
+tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
+  margin-bottom: 8px !important;
+  margin-right: 8px !important;
+  flex-grow: 1 !important;
+  flex-shrink: 1 !important;
+  flex-basis: auto !important;
+}
+
+/* Ensure cards have proper internal spacing */
+tr[id^="preview-for-"] .d-flex > div {
+  padding: 8px !important;
+}
+
+/* Improve text readability in cards */
+tr[id^="preview-for-"] .font-weight-bold {
+  font-size: 0.9em !important;
+  line-height: 1.3 !important;
 }
   `;
 
@@ -4667,7 +4960,7 @@ function prepareCopyElements() {
             // Skip adding copy-enabled to name cells in store visits table
             if (el.getAttribute('data-label') === 'שם') {
                 const table = el.closest('table');
-                if (table && (table.id === 'operator-store-visits-table' || 
+                if (table && (table.id === 'operator-store-visits-table' ||
                               table.closest('#operator-store-visits-table_wrapper'))) {
                     return; // Skip name cells in store visits table
                 }
@@ -4807,7 +5100,7 @@ function prepareCopyElements() {
     // ---< Ready Row Highlighting >---
     let readyHighlightRunning = false;
     let readyHighlightTimeout = null;
-    
+
     // Debounced version that always runs but with smart timing
     const debouncedHighlightReadyRows = debounce(async () => {
         if (readyHighlightRunning) {
@@ -4816,14 +5109,14 @@ function prepareCopyElements() {
             setTimeout(() => debouncedHighlightReadyRows(), 1000);
             return;
         }
-        
+
         await highlightReadyRows();
     }, 500); // Wait 500ms after last call
-    
+
     async function highlightReadyRows() {
         try {
             if (!settings || !settings.highlightMerlog) return;
-            
+
             readyHighlightRunning = true;
 
             // Try to find the correct table
@@ -4846,12 +5139,12 @@ function prepareCopyElements() {
             // Process each row
             const rows = table.querySelectorAll('tbody tr');
             const rowArray = Array.from(rows);
-            
+
             // Create alternating order: first, last, second, second-to-last, etc.
             const alternatingRows = [];
             let start = 0;
             let end = rowArray.length - 1;
-            
+
             while (start <= end) {
                 if (start === end) {
                     alternatingRows.push(rowArray[start]);
@@ -4907,17 +5200,17 @@ function prepareCopyElements() {
                 // First, check for tooltips with "הערות משלוח" and "מוכן"
                 let foundInTooltip = false;
                 const tooltipCells = row.querySelectorAll('[title*="הערות משלוח"], [data-original-title*="הערות משלוח"]');
-                
+
                 for (const cell of tooltipCells) {
                     const title = cell.getAttribute('title') || cell.getAttribute('data-original-title') || '';
                     if (title.includes('הערות משלוח') && title.includes('מוכן')) {
                         // Removed excessive logging to reduce console noise
-                        
+
                         // Highlight immediately when found
                         row.classList.add('ready-row-highlight');
                         highlightedCount++;
                         foundInTooltip = true;
-                        
+
                         // Cache the result
                         if (!window.readyTaskCache) window.readyTaskCache = {};
                         window.readyTaskCache[taskId] = true;
@@ -4941,7 +5234,7 @@ function prepareCopyElements() {
                             'content-type': 'application/json'
                         }
                     });
-                    
+
                     if (!response.ok) {
                         // Removed excessive logging to reduce console noise
                         continue;
@@ -4949,14 +5242,14 @@ function prepareCopyElements() {
 
                     const panelViewHtml = await response.text();
                     const doc = new DOMParser().parseFromString(panelViewHtml, 'text/html');
-                    
+
                     // Look for "מוכן" in the panel view - same logic as panel highlighting
                     const notesElements = doc.querySelectorAll('.bg-yellow .hover-copy, .notes, [class*="note"], [class*="comment"]');
                     let foundInPanel = false;
                     for (const notesEl of notesElements) {
                         if (notesEl && notesEl.textContent.includes('מוכן')) {
                             // Removed excessive logging to reduce console noise
-                            
+
                             // Highlight immediately when found
                             row.classList.add('ready-row-highlight');
                             highlightedCount++;
@@ -4971,7 +5264,7 @@ function prepareCopyElements() {
                     window.readyTaskCache[taskId] = foundInPanel;
                 } catch (fetchError) {
                     console.error(`[Ready Highlight] Error fetching panel view for task ${taskId}:`, fetchError);
-                    
+
                     // Cache as false on error
                     if (!window.readyTaskCache) window.readyTaskCache = {};
                     window.readyTaskCache[taskId] = false;
@@ -5108,12 +5401,12 @@ function prepareCopyElements() {
             highlightMerlogRows(); // Add Merlog row highlighting
             highlightMerlogPanelView(); // Add Merlog panel view highlighting
             highlightPickQuantities(); // Add pick quantities highlighting
-            
+
             // Run ready highlighting in background to avoid blocking the UI
             setTimeout(() => {
                 debouncedHighlightReadyRows();
             }, 1000);
-            
+
             // Also run when the page is fully loaded, but only once
             let pageLoadHighlightDone = false;
             if (document.readyState === 'complete') {
@@ -5247,14 +5540,14 @@ function prepareCopyElements() {
                 }
 
                 if (tableObserverActive) return; // Prevent multiple simultaneous calls
-                
+
                 let shouldCheckReady = false;
                 let newTaskRows = 0;
-                
+
                 mutations.forEach(mutation => {
                     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
                         mutation.addedNodes.forEach(node => {
-                            if (node.nodeType === 1 && node.matches && 
+                            if (node.nodeType === 1 && node.matches &&
                                 (node.matches('tr[data-task-id]') || node.querySelector('tr[data-task-id]'))) {
                                 shouldCheckReady = true;
                                 newTaskRows++;
@@ -5262,10 +5555,10 @@ function prepareCopyElements() {
                         });
                     }
                 });
-                
+
                 if (shouldCheckReady && newTaskRows > 0) {
                     tableObserverActive = true;
-                    
+
                     // Clear previous timeout to avoid multiple calls
                     if (readyHighlightTimeout) {
                         clearTimeout(readyHighlightTimeout);
@@ -5276,10 +5569,10 @@ function prepareCopyElements() {
                     }, 2000);
                 }
             });
-            
+
             // Observe the table for new rows
-            const tableToObserve = document.querySelector('#operator-store-visits-table') || 
-                                  document.querySelector('#tasks-table') || 
+            const tableToObserve = document.querySelector('#operator-store-visits-table') ||
+                                  document.querySelector('#tasks-table') ||
                                   document.querySelector('table');
             if (tableToObserve) {
                 tableObserver.observe(tableToObserve, { childList: true, subtree: true });
@@ -5310,7 +5603,7 @@ function highlightPickQuantities() {
         targetTables.forEach(table => {
             // Find cells with the specific data-label for pick quantities
             const pickQuantityCells = table.querySelectorAll('td[data-label="כמות / לוקט"]');
-            
+
             pickQuantityCells.forEach(el => {
                 if (!el || !el.innerHTML) return;
 
@@ -5320,7 +5613,7 @@ function highlightPickQuantities() {
                 }
 
                 let html = el.innerHTML.trim();
-                
+
                 // More specific pattern for pick quantities: exactly 2 numbers separated by "/"
                 const match = html.match(/^(\d+)\s*\/\s*(\d+)$/);
                 if (!match) return;
@@ -5384,7 +5677,7 @@ async function initialize() {
   prepareCopyElements();
 
   highlightPickQuantities();
-  
+
   // Add clickable links to all tables (including non-visit-row tables)
   addClickableLinksToAllTables();
 
@@ -5421,7 +5714,7 @@ async function initialize() {
       }, 1000);
       return;
     }
-    
+
     tables.forEach(table => {
       if (table && table.nodeType === Node.ELEMENT_NODE) {
         const mo = new MutationObserver((muts) => {
@@ -5527,13 +5820,13 @@ async function initialize() {
         runMainLogic();
       }
       prepareCopyElements();
-      
+
       // Add clickable links to all tables (including non-visit-row tables)
       addClickableLinksToAllTables();
 
       // Apply Copy Icon RTL/LTR Fix on DOM changes
       applyCopyIconFix();
-      
+
       // Only trigger highlightPickQuantities if relevant nodes changed
       const hasQuantityChanges = mutationsList.some(mutation => {
         if (mutation.type === 'childList') {
@@ -5550,17 +5843,17 @@ async function initialize() {
           }
         }
         // Check if the changed node itself is a quantity cell
-        if (mutation.target && mutation.target.getAttribute && 
+        if (mutation.target && mutation.target.getAttribute &&
             mutation.target.getAttribute('data-label') === 'כמות / לוקט') {
           return true;
         }
         return false;
       });
-      
+
       if (hasQuantityChanges) {
         highlightPickQuantities();
       }
-      
+
       // NEW: Also replace barcodes for any DOM changes
       if (settings && settings.replaceBarcodes) {
         replaceBarcodesInViews();
@@ -5625,7 +5918,7 @@ document.body.addEventListener('click', function (e) {
   const style = document.createElement('style');
   style.id = 'tm-copy-css';
   style.textContent = `
-    .tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;white-space:nowrap;unicode-bidi:plaintext}
+    .tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;unicode-bidi:plaintext}
     .tampermonkey-barcode-bdi{direction:ltr;unicode-bidi:plaintext}
     .tampermonkey-name-bdi{direction:auto;unicode-bidi:plaintext}
     .copy-icon{color:#3699ff;cursor:pointer;line-height:1;flex:0 0 auto}
@@ -5655,7 +5948,7 @@ function applyCopyIconFix(root = document){
   function ensureCopyIcon(wrap, getText){
     let icon = wrap.querySelector(':scope > i.fa-clone');
     const text = (getText?.() || '').trim();
-    
+
     // If no text content, hide or remove the icon
     if (!text) {
       if (icon) {
@@ -5663,7 +5956,7 @@ function applyCopyIconFix(root = document){
       }
       return null;
     }
-    
+
     if (!icon){
       icon = document.createElement('i');
       icon.className = 'fa-light fa-clone copy-icon';
@@ -5720,14 +6013,14 @@ function applyCopyIconFix(root = document){
   function fixNameCell(tr){
     const td = tr.querySelector('td[data-label="שם"]');
     if (!td) return;
-    
+
     // Check if this is the store visits table - if so, don't add copy icon for name cells
     const table = tr.closest('table');
-    if (table && (table.id === 'operator-store-visits-table' || 
+    if (table && (table.id === 'operator-store-visits-table' ||
                   table.closest('#operator-store-visits-table_wrapper'))) {
       return; // Skip adding copy icon for name cells in store visits table
     }
-    
+
     const wrap = ensureWrap(td);
 
     // Prefer <a>, else first child/text
@@ -5758,7 +6051,7 @@ function applyCopyIconFix(root = document){
 
 function createCopyIcon(textToCopy, { title='העתק' } = {}){
   const text = (textToCopy || '').trim();
-  
+
   // Don't create icon if no text content
   if (!text) {
     const hiddenIcon = document.createElement('i');
@@ -5766,7 +6059,7 @@ function createCopyIcon(textToCopy, { title='העתק' } = {}){
     hiddenIcon.style.display = 'none';
     return hiddenIcon;
   }
-  
+
   const i = document.createElement('i');
   i.className = 'fa-light fa-clone';
   i.title = title;
@@ -5783,53 +6076,53 @@ function addClickableLinksToAllTables() {
     try {
         // Find all tables with data-label="שם" cells (not just visit-row tables)
         const allTables = document.querySelectorAll('table.table.table-hover[data-columns-tagged="true"]');
-        
+
         allTables.forEach(table => {
             // Skip store visits table - don't add copy icons for names there
-            if (table.id === 'operator-store-visits-table' || 
+            if (table.id === 'operator-store-visits-table' ||
                 table.closest('#operator-store-visits-table_wrapper')) {
                 return;
             }
-            
+
             const rows = table.querySelectorAll('tbody tr:not([data-links-processed])');
-            
+
             rows.forEach(row => {
                 // Find name cell by data-label
                 const nameCell = row.querySelector('td[data-label="שם"]');
                 if (!nameCell || nameCell.querySelector('a') || nameCell.querySelector('i.fa-clone')) return; // Skip if already processed
-                
+
                 // Find SKU cell to get product info
                 const skuCell = row.querySelector('td[data-label="מק״ט"]');
                 if (!skuCell) return;
-                
+
                 const productName = nameCell.textContent.trim();
                 const sku = (skuCell.dataset.originalSku || skuCell.textContent || '').trim();
-                
+
                 if (!productName || !sku) return;
-                
+
                 // Check if there's an Anipet button in this cell or nearby
                 const hasAnipetButton = nameCell.querySelector('.anipet-alternatives-btn') ||
                                        nameCell.closest('tr').querySelector('.anipet-alternatives-btn');
-                
+
                 // Only process if there's no Anipet button
                 if (!hasAnipetButton) {
                     // Try to find a match for this product
                     const match = findImageMatch(sku, productName);
-                    
+
                     if (match && match.link) {
                         // Clear the cell content
                         nameCell.innerHTML = '';
-                        
+
                         // Create copy icon with enhanced feedback
                         const copyIcon = createCopyIcon(productName);
-                        
+
                         // Create link
                         const link = document.createElement('a');
                         link.href = match.link;
                         link.target = '_blank';
                         link.rel = 'noopener noreferrer';
                         link.textContent = productName;
-                        
+
                         // Append link first, then copy icon (icon will float left)
                         nameCell.appendChild(link);
                         nameCell.appendChild(copyIcon);
@@ -5837,16 +6130,16 @@ function addClickableLinksToAllTables() {
                         // Even if no link, add copy icon for the product name
                         const originalContent = nameCell.innerHTML;
                         nameCell.innerHTML = '';
-                        
+
                         // Create copy icon with enhanced feedback
                         const copyIcon = createCopyIcon(productName);
-                        
+
                         // Append text first, then copy icon (icon will float left)
                         nameCell.appendChild(document.createTextNode(productName));
                         nameCell.appendChild(copyIcon);
                     }
                 }
-                
+
                 // Add copy icon to barcode cell if it has barcode-highlight
                 const skuCellBarcode = skuCell.querySelector('.barcode-highlight, span.barcode-highlight');
                 if (skuCellBarcode && !skuCell.querySelector('i.fa-clone')) {
@@ -5856,12 +6149,12 @@ function addClickableLinksToAllTables() {
                         const barcodeCopyIcon = createCopyIcon(barcodeText);
                         barcodeCopyIcon.style.marginLeft = '4px';
                         barcodeCopyIcon.style.marginRight = '0px';
-                        
+
                         // Insert the copy icon after the barcode
                         skuCellBarcode.parentNode.insertBefore(barcodeCopyIcon, skuCellBarcode.nextSibling);
                     }
                 }
-                
+
                 // Mark row as processed
                 row.setAttribute('data-links-processed', 'true');
             });
@@ -6112,7 +6405,7 @@ async function openPreviewForTask(taskId) {
 
                     // Try to find image match - first with original SKU, then with replaced barcode
                     let imageMatch = findImageMatch(sku, name);
-                    
+
                     // If no image found with original SKU, try with replaced barcode
                     if (!imageMatch) {
                         const replacedBarcode = findBarcode(sku, name);
@@ -6120,7 +6413,7 @@ async function openPreviewForTask(taskId) {
                             imageMatch = findImageMatch(replacedBarcode, name);
                         }
                     }
-                    
+
                     const barcodeMatch = findBarcode(sku, name);
                     allItems.push({
                         name,
@@ -6133,7 +6426,7 @@ async function openPreviewForTask(taskId) {
                 });
             }
         }
-        
+
         const newRow = document.createElement('tr'); newRow.id = `preview-for-${taskId}`;
         if (isReady) {
             newRow.classList.add('ready-row-highlight');
@@ -6228,7 +6521,7 @@ function togglePreviewSection(button, sectionType) {
   if (!section) return;
 
   const isVisible = section.style.display !== 'none';
-  
+
   if (isVisible) {
     // Hide section
     section.style.display = 'none';
