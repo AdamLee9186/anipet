@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.0.9
+// @version      2.1.9
 // @description  Touch-friendly quantity input with smart animation and accessibility
 // @author       Adam Lee
 // @license      MIT
@@ -23,7 +23,7 @@
 
   // Configuration
   const CONFIG = {
-    VERSION: '2.0.8',
+    VERSION: '2.1.9',
     MIN_VALUE: -999,
     MAX_VALUE: 999999,
     HOLD_DELAY: 400,
@@ -61,7 +61,8 @@
   GM_addStyle(`
     /* Global booting: hide digits before enhancement/first scan */
     .lwq-booting input[type="number"][name*="[quantity]"],
-    .lwq-booting input[type="number"][id$="_quantity"] {
+    .lwq-booting input[type="number"][id$="_quantity"],
+    .lwq-booting input.order-item-quantity-input[type="number"] {
       color: transparent !important;
       caret-color: transparent !important;
       text-shadow: none !important;
@@ -69,7 +70,8 @@
 
     /* Modal-scoped booting (no global flicker) */
     .modal.lwq-booting input[type="number"][name*="[quantity]"],
-    .modal.lwq-booting input[type="number"][id$="_quantity"] {
+    .modal.lwq-booting input[type="number"][id$="_quantity"],
+    .modal.lwq-booting input.order-item-quantity-input[type="number"] {
       color: transparent !important;
       caret-color: transparent !important;
       text-shadow: none !important;
@@ -77,19 +79,22 @@
 
     /* Keep current per-input hiding as a second safety net */
     input[type="number"][name*="[quantity]"]:not([data-lwq="1"]),
-    input[type="number"][id$="_quantity"]:not([data-lwq="1"]) {
+    input[type="number"][id$="_quantity"]:not([data-lwq="1"]),
+    input.order-item-quantity-input[type="number"]:not([data-lwq="1"]) {
       color: transparent !important;
       caret-color: transparent !important;
       text-shadow: none !important;
     }
     input[type="number"][name*="[quantity]"]:not([data-lwq="1"])::placeholder,
-    input[type="number"][id$="_quantity"]:not([data-lwq="1"])::placeholder {
+    input[type="number"][id$="_quantity"]:not([data-lwq="1"])::placeholder,
+    input.order-item-quantity-input[type="number"]:not([data-lwq="1"])::placeholder {
       color: transparent !important;
     }
 
     /* Give the quantity column enough room for [-][###][+] with proper spacing */
     .order-item-input.order-item-small:has([name*="[quantity]"]),
-    .order-item-input.order-item-small:has([id$="_quantity"]) {
+    .order-item-input.order-item-small:has([id$="_quantity"]),
+    .order-item-input.order-item-small:has(.order-item-quantity-input) {
       min-width: 140px;            /* increased to accommodate wider input + buttons */
       flex: 0 0 auto;
     }
@@ -249,10 +254,87 @@
       overflow-wrap: normal !important;
       display: inline-block !important;
     }
+
+    /* Keep the quantity row from pushing the checkmark column (desktop/default) */
+    .pick-order-item-row .col-sm-4 > .d-flex.align-items-center {
+      flex-wrap: nowrap;
+      gap: 6px; /* breathing room for [-][input][+] */
+      align-items: center;
+    }
+    /* Do not let the quantity input grow; keep its fixed width so the checkmark stays in its column */
+    .pick-order-item-row .col-sm-4 .lwq-row .lwq-input.form-control {
+      flex: 0 0 auto !important;
+      width: 65px !important; /* match site inline style */
+    }
+    /* Buttons near the fixed-width input should not grow either */
+    .pick-order-item-row .col-sm-4 .lwq-row .lwq-minus,
+    .pick-order-item-row .col-sm-4 .lwq-row .lwq-plus {
+      flex: 0 0 32px !important;
+    }
+    /* Avoid clipping stepper inside narrow grids */
+    .pick-order-item-row .col-sm-4 > .d-flex.align-items-center { overflow: visible; }
+
+    /* --- Prevent title from colliding with "/ max" by reserving space for the stepper --- */
+    /* Keep row on one line */
+    .pick-order-item-row .row.d-flex.align-items-center { flex-wrap: nowrap; }
+
+    /* Title column: takes the remaining width and can wrap */
+    .pick-order-item-row .col-sm-6 {
+      flex: 1 1 0% !important;
+      min-width: 0 !important;               /* allow wrapping instead of overflow */
+    }
+    .pick-order-item-row .col-sm-6 .text-break {
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
+    /* Middle column: fixed, non-wrapping width that fits (-)[qty](+) + " / max" */
+    .pick-order-item-row .col-sm-4 {
+      flex: 0 0 180px !important;            /* reserve enough room */
+      max-width: 180px !important;
+    }
+    .pick-order-item-row .col-sm-4 > .d-flex.align-items-center {
+      white-space: nowrap;                    /* keep everything on one line */
+      gap: 6px;
+      align-items: center;
+    }
+
+    /* Right column (checkmark): compact, natural width */
+    .pick-order-item-row .col-sm-2 {
+      flex: 0 0 auto !important;
+      width: auto !important;
+    }
+
+    /* Extra-tight layout for very narrow modals */
+    @media (max-width: 620px) {
+      .pick-order-item-row .col-sm-4 {
+        flex-basis: 164px !important;
+        max-width: 164px !important;
+      }
+      .pick-order-item-row .col-sm-4 .lwq-row { gap: 4px; }
+      .pick-order-item-row .col-sm-4 .lwq-row .lwq-input.form-control { width: 56px !important; }
+      .pick-order-item-row .col-sm-4 .lwq-row .lwq-minus,
+      .pick-order-item-row .col-sm-4 .lwq-row .lwq-plus {
+        width: 28px !important; height: 28px !important;
+        min-width: 28px !important; min-height: 28px !important;
+        flex: 0 0 28px !important;
+      }
+    }
   `);
 
+  // Treat native quantity inputs, plus Lionwheel order rows, as eligible
   const isQtyInput = el =>
-    el && el.tagName === 'INPUT' && el.type === 'number';
+    el
+    && el.tagName === 'INPUT'
+    && el.type === 'number'
+    && (
+      // existing broad support
+      true
+      // explicit allow-list for Lionwheel order rows
+      || el.classList.contains('order-item-quantity-input')
+      || (el.name && /\[quantity\]/.test(el.name))
+      || (el.id && /_quantity$/.test(el.id))
+    );
 
   const already = el => el.dataset.lwq === '1';
 
@@ -267,6 +349,19 @@
     if (v === null || v === '') return fb;
     const n = Number(v);
     return Number.isFinite(n) ? n : fb;
+  };
+
+  // Read the original numeric value that the page set (value property, value attr, or defaultValue)
+  const getInitialNumericValue = (input) => {
+    const candidates = [
+      input.value,
+      input.getAttribute('value'),
+      input.defaultValue
+    ];
+    for (const c of candidates) {
+      if (c !== null && c !== '' && !Number.isNaN(Number(c))) return Number(c);
+    }
+    return CONFIG.DEFAULT_VALUE;
   };
 
   const snapTo = (val, step, base) => {
@@ -285,17 +380,20 @@
 
   function resetAllQtyToDefault(root = document) {
     root.querySelectorAll('input[type="number"][data-lwq="1"]').forEach((el) => {
-      el.value = String(CONFIG.DEFAULT_VALUE);
-      el.defaultValue = el.value;
-      el.setAttribute('value', el.value);
-      const span = el.closest('.lwq-display-wrapper')?.querySelector('.lwq-display-value');
-      if (span) span.textContent = el.value;
+      const v = (el.dataset.lwqInitial ?? el.value);
+      if (v !== undefined) {
+        el.value = String(v);
+        el.defaultValue = el.value;
+        el.setAttribute('value', el.value);
+        const span = el.closest('.lwq-display-wrapper')?.querySelector('.lwq-display-value');
+        if (span) span.textContent = el.value;
+      }
     });
   }
 
   function liftBootingWhenReady(root = document) {
     // If no target inputs remain unenhanced, lift the booting class
-    const pending = root.querySelector('input[type="number"][name*="[quantity]"]:not([data-lwq="1"]), input[type="number"][id$="_quantity"]:not([data-lwq="1"])');
+    const pending = root.querySelector('input[type="number"][name*="[quantity]"]:not([data-lwq="1"]), input[type="number"][id$="_quantity"]:not([data-lwq="1"]), input.order-item-quantity-input[type="number"]:not([data-lwq="1"])');
     if (!pending) {
       document.documentElement.classList.remove('lwq-booting');
       return true;
@@ -306,6 +404,102 @@
   function setModalBooting(modal, on) {
     if (!modal) return;
     modal.classList.toggle('lwq-booting', !!on);
+  }
+
+  // Helper: robustly read the "max" shown to the user
+  function getRowMax(input) {
+    // 1) Prefer numeric max attribute
+    const amax = input.getAttribute('max');
+    if (amax !== null && amax !== '' && Number.isFinite(Number(amax))) {
+      return Number(amax);
+    }
+    // 2) Fallback: parse the sibling "/ N" text
+    const wrap = input.closest('.d-flex.align-items-center');
+    const slashSpan = wrap && wrap.querySelector('.mx-1');
+    if (slashSpan) {
+      const m = String(slashSpan.textContent || '').match(/\/\s*([+-]?\d+)/);
+      if (m) return Number(m[1]);
+    }
+    return null;
+  }
+
+  // Helper function to set quantity programmatically with proper event firing
+  function setQtyProgrammatically(input, value) {
+    const oldValue = input.value;
+    input.value = String(value);
+    input.defaultValue = input.value;
+    input.setAttribute('value', input.value);
+    
+    // Update the display overlay
+    const displaySpan = input.closest('.lwq-display-wrapper')?.querySelector('.lwq-display-value');
+    if (displaySpan) {
+      displaySpan.textContent = input.value;
+    }
+    
+    // Fire events to notify the site's logic
+    if (oldValue !== input.value) {
+      fire(input);
+    }
+  }
+
+  // Delegate checkmark clicks: CHECK -> fill max (remember previous), UNCHECK -> restore previous
+  function installCheckmarkSync(root = document) {
+    if (root.__lwqCheckmarkSyncInstalled) return;
+    root.__lwqCheckmarkSyncInstalled = true;
+    root.addEventListener('click', (ev) => {
+      const icon = ev.target && (ev.target.closest?.('.order-item-checked'));
+      if (!icon) return;
+      const row = icon.closest('.pick-order-item-row') || icon.closest('tr');
+      if (!row) return;
+      const pickInput = () =>
+        row.querySelector('input.lwq-input.order-item-quantity-input[type="number"]') ||
+        row.querySelector('input.order-item-quantity-input[type="number"]') ||
+        row.querySelector('input[type="number"]');
+      const input = pickInput();
+      if (!input) return; // nothing to sync
+
+      // State BEFORE site handler toggles it
+      const wasChecked =
+        icon.getAttribute('data-item-checked') === 'true' ||
+        icon.classList.contains('item-check-picked') ||
+        row.classList.contains('bg-success-picked');
+      // Snapshot BEFORE toggle
+      const prevValueBeforeToggle = input.value;
+      const preToggleMax = getRowMax(input);  // read before attributes change
+
+      // Let the site's handler run first (toggle classes, disable, etc.)
+      setTimeout(() => {
+        // Re-acquire the input in case the site re-rendered/replaced it
+        const curInput = pickInput() || input;
+        const isCheckedNow =
+          icon.getAttribute('data-item-checked') === 'true' ||
+          icon.classList.contains('item-check-picked') ||
+          row.classList.contains('bg-success-picked');
+
+        // Transition: UNCHECKED -> CHECKED
+        if (!wasChecked && isCheckedNow) {
+          // Store previous value on both the input and the row (survives input replacement)
+          curInput.dataset.lwqPrev = String(prevValueBeforeToggle);
+          row.dataset.lwqPrev = String(prevValueBeforeToggle);
+          const targetMax = (preToggleMax ?? getRowMax(curInput));
+          if (targetMax === null || Number.isNaN(targetMax)) return;
+          setQtyProgrammatically(curInput, targetMax);
+          return;
+        }
+
+        // Transition: CHECKED -> UNCHECKED
+        if (wasChecked && !isCheckedNow) {
+          const restore =
+            (row.dataset.lwqPrev ?? '') !== '' ? row.dataset.lwqPrev :
+            (curInput.dataset.lwqPrev ?? '') !== '' ? curInput.dataset.lwqPrev :
+            (curInput.dataset.lwqInitial ?? '');
+          if ((restore ?? '') !== '') setQtyProgrammatically(curInput, restore);
+          // Clear stored previous value
+          delete row.dataset.lwqPrev;
+          delete curInput.dataset.lwqPrev;
+        }
+      }, 0);
+    }, true); // capture phase to observe pre-toggle state too
   }
 
   function enhance(input) {
@@ -365,8 +559,10 @@
     input.parentNode.insertBefore(row, input);
     row.append(minus, input, plus);
 
-    // Force default to 1 on first enhancement (even if DOM/browser restored 5)
-    input.value = String(CONFIG.DEFAULT_VALUE);
+    // Preserve the **original** quantity from the page instead of forcing a default
+    const initial = getInitialNumericValue(input);
+    input.dataset.lwqInitial = String(initial);
+    input.value = String(initial);
     input.defaultValue = input.value;
     input.setAttribute('value', input.value);
 
@@ -394,7 +590,7 @@
     input.parentNode.insertBefore(displayWrapper, input);
     displayWrapper.appendChild(input);
 
-    // Make sure overlay shows the forced default now
+    // Make sure overlay shows the current (preserved) value now
     const displaySpan = displayWrapper.querySelector('.lwq-display-value');
     const syncDisplay = () => { if (displaySpan) displaySpan.textContent = input.value || '0'; };
     syncDisplay();
@@ -413,13 +609,14 @@
       input.addEventListener(ev, syncDisplay, { passive: true });
     });
 
-    /* responsive width - let flex handle the sizing */
+    /* responsive width */
     const isInModal = input.closest('.modal') !== null;
     const padding = isInModal ? '16px' : '8px';
 
     input.style.minWidth = 'calc(6ch + 20px)';
     input.style.paddingInline = padding;
-    input.style.flex = '1 1 auto';
+    // IMPORTANT: do not let the input grow; keep it fixed so the checkmark column remains at the end
+    input.style.flex = '0 0 auto';
 
     const syncDisabled = () => {
       const dis = input.disabled || input.readOnly;
@@ -429,14 +626,14 @@
 
     const cfg = () => ({
       step: numAttr(input, 'step', 1),
-      min:  CONFIG.MIN_VALUE,
+      min:  numAttr(input, 'min', CONFIG.MIN_VALUE),
       max:  numAttr(input, 'max', CONFIG.MAX_VALUE),
     });
 
     function ensureNumeric() {
-      if (input.value === '' || isNaN(Number(input.value))) {
-        input.value = String(CONFIG.DEFAULT_VALUE);
-        // NEW: align defaultValue so the browser doesn't "revert" visually
+      if (input.value === '' || Number.isNaN(Number(input.value))) {
+        const fallback = input.dataset.lwqInitial ?? CONFIG.DEFAULT_VALUE;
+        input.value = String(fallback);
         input.defaultValue = input.value;
       }
     }
@@ -656,6 +853,9 @@
     setTimeout(() => scan(), 0);
   }
   console.log(`[Lionwheel Stepper] v${CONFIG.VERSION} initialized`);
+  
+  // Install checkmark sync functionality
+  installCheckmarkSync();
 
   // After initial scan scheduling, lift booting when ready
   const deadline = performance.now() + 1500; // up to ~1.5s window
@@ -719,6 +919,7 @@
     document.documentElement.classList.add('lwq-booting');
     resetAllQtyToDefault();
     scan();
+    installCheckmarkSync();
     // Let enhancement settle, then lift
     const deadline = performance.now() + 1200;
     (function tick(){
@@ -796,6 +997,7 @@
         setModalBooting(modal, true);
         resetAllQtyToDefault(modal);
         scan(modal);
+        installCheckmarkSync(modal);
       }
     }, { passive: true });
   });
@@ -807,7 +1009,10 @@
       if (modal && modal.matches('.modal')) {
         // After enhancement + reset, lift
         waitForInputsInModal(modal)
-          .then(() => { resetAllQtyToDefault(modal); })
+          .then(() => { 
+            resetAllQtyToDefault(modal); 
+            installCheckmarkSync(modal);
+          })
           .finally(() => { setModalBooting(modal, false); });
       }
     }, { passive: true });
@@ -820,7 +1025,10 @@
         const modal = mutation.target;
         if (modal && modal.matches('.modal') &&
             (modal.style.display === 'block' || modal.classList.contains('show'))) {
-          setTimeout(() => waitForInputsInModal(modal).then(() => resetAllQtyToDefault(modal)), 50);
+          setTimeout(() => waitForInputsInModal(modal).then(() => {
+            resetAllQtyToDefault(modal);
+            installCheckmarkSync(modal);
+          }), 50);
         }
       }
     });
@@ -852,7 +1060,10 @@
       setTimeout(() => {
         const modal = document.getElementById('order-items-edit-modal');
         if (modal) {
-          waitForInputsInModal(modal).then(() => resetAllQtyToDefault(modal));
+          waitForInputsInModal(modal).then(() => {
+            resetAllQtyToDefault(modal);
+            installCheckmarkSync(modal);
+          });
         }
       }, 100);
     }
@@ -867,7 +1078,10 @@
         setTimeout(() => {
           const modal = document.querySelector(modalId);
           if (modal) {
-            waitForInputsInModal(modal).then(() => resetAllQtyToDefault(modal));
+            waitForInputsInModal(modal).then(() => {
+              resetAllQtyToDefault(modal);
+              installCheckmarkSync(modal);
+            });
           }
         }, 100);
       }

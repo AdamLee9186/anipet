@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.7.3
+// @version      13.7.5
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -15,6 +15,7 @@
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
 // @grant        window.close
+// @grant        unsafeWindow
 // @connect      raw.githubusercontent.com
 // @connect      *
 // @require      https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js
@@ -288,7 +289,7 @@ document.createElement = function(tagName) {
     `);
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.7.2"; // Fixed to match @version
+    const SCRIPT_VERSION = "13.7.5"; // Fixed to match @version
     console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // ---< Constants >---
@@ -370,6 +371,29 @@ document.createElement = function(tagName) {
         } catch (error) {
             return 'error getting path';
         }
+    }
+
+    // Inline SVG icon factory (no Font Awesome dependency)
+    function buildCopySvgIcon(title, onClick) {
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const wrap = document.createElement('span');
+        wrap.className = 'copy-icon';
+        wrap.setAttribute('role', 'button');
+        wrap.setAttribute('tabindex', '0');
+        wrap.title = title;
+
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('xmlns', svgNS);
+        svg.setAttribute('viewBox', '0 0 640 640');
+        const path = document.createElementNS(svgNS, 'path');
+        path.setAttribute('d','M352 528L128 528C119.2 528 112 520.8 112 512L112 288C112 279.2 119.2 272 128 272L176 272L176 224L128 224C92.7 224 64 252.7 64 288L64 512C64 547.3 92.7 576 128 576L352 576C387.3 576 416 547.3 416 512L416 464L368 464L368 512C368 520.8 360.8 528 352 528zM288 368C279.2 368 272 360.8 272 352L272 128C272 119.2 279.2 112 288 112L512 112C520.8 112 528 119.2 528 128L528 352C528 360.8 520.8 368 512 368L288 368zM224 352C224 387.3 252.7 416 288 416L512 416C547.3 416 576 387.3 576 352L576 128C576 92.7 547.3 64 512 64L288 64C252.7 64 224 92.7 224 128L224 352z');
+        svg.appendChild(path);
+        wrap.appendChild(svg);
+
+        const handler = (e) => { e.preventDefault(); e.stopPropagation(); onClick?.(e); };
+        wrap.addEventListener('click', handler);
+        wrap.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') handler(e); });
+        return wrap;
     }
 
     // ---< Cache Compression Functions >---
@@ -477,6 +501,20 @@ document.createElement = function(tagName) {
                     debouncedHighlightReadyRows();
                 } catch (error) {
                     console.error(`[${SCRIPT_NAME}] Error manually refreshing ready highlighting:`, error);
+                }
+            });
+
+            GM_registerMenuCommand('🔗 רענן קישורים וסמלי העתקה', () => {
+                try {
+                    console.log(`[${SCRIPT_NAME}] Manually refreshing links and copy icons...`);
+                    // Remove processed flags to force re-processing
+                    document.querySelectorAll('tr[data-links-processed]').forEach(tr => tr.removeAttribute('data-links-processed'));
+                    // Re-run the link injection
+                    addClickableLinksToAllTables();
+                    alert('קישורים וסמלי העתקה רועננו בהצלחה!');
+                } catch (error) {
+                    console.error(`[${SCRIPT_NAME}] Error manually refreshing links:`, error);
+                    alert(`שגיאה ברענון קישורים: ${error.message}`);
                 }
             });
 
@@ -2817,7 +2855,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 barcodeCopyIcon.style.marginRight = '0px';
 
                 // Insert the copy icon after the barcode element
-                if (el.nextSibling) {
+                if (el.nextSibling && el.nextSibling.parentNode === parentTd) {
                     parentTd.insertBefore(barcodeCopyIcon, el.nextSibling);
                 } else {
                     parentTd.appendChild(barcodeCopyIcon);
@@ -4965,22 +5003,22 @@ function prepareCopyElements() {
                     return; // Skip name cells in store visits table
                 }
                 // Skip adding copy-enabled to name cells that already have links with copy icons
-                if (el.querySelector('a') || el.querySelector('i.fa-clone')) {
+                if (el.querySelector('a') || el.querySelector('.copy-icon')) {
                     return;
                 }
             }
             // Skip adding copy-enabled to gallery product names that have links with copy icons
-            if (el.classList.contains('gallery-product-name') && (el.querySelector('a') || el.querySelector('i.fa-clone'))) {
+            if (el.classList.contains('gallery-product-name') && (el.querySelector('a') || el.querySelector('.copy-icon'))) {
                 return;
             }
             // Skip adding copy-enabled to barcode cells that already have copy icons
-            if (el.getAttribute('data-label') === 'מק״ט' && el.querySelector('i.fa-clone')) {
+            if (el.getAttribute('data-label') === 'מק״ט' && el.querySelector('.copy-icon')) {
                 return;
             }
             // Skip adding copy-enabled to barcode elements that already have copy icons nearby
             if (el.classList.contains('barcode-highlight') || el.classList.contains('barcode-highlight-gallery')) {
                 const parentCell = el.closest('td');
-                if (parentCell && parentCell.querySelector('i.fa-clone')) {
+                if (parentCell && parentCell.querySelector('.copy-icon')) {
                     return;
                 }
             }
@@ -5905,8 +5943,8 @@ document.body.addEventListener('click', function (e) {
         }
     }
 
-    // --- Fallback: handle <td> with text ---
-    if (target.tagName === 'TD' && target.textContent.trim()) {
+    // --- Fallback: handle <td> with text (but never the quantity cell) ---
+    if (target.tagName === 'TD' && target.textContent.trim() && target.getAttribute('data-label') !== 'כמות / לוקט') {
         enableCopyStyling(target)
         copyWithFeedback(target, target.textContent.trim());
     }
@@ -5921,7 +5959,8 @@ document.body.addEventListener('click', function (e) {
     .tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;unicode-bidi:plaintext}
     .tampermonkey-barcode-bdi{direction:ltr;unicode-bidi:plaintext}
     .tampermonkey-name-bdi{direction:auto;unicode-bidi:plaintext}
-    .copy-icon{color:#3699ff;cursor:pointer;line-height:1;flex:0 0 auto}
+    .copy-icon{color:#3699ff;cursor:pointer;line-height:1;flex:0 0 auto;display:inline-block;width:1.2em;height:1.2em;vertical-align:middle}
+    .copy-icon svg{width:100%;height:100%;display:block;fill:currentColor}
   `;
   document.head.appendChild(style);
 })();
@@ -5946,7 +5985,7 @@ function applyCopyIconFix(root = document){
   }
 
   function ensureCopyIcon(wrap, getText){
-    let icon = wrap.querySelector(':scope > i.fa-clone');
+    let icon = wrap.querySelector(':scope > .copy-icon');
     const text = (getText?.() || '').trim();
 
     // If no text content, hide or remove the icon
@@ -5958,11 +5997,7 @@ function applyCopyIconFix(root = document){
     }
 
     if (!icon){
-      icon = document.createElement('i');
-      icon.className = 'fa-light fa-clone copy-icon';
-      icon.title = 'העתק';
-      icon.addEventListener('click', withCopying((e) => {
-        e.preventDefault(); e.stopPropagation();
+      icon = buildCopySvgIcon('העתק', withCopying(() => {
         const t = (getText?.() || '').trim();
         if (!t) return;
         navigator.clipboard.writeText(t).then(()=> tmToast('הועתק!', icon)).catch(console.warn);
@@ -6051,25 +6086,19 @@ function applyCopyIconFix(root = document){
 
 function createCopyIcon(textToCopy, { title='העתק' } = {}){
   const text = (textToCopy || '').trim();
-
   // Don't create icon if no text content
   if (!text) {
-    const hiddenIcon = document.createElement('i');
-    hiddenIcon.className = 'fa-light fa-clone';
-    hiddenIcon.style.display = 'none';
-    return hiddenIcon;
+    const hidden = document.createElement('span');
+    hidden.className = 'copy-icon';
+    hidden.style.display = 'none';
+    return hidden;
   }
-
-  const i = document.createElement('i');
-  i.className = 'fa-light fa-clone';
-  i.title = title;
-  i.addEventListener('click', withCopying((e) => {
-    e.preventDefault(); e.stopPropagation();
-    const text = (textToCopy || '').trim();
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(()=> tmToast('הועתק!', i)).catch(console.warn);
+  const svg = buildCopySvgIcon(title, withCopying(() => {
+    const t = (textToCopy || '').trim();
+    if (!t) return;
+    navigator.clipboard.writeText(t).then(()=> tmToast('הועתק!', svg)).catch(console.warn);
   }));
-  return i;
+  return svg;
 }
 
 function addClickableLinksToAllTables() {
@@ -6087,12 +6116,21 @@ function addClickableLinksToAllTables() {
             const rows = table.querySelectorAll('tbody tr:not([data-links-processed])');
 
             rows.forEach(row => {
-                // Find name cell by data-label
-                const nameCell = row.querySelector('td[data-label="שם"]');
-                if (!nameCell || nameCell.querySelector('a') || nameCell.querySelector('i.fa-clone')) return; // Skip if already processed
+                let didWork = false;
 
-                // Find SKU cell to get product info
-                const skuCell = row.querySelector('td[data-label="מק״ט"]');
+                // Find name cell robustly (tablet/responsive safe)
+                let nameCell = row.querySelector('td[data-label="שם"]') ||
+                               (row.cells && row.cells[2]) ||
+                               row.querySelector('td:nth-child(3)');
+                if (!nameCell) return;
+                // Skip if already linked or has a copy icon
+                if (nameCell.querySelector('a') || nameCell.querySelector('.copy-icon')) return;
+
+                // Find SKU cell robustly
+                let skuCell = row.querySelector('td[data-label="מק״ט"]') ||
+                              (row.querySelector('td [data-original-sku]') && row.querySelector('td [data-original-sku]').closest('td')) ||
+                              (row.cells && row.cells[1]) ||
+                              row.querySelector('td:nth-child(2)');
                 if (!skuCell) return;
 
                 const productName = nameCell.textContent.trim();
@@ -6126,6 +6164,7 @@ function addClickableLinksToAllTables() {
                         // Append link first, then copy icon (icon will float left)
                         nameCell.appendChild(link);
                         nameCell.appendChild(copyIcon);
+                        didWork = true;
                     } else {
                         // Even if no link, add copy icon for the product name
                         const originalContent = nameCell.innerHTML;
@@ -6137,12 +6176,13 @@ function addClickableLinksToAllTables() {
                         // Append text first, then copy icon (icon will float left)
                         nameCell.appendChild(document.createTextNode(productName));
                         nameCell.appendChild(copyIcon);
+                        didWork = true;
                     }
                 }
 
                 // Add copy icon to barcode cell if it has barcode-highlight
                 const skuCellBarcode = skuCell.querySelector('.barcode-highlight, span.barcode-highlight');
-                if (skuCellBarcode && !skuCell.querySelector('i.fa-clone')) {
+                if (skuCellBarcode && !skuCell.querySelector('.copy-icon')) {
                     const barcodeText = skuCellBarcode.textContent.trim();
                     if (barcodeText) {
                         // Create copy icon for barcode
@@ -6152,16 +6192,58 @@ function addClickableLinksToAllTables() {
 
                         // Insert the copy icon after the barcode
                         skuCellBarcode.parentNode.insertBefore(barcodeCopyIcon, skuCellBarcode.nextSibling);
+                        didWork = true;
                     }
                 }
 
-                // Mark row as processed
-                row.setAttribute('data-links-processed', 'true');
+                // Mark row as processed only if we actually changed something
+                if (didWork) row.setAttribute('data-links-processed', 'true');
             });
         });
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error in addClickableLinksToAllTables:`, error);
     }
+}
+
+// Give late-rendered cells a second and third pass
+requestAnimationFrame(() => addClickableLinksToAllTables());
+setTimeout(() => addClickableLinksToAllTables(), 400);
+setTimeout(() => addClickableLinksToAllTables(), 1200);
+
+// MutationObserver hook for dynamically added rows
+const table = document.querySelector('table.table.table-hover[data-columns-tagged="true"]');
+if (table) {
+  const mo = new MutationObserver(muts => {
+    for (const m of muts) {
+      if (m.addedNodes && m.addedNodes.length) {
+        addClickableLinksToAllTables();
+        break;
+      }
+    }
+  });
+  mo.observe(table.tBodies[0] || table, { childList: true, subtree: true });
+}
+
+// Expose function immediately for console access
+window.addClickableLinksToAllTables = addClickableLinksToAllTables;
+
+// Expose to the page (Chrome & Firefox)
+try {
+  if (typeof unsafeWindow !== 'undefined') {
+    // Firefox needs exportFunction to cross compartments
+    if (typeof exportFunction === 'function') {
+      unsafeWindow.addClickableLinksToAllTables =
+        exportFunction(addClickableLinksToAllTables, unsafeWindow);
+    } else {
+      unsafeWindow.addClickableLinksToAllTables = addClickableLinksToAllTables;
+    }
+    // Also attach a plain global so you can call it directly in the page console
+    unsafeWindow.addClickableLinksToAllTables_alias = unsafeWindow.addClickableLinksToAllTables;
+    
+    console.log('[Toolbox] Function exposed to page context successfully');
+  }
+} catch (e) {
+  console.warn('[Toolbox] Expose to page failed:', e);
 }
 
 function copyWithFeedback(element, text) {
@@ -6207,6 +6289,7 @@ window.tagColumnsForHiding = tagColumnsForHiding;
 window.findImageMatch = findImageMatch;
 window.findBarcode = findBarcode;
 window.createImageElement = createImageElement;
+window.addClickableLinksToAllTables = addClickableLinksToAllTables;
 // Expose new performance and error handling functions
 window.isElementProcessed = isElementProcessed;
 window.markElementAsProcessed = markElementAsProcessed;
