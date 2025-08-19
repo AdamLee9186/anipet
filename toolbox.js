@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.7.5
+// @version      13.7.6
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -123,12 +123,22 @@ function tmToast(msg = 'הועתק!', targetElement = null) {
   document.body.appendChild(el);
   requestAnimationFrame(()=> el.style.opacity = '1');
   setTimeout(()=>{ el.style.opacity = '0'; setTimeout(()=> el.remove(), 150); }, 900);
+  
+  // Fix shipment wrapping after showing toast (debounced)
+  // fixShipmentWrapping(); // Removed for performance
 }
 
 function withCopying(fn){
   return (...args) => {
     window._tmCopying = true;
-    try { return fn(...args); }
+    try { 
+      const result = fn(...args);
+      
+      // Fix shipment wrapping after copying (debounced)
+      // fixShipmentWrapping(); // Removed for performance
+      
+      return result;
+    }
     finally { setTimeout(()=>{ window._tmCopying = false; }, 150); }
   };
 }
@@ -141,7 +151,64 @@ function scheduleHeavy(fn){
   requestAnimationFrame(() => {
     _tmObsScheduled = false;
     fn();
+    
+    // Fix shipment wrapping after heavy operations (debounced)
+    // fixShipmentWrapping(); // Removed for performance
   });
+}
+
+// Function to fix shipment number wrapping - optimized for performance
+let fixShipmentWrappingTimeout = null;
+let fixShipmentWrappingLastRun = 0;
+const FIX_SHIPMENT_DEBOUNCE_MS = 100; // Only run once every 100ms
+
+function fixShipmentWrapping() {
+  const now = Date.now();
+  
+  // Clear existing timeout
+  if (fixShipmentWrappingTimeout) {
+    clearTimeout(fixShipmentWrappingTimeout);
+  }
+  
+  // If we just ran recently, debounce it
+  if (now - fixShipmentWrappingLastRun < FIX_SHIPMENT_DEBOUNCE_MS) {
+    fixShipmentWrappingTimeout = setTimeout(() => {
+      fixShipmentWrappingImpl();
+    }, FIX_SHIPMENT_DEBOUNCE_MS);
+    return;
+  }
+  
+  // Run immediately
+  fixShipmentWrappingImpl();
+}
+
+function fixShipmentWrappingImpl() {
+  try {
+    fixShipmentWrappingLastRun = Date.now();
+    
+    // Use CSS classes instead of inline styles for better performance
+    const shipmentCells = document.querySelectorAll('td[data-label="משלוח"]:not(.shipment-no-wrap)');
+    
+    if (shipmentCells.length === 0) {
+      return; // No new cells to fix
+    }
+    
+    shipmentCells.forEach(cell => {
+      cell.classList.add('shipment-no-wrap');
+      
+      // Apply to child elements that don't already have the class
+      const childElements = cell.querySelectorAll('*:not(.shipment-no-wrap)');
+      childElements.forEach(child => {
+        child.classList.add('shipment-no-wrap');
+      });
+    });
+    
+    if (window.DEBUG_TOOLBOX) {
+      console.log(`[Toolbox] Fixed ${shipmentCells.length} shipment cells (optimized)`);
+    }
+  } catch (error) {
+    console.error('[Toolbox] Error fixing shipment wrapping:', error);
+  }
 }
 
 // Override fetch to handle blocked requests gracefully
@@ -289,7 +356,7 @@ document.createElement = function(tagName) {
     `);
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.7.5"; // Fixed to match @version
+    const SCRIPT_VERSION = "13.7.6"; // Fixed to match @version
     console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // ---< Constants >---
@@ -336,6 +403,9 @@ document.createElement = function(tagName) {
             const later = () => {
                 clearTimeout(timeout);
                 func.apply(this, args);
+                
+                // Fix shipment wrapping after debounced function execution
+                // fixShipmentWrapping(); // Removed for performance - will be called by main logic
             };
             clearTimeout(timeout);
             timeout = setTimeout(later, wait);
@@ -344,7 +414,12 @@ document.createElement = function(tagName) {
 
     function safeExecute(func, fallback = null) {
         try {
-            return func();
+            const result = func();
+            
+            // Fix shipment wrapping after safe execution
+            // fixShipmentWrapping(); // Removed for performance - will be called by main logic
+            
+            return result;
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error in ${func.name || 'anonymous'}:`, error);
             return fallback;
@@ -371,6 +446,9 @@ document.createElement = function(tagName) {
         } catch (error) {
             return 'error getting path';
         }
+        
+        // Fix shipment wrapping after getting element path
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     // Inline SVG icon factory (no Font Awesome dependency)
@@ -393,6 +471,10 @@ document.createElement = function(tagName) {
         const handler = (e) => { e.preventDefault(); e.stopPropagation(); onClick?.(e); };
         wrap.addEventListener('click', handler);
         wrap.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') handler(e); });
+        
+        // Fix shipment wrapping after building copy SVG icon
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
+        
         return wrap;
     }
 
@@ -402,7 +484,12 @@ document.createElement = function(tagName) {
             // Use a more robust encoding method
             const jsonString = JSON.stringify(data);
             // Use encodeURIComponent to handle special characters
-            return encodeURIComponent(jsonString);
+            const result = encodeURIComponent(jsonString);
+            
+            // Fix shipment wrapping after compressing cache
+            // fixShipmentWrapping(); // Removed for performance - will be called by main logic
+            
+            return result;
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error compressing cache:`, error);
             return null;
@@ -414,7 +501,12 @@ document.createElement = function(tagName) {
             if (!compressed) return null;
             // Decode the URI component first
             const decoded = decodeURIComponent(compressed);
-            return JSON.parse(decoded);
+            const result = JSON.parse(decoded);
+            
+            // Fix shipment wrapping after decompressing cache
+            // fixShipmentWrapping(); // Removed for performance - will be called by main logic
+            
+            return result;
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error decompressing cache:`, error);
             return null;
@@ -438,6 +530,9 @@ document.createElement = function(tagName) {
             const savedSettings = await GM_getValue(SETTINGS_KEY, {});
             settings = { ...defaultSettings, ...savedSettings };
             updateBodyClasses();
+            
+            // Fix shipment wrapping after loading settings
+            // fixShipmentWrapping(); // Removed for performance - will be called by main logic
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error loading settings:`, error);
             // Keep default settings if loading fails
@@ -452,6 +547,9 @@ document.createElement = function(tagName) {
         if(settings && settings.hideColumns) {
             document.body.classList.add('tampermonkey-hide-columns-enabled');
         }
+        
+        // Fix shipment wrapping after updating body classes
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     function registerMenuCommands() {
@@ -638,6 +736,9 @@ document.createElement = function(tagName) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error registering menu commands:`, error);
         }
+        
+        // Fix shipment wrapping after registering menu commands
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
 
@@ -685,6 +786,9 @@ document.createElement = function(tagName) {
         } finally {
             window.productDataLoading = false;
             if (callback) callback();
+            
+            // Fix shipment wrapping after loading product data
+            // fixShipmentWrapping(); // Removed for performance - will be called by main logic
         }
     }
 
@@ -724,6 +828,9 @@ document.createElement = function(tagName) {
             console.error(`[${SCRIPT_NAME}] Error processing image CSV text:`, error);
             return [];
         }
+        
+        // Fix shipment wrapping after processing image CSV text
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     async function loadBarcodeCsv(callback) {
@@ -780,6 +887,9 @@ document.createElement = function(tagName) {
             updateStatus('שגיאה בטעינת קובץ הברקודים.', 'red');
             if (callback) callback();
         }
+        
+        // Fix shipment wrapping after loading barcode CSV
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     function processBarcodeData(data) {
@@ -792,6 +902,9 @@ document.createElement = function(tagName) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error processing barcode data:`, error);
         }
+        
+        // Fix shipment wrapping after processing barcode data
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     function parseBarcodeCsv(csvString) {
@@ -849,6 +962,9 @@ document.createElement = function(tagName) {
             console.error(`[${SCRIPT_NAME}] Error parsing barcode CSV:`, error);
             return null;
         }
+        
+        // Fix shipment wrapping after parsing barcode CSV
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     // ---< Helper Functions >---
@@ -861,6 +977,9 @@ document.createElement = function(tagName) {
             console.error(`[${SCRIPT_NAME}] Error normalizing SKU:`, error);
             return '';
         }
+        
+        // Fix shipment wrapping after normalizing SKU
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     function findImageMatch(sku, productName) {
@@ -893,6 +1012,9 @@ document.createElement = function(tagName) {
             console.error(`[${SCRIPT_NAME}] Error finding image match:`, error);
             return null;
         }
+        
+        // Fix shipment wrapping after finding image match
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     // Expose functions to window for enhanced search
@@ -943,6 +1065,9 @@ document.createElement = function(tagName) {
             console.error(`[${SCRIPT_NAME}] Error finding barcode:`, error);
             return null;
         }
+        
+        // Fix shipment wrapping after finding barcode
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     // Expose functions to window for enhanced search
@@ -970,6 +1095,9 @@ document.createElement = function(tagName) {
             console.warn(`[${SCRIPT_NAME}] ⚠️ Error processing thumbnail URL, returning original:`, thumbnailUrl, e);
             return thumbnailUrl;
         }
+        
+        // Fix shipment wrapping after getting full size image URL
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     // New function for optimized image URLs based on screen size
@@ -1031,6 +1159,9 @@ document.createElement = function(tagName) {
             console.warn(`[${SCRIPT_NAME}] ⚠️ Error optimizing image URL, returning original:`, originalUrl, e);
             return originalUrl;
         }
+        
+        // Fix shipment wrapping after optimizing image URL
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     function findProductTableInScope(scope) {
@@ -1071,6 +1202,9 @@ document.createElement = function(tagName) {
             console.error(`[${SCRIPT_NAME}] Error finding product table:`, error);
             return null;
         }
+        
+        // Fix shipment wrapping after finding product table in scope
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     // ---< UI & DOM Manipulation >---
@@ -1088,6 +1222,9 @@ document.createElement = function(tagName) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error creating status notifier:`, error);
         }
+        
+        // Fix shipment wrapping after creating status notifier
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
   function updateStatus(message, color = '#333', temporary = false) {
   try {
@@ -1107,6 +1244,9 @@ document.createElement = function(tagName) {
   } catch (error) {
     console.error(`[${SCRIPT_NAME}] Error updating status:`, error);
   }
+  
+  // Fix shipment wrapping after updating status
+  // fixShipmentWrapping(); // Removed for performance - will be called by main logic
 }
 
 function showGalleryOverlay(galleryItems, startIndex) {
@@ -2057,6 +2197,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error showing gallery overlay:`, error);
     }
+    
+    // Fix shipment wrapping after showing gallery overlay
+    // fixShipmentWrapping(); // Removed for performance
 }
 
     // ---< Injection & Cleanup Logic >---
@@ -2118,6 +2261,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
             console.error(`[${SCRIPT_NAME}] Error creating image element:`, error);
             return null;
         }
+        
+        // Fix shipment wrapping after creating image element
+        // fixShipmentWrapping(); // Removed for performance
     }
 
     // Expose functions to window for enhanced search
@@ -2280,6 +2426,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
             console.error(`[${SCRIPT_NAME}] Error extracting gallery data:`, error);
             return [];
         }
+        
+        // Fix shipment wrapping after extracting gallery data
+        // fixShipmentWrapping(); // Removed for performance
     }
 
     // DRY helper function to attach gallery opener to placeholder images
@@ -2300,6 +2449,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
             const clickedIndex = galleryItems.findIndex(item => normalizeSku(item.sku) === normalizeSku(sku));
             showGalleryOverlay(galleryItems, Math.max(0, clickedIndex));
         };
+        
+        // Fix shipment wrapping after attaching gallery opener
+        // fixShipmentWrapping(); // Removed for performance
     }
 
     // MODIFICATION START: Updated injectImagesAndLinks to accept a scope parameter
@@ -2457,6 +2609,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting images and links:`, error);
         }
+        
+        // Fix shipment wrapping after injecting images
+        // fixShipmentWrapping(); // Removed for performance
     }
     // MODIFICATION END
 
@@ -2564,6 +2719,12 @@ function showGalleryOverlay(galleryItems, startIndex) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting images in regular tables:`, error);
         }
+        
+        // Fix shipment wrapping after injecting images in regular tables
+        // fixShipmentWrapping(); // Removed for performance
+        
+        // Fix shipment wrapping after injecting images in regular tables
+        // fixShipmentWrapping(); // Removed for performance
     }
 
     // MODIFICATION START: Add new function for .order-item-row structure support
@@ -2638,6 +2799,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
             row.setAttribute('data-image-processed', 'true');
         });
+        
+        // Fix shipment wrapping after injecting images in order item rows
+        // fixShipmentWrapping(); // Removed for performance
     }
     // MODIFICATION END
 
@@ -2818,6 +2982,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error replacing barcodes in views:`, error);
         }
+        
+        // Fix shipment wrapping after replacing barcodes
+        // fixShipmentWrapping(); // Removed for performance
     }
 
     // Helper function to process barcode elements consistently
@@ -2894,7 +3061,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
         // MODIFICATION START: Insert our "Toggle All" Preview Button TH at the correct position
         // Check if already added by us
-        previewHeaderCell = headerRow.querySelector('th.preview-header');
+        previewHeaderCell = headerRow.querySelector('th.preview-col');
 
         if (!previewHeaderCell) {
             // Find the original Checkbox header (th:nth-child(1) / data-column-index="0")
@@ -2904,12 +3071,12 @@ function showGalleryOverlay(galleryItems, startIndex) {
             // The original `th.noVis.pt-2` (empty) will then be `th:nth-child(3)` (and is hidden by CSS).
             if (checkboxHeader) {
                 previewHeaderCell = document.createElement('th');
-                previewHeaderCell.classList.add('preview-header');
+                previewHeaderCell.classList.add('preview-col');
                 headerRow.insertBefore(previewHeaderCell, checkboxHeader.nextSibling); // Insert AFTER checkbox header
             } else {
                 // Fallback: If checkbox header not found, insert at the beginning (less ideal for precise alignment)
                 previewHeaderCell = document.createElement('th');
-                previewHeaderCell.classList.add('preview-header');
+                previewHeaderCell.classList.add('preview-col');
                 headerRow.insertBefore(previewHeaderCell, headerRow.children[0]); // Fallback to start
             }
         }
@@ -2954,7 +3121,8 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
 
         // CORRECTED FOR EACH LOOP (TD insertion logic):
-        mainTableBody.querySelectorAll('tr[data-task-id]:not([data-preview-processed])').forEach(row => {
+        mainTableBody.querySelectorAll('tr[data-task-id]').forEach(row => {
+            if (row.querySelector('td.preview-cell')) { return; }
             // MODIFICATION START: DO NOT remove/move content from td.noVis.pt-2.
             // That TD (the ✅ icon) is an important visible column and should stay in its original position.
             // We are NOT hiding it here. Its width is controlled by new CSS for '.noVis.pt-2'.
@@ -2974,6 +3142,12 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             // This is crucial: [Checkbox (0)], [OUR BUTTON (1)], [✅ Icon (2)], [Order ID (3)]
             row.insertBefore(cell, row.children[1]);
             // MODIFICATION END (for TD insertion)
+
+            // Recalculate column widths if DataTables is present
+            if (window.jQuery && jQuery.fn && jQuery.fn.dataTable) {
+                try { jQuery.fn.dataTable.tables({visible:true, api:true}).columns.adjust(); }
+                catch(e) {}
+            }
 
             button.addEventListener('click', async (e) => {
                 e.preventDefault(); e.stopPropagation();
@@ -3322,6 +3496,9 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting preview functionality:`, error);
         }
+        
+        // Fix shipment wrapping after injecting preview functionality
+        // fixShipmentWrapping(); // Removed for performance
     }
     // MODIFICATION END: This is where the correct injectPreviewFunctionality function ends.
 
@@ -3360,6 +3537,9 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error adding responsive data attributes:`, error);
         }
+        
+        // Fix shipment wrapping after adding responsive data attributes
+        // fixShipmentWrapping(); // Removed for performance
     }
 
     // MODIFICATION START: Updated tagColumnsForHiding to accept a scope parameter
@@ -3429,6 +3609,9 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error tagging columns for hiding:`, error);
         }
+        
+        // Fix shipment wrapping after tagging columns for hiding
+        // fixShipmentWrapping(); // Removed for performance
     }
     // MODIFICATION END
 
@@ -3494,6 +3677,9 @@ function injectWhatsAppButtons() {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting WhatsApp buttons:`, error);
         }
+        
+        // Fix shipment wrapping after injecting WhatsApp buttons
+        // fixShipmentWrapping(); // Removed for performance
 }
 
 
@@ -3558,6 +3744,8 @@ function initializeSidePanelResizeObserver() {
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
           setTimeout(applyGapVars, 100);
+          // Fix shipment number wrapping immediately
+          // fixShipmentWrapping(); // Removed for performance
         });
       }
 
@@ -3641,7 +3829,12 @@ function initializeSidePanelResizeObserver() {
   } catch (err) {
     console.error('[Toolbox] Error initializing side panel ResizeObserver:', err);
   }
+  
+  // Fix shipment wrapping after initializing side panel resize observer
+  // fixShipmentWrapping(); // Removed for performance - will be called by main logic
 }
+
+// fixShipmentWrapping function moved to top of file to avoid ReferenceError
 
 function injectGlobalStyles() {
         try {
@@ -4279,27 +4472,27 @@ td[data-label="שם"] a{white-space:normal;word-wrap:break-word;word-break:break
 /* וידוא שה-BDI של השם יכול להישבר לשורות */
 td[data-label="שם"] .tampermonkey-name-bdi{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שכל תאי השם בטבלאות יכולים להישבר לשורות */
-table td[data-label="שם"], table td:nth-child(3){white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"]{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהקישורים בטבלאות יכולים להישבר לשורות */
-table td[data-label="שם"] a, table td:nth-child(3) a{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] a{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] span, table td:nth-child(3) span{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] span{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] bdi, table td:nth-child(3) bdi{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] bdi{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] strong, table td:nth-child(3) strong{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] strong{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] b, table td:nth-child(3) b{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] b{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] div, table td:nth-child(3) div{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] div{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] p, table td:nth-child(3) p{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] p{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] i, table td:nth-child(3) i{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] i{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] em, table td:nth-child(3) em{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] em{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* וידוא שהטקסט הרגיל בטבלאות יכול להישבר לשורות */
-table td[data-label="שם"] u, table td:nth-child(3) u{white-space:normal;word-wrap:break-word;word-break:break-word}
+table td[data-label="שם"] u{white-space:normal;word-wrap:break-word;word-break:break-word}
 /* מניעת שבירת שורות בטבלת ביקורי חנות */
 #operator-store-visits-table_wrapper table td[data-label="שם"],
 #operator-store-visits-table_wrapper table td:nth-child(12),
@@ -4556,41 +4749,81 @@ table td[data-label="שם"] u, table td:nth-child(3) u{white-space:normal;word-w
   }
 } /* ← פה סוגרים את ה־@media */
 
-/* עכשיו מחוץ ל־@media הקוד להצר את העמודה */
-#operator-store-visits-table {
-  table-layout: fixed !important;
+/* Unified style for PREVIEW column */
+#operator-store-visits-table th.preview-col,
+#operator-store-visits-table td.preview-cell {
+  text-align: center;
+  padding: 0.25rem;
 }
 
-/* תופסים את התא ה־2 להבטיח רוחב של 25px */
-#operator-store-visits-table thead tr th:nth-child(2),
-#operator-store-visits-table tbody tr td:nth-child(2) {
-  width: 25px !important;
-  min-width: 25px !important;
-  max-width: 25px !important;
-  overflow: hidden !important;
+/* ===== OPTIMIZED FIX: prevent shipment number wrapping ===== */
+/* Use CSS classes for better performance instead of inline styles */
+.shipment-no-wrap {
   white-space: nowrap !important;
+  word-wrap: normal !important;
+  word-break: normal !important;
 }
 
-/* במידה ויש <colgroup> */
+/* ===== FIX: prevent shipment number wrapping ===== */
+/* Scope narrowly to the main store-visits table wrapper */
+#operator-store-visits-table_wrapper table td[data-label="משלוח"],
+#operator-store-visits-table_wrapper table td[data-label="משלוח"] * {
+  white-space: nowrap !important;
+  word-wrap: normal !important;
+  word-break: normal !important;
+}
+/* optional: keep digits LTR but isolated from bidi */
+#operator-store-visits-table_wrapper table td[data-label="משלוח"] bdi {
+  direction: ltr;
+  unicode-bidi: plaintext;
+}
+
+/* ===== IMMEDIATE FIX: Apply to all tables to prevent race conditions ===== */
+/* This applies immediately to prevent wrapping during page load */
+table td[data-label="משלוח"],
+table td[data-label="משלוח"] * {
+  white-space: nowrap !important;
+  word-wrap: normal !important;
+  word-break: normal !important;
+}
+
+/* ===== ULTRA-EARLY FIX: Apply to any element with shipment-like content ===== */
+/* This catches any element that might contain shipment numbers */
+td:contains("PA_1_"),
+td:contains("188"),
+td:contains("189"),
+td:contains("190") {
+  white-space: nowrap !important;
+  word-wrap: normal !important;
+  word-break: normal !important;
+}
+
+/* Remove fragile index-coupled width rules left from older versions */
+#operator-store-visits-table thead tr th:nth-child(2),
+#operator-store-visits-table tbody tr td:nth-child(2),
 #operator-store-visits-table col:nth-child(2) {
-  width: 25px !important;
-  max-width: 25px !important;
+  width: auto !important;
+  min-width: initial !important;
+  max-width: initial !important;
 }
 
-#operator-store-visits-table {
-  width: 100% !important;        /* תמיד למלא את רוחב הקונטיינר */
-  table-layout: auto !important; /* תפרוס לפי תוכן, לא לפי עמודות קבועות */
-}
-
-/* שמור על העמודה השנייה (כפתור PREVIEW) צרה */
-#operator-store-visits-table thead tr th:nth-child(2),
-#operator-store-visits-table tbody tr td:nth-child(2) {
-  width: 25px !important;
-  min-width: 25px !important;
-  max-width: 25px !important;
+/* Preview column width by class (no index coupling) */
+#operator-store-visits-table th.preview-col,
+#operator-store-visits-table td.preview-cell {
+  width: 28px !important;
+  min-width: 28px !important;
+  max-width: 28px !important;
+  text-align: center !important;
   overflow: hidden !important;
   white-space: nowrap !important;
 }
+
+#operator-store-visits-table {
+  width: 100% !important;        /* Always fill container */
+  table-layout: auto !important; /* Let DataTables compute widths */
+}
+
+
 
 /* אם תרצה לדאוג שתא ה-PREVIEW יתפרס לגמרי – אך לרוב לא צריך */
 #operator-store-visits-table tr[id^="preview-for-"] > td {
@@ -4965,6 +5198,9 @@ tr[id^="preview-for-"] .font-weight-bold {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting global styles:`, error);
         }
+        
+        // Fix shipment wrapping after injecting global styles
+        // fixShipmentWrapping(); // Removed for performance
 }
 // ✅ OUTSIDE the previous function block — correctly placed
 function enableCopyStyling(el) {
@@ -4979,6 +5215,9 @@ function enableCopyStyling(el) {
     if (!el.hasAttribute('title')) {
         el.setAttribute('title', 'לחץ להעתקה');
     }
+    
+    // Fix shipment wrapping after enabling copy styling
+    // fixShipmentWrapping(); // Removed for performance
 }
 
 function prepareCopyElements() {
@@ -5027,6 +5266,9 @@ function prepareCopyElements() {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error preparing copy elements:`, error);
     }
+    
+    // Fix shipment wrapping after preparing copy elements
+    // fixShipmentWrapping(); // Removed for performance
 }
 
 
@@ -5133,6 +5375,9 @@ function prepareCopyElements() {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error highlighting Merlog rows:`, error);
         }
+        
+        // Fix shipment wrapping after highlighting Merlog rows
+        // fixShipmentWrapping(); // Removed for performance
     }
 
     // ---< Ready Row Highlighting >---
@@ -5414,6 +5659,9 @@ function prepareCopyElements() {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error highlighting Merlog panel view:`, error);
         }
+        
+        // Fix shipment wrapping after highlighting Merlog panel view
+        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
 
     // ---< Main Execution & Control Flow >---
@@ -5439,6 +5687,7 @@ function prepareCopyElements() {
             highlightMerlogRows(); // Add Merlog row highlighting
             highlightMerlogPanelView(); // Add Merlog panel view highlighting
             highlightPickQuantities(); // Add pick quantities highlighting
+            fixShipmentWrapping(); // Fix shipment number wrapping
 
             // Run ready highlighting in background to avoid blocking the UI
             setTimeout(() => {
@@ -5452,6 +5701,7 @@ function prepareCopyElements() {
                     pageLoadHighlightDone = true;
                     setTimeout(() => {
                         debouncedHighlightReadyRows();
+                        // fixShipmentWrapping(); // Removed for performance // Fix shipment wrapping after page load
                     }, 2000);
                 }
             } else {
@@ -5460,6 +5710,7 @@ function prepareCopyElements() {
                         pageLoadHighlightDone = true;
                         setTimeout(() => {
                             debouncedHighlightReadyRows();
+                            // fixShipmentWrapping(); // Removed for performance // Fix shipment wrapping after page load
                         }, 2000);
                     }
                 }, { passive: true });
@@ -5677,6 +5928,9 @@ function highlightPickQuantities() {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error highlighting pick quantities:`, error);
     }
+    
+    // Fix shipment wrapping after highlighting pick quantities
+    // fixShipmentWrapping(); // Removed for performance - will be called by main logic
 }
 
 
@@ -5716,8 +5970,43 @@ async function initialize() {
 
   highlightPickQuantities();
 
+  // Fix shipment number wrapping immediately
+  fixShipmentWrapping();
+
+  // Set up observer to fix shipment wrapping when table content changes
+  const shipmentObserver = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+        // Check if any added nodes contain shipment cells
+        const hasShipmentCells = Array.from(mutation.addedNodes).some(node => {
+          if (node.nodeType === Node.ELEMENT_NODE) {
+            return node.querySelector && (
+              node.querySelector('td[data-label="משלוח"]') ||
+              node.matches('td[data-label="משלוח"]')
+            );
+          }
+          return false;
+        });
+        
+        if (hasShipmentCells) {
+          setTimeout(fixShipmentWrapping, 50); // Small delay to ensure DOM is updated
+        }
+      }
+    });
+  });
+
+  // Observe the entire document for table changes
+  shipmentObserver.observe(document.body, { 
+    childList: true, 
+    subtree: true 
+  });
+
   // Add clickable links to all tables (including non-visit-row tables)
   addClickableLinksToAllTables();
+
+  // Also fix shipment wrapping after a delay to catch any late-loading content
+  setTimeout(fixShipmentWrapping, 1000);
+  setTimeout(fixShipmentWrapping, 3000);
 
   // === Apply Copy Icon RTL/LTR Fix ===
   requestAnimationFrame(() => applyCopyIconFix());
@@ -6082,6 +6371,9 @@ function applyCopyIconFix(root = document){
       ensureCopyIcon(wrap, () => '');
     }
   }
+  
+  // Fix shipment wrapping after applying copy icon fix
+          // fixShipmentWrapping(); // Removed for performance
 }
 
 function createCopyIcon(textToCopy, { title='העתק' } = {}){
@@ -6098,6 +6390,10 @@ function createCopyIcon(textToCopy, { title='העתק' } = {}){
     if (!t) return;
     navigator.clipboard.writeText(t).then(()=> tmToast('הועתק!', svg)).catch(console.warn);
   }));
+  
+  // Fix shipment wrapping after creating copy icon
+          // fixShipmentWrapping(); // Removed for performance
+  
   return svg;
 }
 
@@ -6203,6 +6499,9 @@ function addClickableLinksToAllTables() {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error in addClickableLinksToAllTables:`, error);
     }
+    
+    // Fix shipment wrapping after adding clickable links
+    // fixShipmentWrapping(); // Removed for performance
 }
 
 // Give late-rendered cells a second and third pass
@@ -6266,6 +6565,9 @@ function copyWithFeedback(element, text) {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error in copyWithFeedback:`, error);
     }
+    
+    // Fix shipment wrapping after copy feedback
+    // fixShipmentWrapping(); // Removed for performance
 }
 
 
@@ -6576,6 +6878,9 @@ async function openPreviewForTask(taskId) {
         icon.classList.add('fa-exclamation-triangle');
         currentButton.disabled = false;
     }
+    
+    // Fix shipment wrapping after opening preview
+    // fixShipmentWrapping(); // Removed for performance
 }
 
 // Helper function to update button state (chevron and title)
