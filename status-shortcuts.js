@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel – כפתורי סטטוס
 // @namespace    https://adam-lee.tools/userscripts
-// @version      1.7.4
+// @version      1.7.5
 // @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. יוצר: Adam Lee
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
@@ -9,6 +9,8 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_registerMenuCommand
+// @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/status-shortcuts.js
+// @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/status-shortcuts.js
 // ==/UserScript==
 
 (function () {
