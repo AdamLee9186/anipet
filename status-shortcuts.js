@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Lionwheel – כפתורי סטטוס
-// @namespace    https://adam-lee.tools/userscripts
-// @version      1.7.5
-// @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. יוצר: Adam Lee
+// @namespace    https://github.com/AdamLee9186/anipet
+// @version      1.9.0
+// @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. Ctrl+click או החזקה ארוכה: חצי־וי — אושר → לוקט חלקית, איקס — אושר → המתנה. יוצר: Adam Lee
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
 // @run-at       document-idle
@@ -35,38 +35,334 @@
 </svg>`.trim();
 
   /** ======================= Styles ======================= */
-  const style = document.createElement("style");
-  style.textContent = `
-    .lw-quick-wrapper{
-      direction: rtl;
-      display:inline-flex;
-      align-items:center;
-      gap:8px;
-      margin-inline:8px;
-    }
-    .lw-quick-btn{
-      background:transparent !important;
-      border:none !important;
-      padding:0;
-      margin:0;
-      cursor:pointer;
-      line-height:1;
-      display:inline-flex;
-      align-items:center;
-      justify-content:center;
-      transition:transform .06s ease, opacity .15s ease;
-    }
-    .lw-quick-btn:active{ transform:scale(0.96); }
-    .lw-quick-btn svg{ width:40px; height:40px; display:block; } /* הוגדל מעט */
-    .lw-quick-btn[disabled]{ opacity:.6; cursor:not-allowed; }
-  `;
-  document.head.appendChild(style);
+  function injectQuickStyles() {
+    if (qs("#lw-quick-styles")) return;
+    const css = `
+      .lw-quick-wrapper{
+        direction: rtl;
+        display:flex;
+        align-items:center;
+        gap:.5rem;
+        margin:0 .5rem 0 0;
+        flex:0 0 auto;
+        white-space:nowrap;
+        padding-left: 0.5rem;
+      }
+      .lw-quick-btn{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        width:36px;
+        height:36px;
+        padding:0;
+        border:0;
+        background:transparent !important;
+        line-height:1;
+        cursor:pointer;
+        transition:transform .06s ease, opacity .15s ease, filter .15s ease;
+      }
+      .lw-quick-btn:hover{ 
+        filter: brightness(1.2);
+      }
+      .lw-quick-btn:active{ transform:scale(0.96); }
+      .lw-quick-btn svg{ width:100%; height:100%; display:block; }
+      .lw-quick-btn[disabled]{ opacity:.6; cursor:not-allowed; }
+      
+      /* Spinning animation for loader */
+      .lw-quick-btn.spinning {
+        animation: spin 1s linear infinite;
+      }
+      
+      @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      
+      /* Long press visual feedback */
+      .lw-quick-btn.long-pressing {
+        transform: scale(0.9);
+        opacity: 0.8;
+        transition: transform 0.1s ease, opacity 0.1s ease;
+      }
+      
+      /* Compact mode when space is tight */
+      .lw-quick-wrapper.lw-compact{gap:.35rem; margin-right:.25rem; padding-left: 0.35rem}
+      .lw-quick-wrapper.lw-compact .lw-quick-btn{width:30px; height:30px}
+      /* Ultra-compact as last resort */
+      .lw-quick-wrapper.lw-ultra{gap:.25rem; padding-left: 0.25rem}
+      .lw-quick-wrapper.lw-ultra .lw-quick-btn{width:26px; height:26px}
+      
+      /* Fix side panel header layout issues */
+      .offcanvas .task-header-bar {
+        display: flex;
+        flex-wrap: nowrap !important;
+      }
+      .offcanvas .task-header-bar > * { 
+        min-width: 0; 
+      }
+      .offcanvas .task-header-bar .text-nowrap.ml-4 {
+        max-width: 8rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .lw-quick-wrapper { 
+        flex: 0 0 auto; 
+      }
+      
+      /* Sidepanel header layout - tight, safe fix */
+      .lw-sidepanel-header {               /* applied to the top bar row */
+        flex-wrap: nowrap !important;      /* keep title + actions on the same row */
+      }
+
+      /* Let title shrink, avoid pushing actions to a new line */
+      .lw-sidepanel-title {
+        flex: 1 1 auto;
+        min-width: 0;                      /* allow ellipsis */
+        display: flex;
+        align-items: center;
+      }
+
+      /* Price shouldn't force wrapping */
+      .lw-sidepanel-price {
+        white-space: nowrap;
+        max-width: 8ch;                    /* trims long prices safely */
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* Actions can wrap internally without vertical "phantom" gaps */
+      .lw-sidepanel-actions {
+        flex: 0 1 auto;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0 .25rem;                     /* use gap instead of per-button margins */
+      }
+      .lw-sidepanel-actions .btn { margin-bottom: 0 !important; }
+
+      /* If space is tight, hide the price entirely */
+      .lw-hide-price { display: none !important; }
+
+      /* Optional: on very narrow panels, always hide price */
+      @media (max-width: 480px) {
+        .lw-sidepanel-price { display: none !important; }
+      }
+    `;
+    const style = document.createElement("style");
+    style.id = "lw-quick-styles";
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
 
   /** ============================= Helpers ============================= */
   const $jq = window.jQuery || window.$;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const qs = (s, r = document) => r.querySelector(s);
   const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
+  
+  // DOM element cache for frequently accessed elements
+  const domCache = new Map();
+  
+  // Cached query selector with automatic cache invalidation
+  function cachedQuery(selector, root = document, cacheKey = null) {
+    const key = cacheKey || selector;
+    const cached = domCache.get(key);
+    
+    if (cached && document.contains(cached)) {
+      return cached;
+    }
+    
+    const element = root.querySelector(selector);
+    if (element) {
+      domCache.set(key, element);
+    }
+    return element;
+  }
+  
+  // Clear DOM cache when page changes
+  function clearDomCache() {
+    domCache.clear();
+  }
+
+  // Touch-friendly long press detection with optimized event handling
+  function createLongPressHandler(element, onLongPress, onNormalClick, longPressDelay = 500) {
+    let pressTimer = null;
+    let visualTimer = null;
+    let hasMoved = false;
+    let startX, startY;
+    let isCtrlPressed = false;
+
+    const startPress = (e) => {
+      // Check if Ctrl key is pressed (for mouse events)
+      isCtrlPressed = e.ctrlKey || e.metaKey;
+      
+      // If Ctrl is pressed, don't start long press timer - let the click handler deal with it
+      if (isCtrlPressed && e.type === 'mousedown') {
+        return;
+      }
+      
+      hasMoved = false;
+      startX = e.type === 'mousedown' ? e.clientX : e.touches[0].clientX;
+      startY = e.type === 'mousedown' ? e.clientY : e.touches[0].clientY;
+      
+      // Add visual feedback when long press threshold is reached
+      visualTimer = setTimeout(() => {
+        if (!hasMoved) {
+          element.classList.add('long-pressing');
+        }
+      }, longPressDelay - 100); // Show feedback slightly before action
+      
+      pressTimer = setTimeout(() => {
+        if (!hasMoved) {
+          onLongPress(e);
+        }
+        if (visualTimer) {
+          clearTimeout(visualTimer);
+          visualTimer = null;
+        }
+      }, longPressDelay);
+    };
+
+    const endPress = (e) => {
+      // Remove visual feedback
+      element.classList.remove('long-pressing');
+      
+      // Clear all timers
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+      if (visualTimer) {
+        clearTimeout(visualTimer);
+        visualTimer = null;
+      }
+      
+      // If Ctrl was pressed during this interaction, don't trigger normal click
+      // Let the click event handler deal with it
+      if (!hasMoved && !isCtrlPressed) {
+        onNormalClick(e);
+      }
+    };
+
+    const movePress = (e) => {
+      if (!startX || !startY) return;
+      
+      const currentX = e.type === 'mousemove' ? e.clientX : e.touches[0].clientX;
+      const currentY = e.type === 'mousemove' ? e.clientY : e.touches[0].clientY;
+      
+      const deltaX = Math.abs(currentX - startX);
+      const deltaY = Math.abs(currentY - startY);
+      
+      if (deltaX > 10 || deltaY > 10) {
+        hasMoved = true;
+        if (pressTimer) {
+          clearTimeout(pressTimer);
+          pressTimer = null;
+        }
+        // Remove visual feedback if moved
+        element.classList.remove('long-pressing');
+      }
+    };
+
+    const cancelPress = () => {
+      // Remove visual feedback
+      element.classList.remove('long-pressing');
+      
+      // Clear all timers
+      if (pressTimer) {
+        clearTimeout(pressTimer);
+        pressTimer = null;
+      }
+      if (visualTimer) {
+        clearTimeout(visualTimer);
+        visualTimer = null;
+      }
+      
+      // Reset state
+      hasMoved = false;
+      startX = startY = null;
+      isCtrlPressed = false;
+    };
+
+    // Mouse events
+    element.addEventListener('mousedown', startPress);
+    element.addEventListener('mouseup', endPress);
+    element.addEventListener('mouseleave', cancelPress);
+    element.addEventListener('mousemove', movePress);
+    
+    // Special handling for Ctrl+click to prevent conflicts
+    element.addEventListener('click', (e) => {
+      if (e.ctrlKey || e.metaKey) {
+        // If this was a Ctrl+click, cancel any ongoing long press
+        cancelPress();
+      }
+    });
+
+    // Touch events
+    element.addEventListener('touchstart', startPress, { passive: false });
+    element.addEventListener('touchend', endPress);
+    element.addEventListener('touchcancel', cancelPress);
+    element.addEventListener('touchmove', movePress, { passive: false });
+
+    // Prevent context menu on long press
+    element.addEventListener('contextmenu', (e) => e.preventDefault());
+    
+    // Return cleanup function for proper memory management
+    return () => {
+      element.removeEventListener('mousedown', startPress);
+      element.removeEventListener('mouseup', endPress);
+      element.removeEventListener('mouseleave', cancelPress);
+      element.removeEventListener('mousemove', movePress);
+      element.removeEventListener('click', (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          cancelPress();
+        }
+      });
+      element.removeEventListener('touchstart', startPress);
+      element.removeEventListener('touchend', endPress);
+      element.removeEventListener('touchcancel', cancelPress);
+      element.removeEventListener('touchmove', movePress);
+      element.removeEventListener('contextmenu', (e) => e.preventDefault());
+      
+      // Clear any remaining timers
+      cancelPress();
+    };
+  }
+
+  // Wait for jQuery ajax (if present) to go idle
+  async function waitForAjaxIdle(timeoutMs = 2500) {
+    const start = Date.now();
+    while (window.jQuery && window.jQuery.active > 0) {
+      if (Date.now() - start > timeoutMs) break;
+      await sleep(50);
+    }
+  }
+
+  // Fullscreen: assign, then re-assign shortly after to beat late writers
+  async function assignDriverForTaskRobust(taskId, driverId) {
+    // let Lionwheel finish any status writes
+    await waitForAjaxIdle(2000);
+    await sleep(150);
+
+    // first assign
+    try {
+      const r1 = await assignDriverForTask(taskId, driverId);
+      console.log("[LW] assign_driver #1 ok", r1);
+    } catch (e) {
+      console.warn("[LW] assign_driver #1 failed", e);
+    }
+
+    // second pass a bit later in case something wrote after us
+    setTimeout(async () => {
+      try {
+        const r2 = await assignDriverForTask(taskId, driverId);
+        console.log("[LW] assign_driver #2 ok", r2);
+      } catch (e) {
+        console.warn("[LW] assign_driver #2 failed", e);
+      }
+    }, 700);
+  }
 
   // === Driver persistence helpers ===
   const ANIPET_DRIVER_ID = 26055;
@@ -142,6 +438,30 @@
     return true;
   }
 
+  async function assignDriverForTask(taskId, driverId) {
+    const token =
+      document.querySelector('meta[name="csrf-token"]')?.content ||
+      document.querySelector('meta[name=csrf-token]')?.content;
+
+    const res = await fetch("/tasks/assign_driver.json", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/javascript, */*; q=0.01",
+        "X-CSRF-Token": token,
+        "X-Requested-With": "XMLHttpRequest",
+      },
+      credentials: "include",
+      body: JSON.stringify({ task_id: String(taskId), driver_id: String(driverId) }),
+    });
+
+    const text = await res.text();
+    if (!res.ok) throw new Error(`assign_driver failed: ${res.status} ${text}`);
+    try { return JSON.parse(text); } catch { return { raw: text }; }
+  }
+
+
+
   async function removeDriver(visitId) {
     if (!visitId) throw new Error("removeDriver: missing visitId");
     const res = await fetch(`/visits/${visitId}/set_driver`, {
@@ -162,41 +482,41 @@
   }
 
   /**
-   * Given the HIDDEN select (select.visit-drivers-select2), persist to backend,
-   * then reflect in the Select2 UI and keep data-current-id in sync.
+   * Scope-aware setter for the driver <select> (updates select2 UI too)
+   * Works in either fullscreen or side-panel contexts
    */
-  async function setDriverForSelect(selectEl, driverId = ANIPET_DRIVER_ID, driverName = ANIPET_DRIVER_NAME) {
-    if (!selectEl || !selectEl.matches("select.visit-drivers-select2")) {
-      throw new Error("setDriverForSelect: not a visit-drivers-select2 select");
-    }
+  async function setDriverForSelect(scopeEl, driverId, driverName = "") {
+    const scope = scopeEl || document;
 
-    // Visit ID is already provided by Lionwheel in data-target-id
-    const visitId = selectEl.dataset.targetId;
-    if (!visitId) throw new Error("setDriverForSelect: missing data-target-id on select");
+    // Try the driver select used by Lionwheel (works in both fullscreen & side panel)
+    const select =
+      scope.querySelector("select[name='order[driver_id]']") ||
+      scope.querySelector("select.visit-drivers-select2") ||
+      scope.querySelector("select[data-controller='select2']");
 
-    // 1) Persist to backend (source of truth)
-    await postSetDriver(visitId, driverId);
-
-    // 2) Reflect in UI (Select2 + hidden select)
-    try {
-      if (window.jQuery && window.jQuery.fn && window.jQuery.fn.select2) {
-        const $sel = window.jQuery(selectEl);
-        $sel.val(String(driverId)).trigger("change");
-        // Some skins/components use this event to re-render avatar/label
-        $sel.trigger({
-          type: "select2:select",
-          params: { data: { id: String(driverId), text: driverName } },
-        });
+    if (select) {
+      const val = driverId ? String(driverId) : "";
+      // If select2/jQuery is present, it will also update the visible .select2 container
+      if (window.jQuery && window.jQuery.fn && window.jQuery(select).val) {
+        window.jQuery(select).val(val).trigger("change.select2");
       } else {
-        selectEl.value = String(driverId);
-        selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+        // Fallback: set native value
+        select.value = val;
+        // Fallback UI text if select2 container exists but jQuery not present
+        const rendered =
+          scope.querySelector(".select2-selection__rendered") ||
+          document.getElementById(select.getAttribute("aria-labelledby"));
+        if (rendered) {
+          rendered.textContent = driverId ? driverName : "";
+        }
       }
-    } catch (e) {
-      console.warn("UI reflect failed (non-fatal):", e);
     }
 
-    // 3) Sync bookkeeping attribute so later logic can skip already-set rows
-    selectEl.dataset.currentId = String(driverId);
+    // Also keep the fullscreen header dropdown in sync if it exists
+    const headerRow = findHeaderRow();
+    if (headerRow) {
+      updateDriverUI(headerRow, driverName || "", driverId || null);
+    }
   }
 
   /**
@@ -211,21 +531,55 @@
       try {
         if (!sel.querySelector(`option[value="${def.id}"]`)) continue;
         if (sel.dataset.currentId === String(def.id)) continue;
-        await setDriverForSelect(sel, def.id, def.name);
+        const visitId = sel.dataset.targetId;
+        if (!visitId) continue; // Skip floating selects
+        await setDriverForSelect(visitId, def.id, def.name);
       } catch (e) {
         console.warn("setAllToDefaultDriver row failed:", e);
       }
     }
   }
 
+  // Cached header row for better performance
+  let cachedHeaderRow = null;
+  let lastHeaderCheck = 0;
+  const HEADER_CACHE_TTL = 2000; // 2 seconds cache
+  
   function findHeaderRow() {
+    const now = Date.now();
+    
+    // Return cached header if still valid
+    if (cachedHeaderRow && document.contains(cachedHeaderRow) && (now - lastHeaderCheck) < HEADER_CACHE_TTL) {
+      return cachedHeaderRow;
+    }
+    
+    // 1) Offcanvas (existing behavior)
     const panel = qs("#task_offcanvas");
-    if (!panel) return null;
-    return (
-      qsa(".d-flex.align-items-center.flex-wrap", panel).find((el) =>
-        el.querySelector(".ajax-status-container")
-      ) || null
-    );
+    if (panel) {
+      const offcanvasHeader = qsa(".d-flex.align-items-center.flex-wrap", panel)
+        .find((el) => el.querySelector(".ajax-status-container"));
+      if (offcanvasHeader) {
+        cachedHeaderRow = offcanvasHeader;
+        lastHeaderCheck = now;
+        return offcanvasHeader;
+      }
+    }
+    
+    // 2) Fullscreen order header: look globally for a row that contains the ajax-status-container
+    //    The fullscreen page renders the controls inside the subheader toolbar area.
+    const fullscreenHeader =
+      qsa(".container-fluid.d-flex.align-items-center.justify-content-between.flex-wrap.flex-sm-nowrap, .row.justify-content-start.ml-0, .d-flex.align-items-center.flex-wrap")
+        .find((el) => el.querySelector(".position-relative.ajax-status-container"));
+    
+    if (fullscreenHeader) {
+      cachedHeaderRow = fullscreenHeader;
+      lastHeaderCheck = now;
+      return fullscreenHeader;
+    }
+    
+    // Clear cache if nothing found
+    cachedHeaderRow = null;
+    return null;
   }
 
   function getTaskId(headerRow) {
@@ -234,6 +588,23 @@
         "data-task-id"
       ) || null
     );
+  }
+
+  // Robust resolver: works in fullscreen (URL) and side-panel (data attr)
+  function getTaskIdRobust(headerRow) {
+    // 1) Prefer DOM data-task-id (exists in side-panel/offcanvas)
+    const fromDom = getTaskId(headerRow);
+    if (fromDom) return fromDom;
+    
+    // 2) Fallback: parse /tasks/:id from URL (fullscreen)
+    const m = location.pathname.match(/^\/tasks\/(\d+)/);
+    if (m && m[1]) return m[1];
+    
+    // 3) Last resort: hidden input if present
+    const hidden = document.querySelector("input[name='order[id]'], input[name='task[id]']");
+    if (hidden && hidden.value) return hidden.value;
+    
+    return null;
   }
 
   function getVisitId(headerRow) {
@@ -252,17 +623,18 @@
     wrapper.className = "lw-quick-wrapper";
     wrapper.setAttribute("data-lw-quick-wrapper", "1");
 
-    const divider = qs(".mo-divider", headerRow);
+    // Find the ajax-status-container (the first status dropdown)
     const statusContainer = qs(".position-relative.ajax-status-container", headerRow);
-
-    // למקם מימין ל־ajax-status-container ומשמאל ל־divider
-    if (divider) {
-      divider.parentNode.insertBefore(wrapper, divider);
-    } else if (statusContainer) {
-      statusContainer.parentNode.insertBefore(wrapper, statusContainer.nextSibling);
+    
+    if (statusContainer && statusContainer.parentNode) {
+      // Place our wrapper BEFORE the status container (to the right of it in RTL)
+      statusContainer.parentNode.insertBefore(wrapper, statusContainer);
     } else {
       headerRow.appendChild(wrapper);
     }
+
+    // Make sure styles are injected once
+    injectQuickStyles();
     return wrapper;
   }
 
@@ -278,6 +650,68 @@
     return false;
   }
 
+  /**
+   * Persist UNASSIGNED (טרם אושר) reliably in fullscreen & offcanvas.
+   * Strategy:
+   *  - wait for ajax idle → POST → small delay → POST again (beats late writers)
+   *  - mirror the exact request shape used manually by the app
+   */
+  async function setTaskStatusUNASSIGNED(headerRow, taskId) {
+    // 0) Visual update first (harmless even if server overwrites)
+    clickStatus(headerRow, "UNASSIGNED");
+    await sleep(80);
+
+    // 1) Resolve task id robustly
+    taskId = taskId || getTaskIdRobust(headerRow);
+    if (!taskId) {
+      console.warn("setTaskStatusUNASSIGNED: No task ID found", { url: location.pathname });
+      return false;
+    }
+
+    // 2) Let Lionwheel finish any pending writes before we send ours
+    await waitForAjaxIdle(2000);
+
+    // 3) POST (retry once after short delay to win races)
+    const token = getCsrfToken();
+    const url = `/tasks/${String(taskId)}/set_status`;
+    const payload = JSON.stringify({ new_task_status: "UNASSIGNED" });
+    const headers = {
+      "Accept": "application/json, text/javascript, */*; q=0.01",
+      "Content-Type": "application/json",
+      "X-CSRF-Token": token,
+      "X-Requested-With": "XMLHttpRequest",
+    };
+
+    const doPost = async () => {
+      const res = await fetch(url, {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: payload,
+        // Setting a friendly referrer helps mimic the manual call in fullscreen
+        referrer: `/tasks/${String(taskId)}`,
+        referrerPolicy: "strict-origin-when-cross-origin",
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(`set_status UNASSIGNED failed: ${res.status} ${body}`);
+      }
+    };
+
+    try {
+      await doPost();
+      await sleep(250);
+      await doPost(); // second pass to beat any late in-flight writers
+    } catch (e) {
+      console.warn("setTaskStatusUNASSIGNED: POST failed", e);
+      throw e;
+    }
+
+    // 4) Sync UI once more (keeps dropdown label consistent)
+    clickStatus(headerRow, "UNASSIGNED");
+    return true;
+  }
+
   function clickPickStatus(headerRow, className) {
     const el = qs(`.task-pick-status-dropdown .task-set-pick-status.${className}`, headerRow);
     if (el) {
@@ -287,12 +721,53 @@
     return false;
   }
 
+  /**
+   * Try to set pick status to NEW using the UI; if not available, fallback to POST.
+   * Ensures UI reflects the change when possible.
+   */
+  async function setPickStatusNEW(headerRow, taskId) {
+    // 1) prefer native click so Lionwheel updates UI immediately
+    const clicked = clickPickStatus(headerRow, "pick-status-new");
+    if (clicked) return true;
+    // 2) fallback: POST to set_pick_status with correct endpoint structure
+    if (!taskId) return false;
+    const token = getCsrfToken();
+    const res = await fetch(`/tasks/${String(taskId)}/set_pick_status`, {
+      method: "POST",
+      headers: {
+        "accept": "application/json, text/javascript, */*; q=0.01",
+        "content-type": "application/json",
+        "x-csrf-token": token,
+        "x-requested-with": "XMLHttpRequest",
+      },
+      credentials: "include",
+      body: JSON.stringify({ new_status: "NEW", packages_quantity: "" }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`set_pick_status NEW failed: ${res.status} ${body}`);
+    }
+    return true;
+  }
+
   async function openPickedQuantityModal(headerRow) {
     const ok = clickPickStatus(headerRow, "pick-status-picked");
     if (!ok) {
-      document.querySelector(".task-set-pick-status.pick-status-picked")?.dispatchEvent(
-        new MouseEvent("click", { bubbles: true, cancelable: true })
-      );
+      const element = document.querySelector(".task-set-pick-status.pick-status-picked");
+      if (element) {
+        // Add a temporary event listener to prevent default behavior
+        const preventDefault = (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        };
+        element.addEventListener("click", preventDefault, { capture: true, once: true });
+        
+        const event = new MouseEvent("click", { 
+          bubbles: true, 
+          cancelable: true
+        });
+        element.dispatchEvent(event);
+      }
     }
   }
 
@@ -317,46 +792,103 @@
     } catch (_) {}
   }
 
-  async function setDriver26055(headerRow) {
-    const sel = qs(".visit-drivers-select2", headerRow) || qs(".visit-drivers-select2");
-    if (!sel) return false;
 
-    try {
-      // Use user-configured default driver (fallback to Anipet)
-      const def = getEffectiveDefaultDriver();
-      await setDriverForSelect(sel, def.id, def.name);
-      return true;
-    } catch (e) {
-      console.warn("setDriver26055 failed:", e);
-      return false;
-    }
-  }
 
   function disableFor(btn, ms) {
     btn.disabled = true;
-    setTimeout(() => (btn.disabled = false), ms);
+    btn.classList.add('spinning');
+    setTimeout(() => {
+      btn.disabled = false;
+      btn.classList.remove('spinning');
+    }, ms);
   }
 
+  // Update driver UI in the fullscreen header dropdown
+  function updateDriverUI(headerRow, driverName, driverId) {
+    const taskMatch = location.pathname.match(/^\/tasks\/(\d+)/);
+    const isFullscreen = !!taskMatch;
+    const taskId = isFullscreen ? taskMatch[1] : null;
+
+    if (isFullscreen && taskId) {
+      const label = document.querySelector(
+        `.drivers-dropdown-current-driver[data-task-id="${taskId}"]`
+      );
+      if (label) {
+        label.textContent = driverId ? (driverName || "הנהג נבחר") : "נהג";
+      }
+    }
+  }
+
+  // Clear driver in current context (fullscreen or side-panel) + update UI quietly
+  async function clearDriverForContext(headerRow) {
+    const taskMatch = location.pathname.match(/^\/tasks\/(\d+)/);
+    const isFullscreen = !!taskMatch;
+    const taskId = isFullscreen ? taskMatch[1] : null;
+    const visitId = getVisitId(headerRow);
+
+    try {
+      if (isFullscreen && taskId) {
+        // Fullscreen: unassign via /tasks/assign_driver.json
+        await assignDriverForTask(taskId, ""); // driver_id: ""
+        // Reflect in the big header dropdown label
+        const label = document.querySelector(
+          `.drivers-dropdown-current-driver[data-task-id="${taskId}"]`
+        );
+        if (label) label.textContent = "נהג";
+      } else if (visitId) {
+        // Side-panel: unassign via /visits/:id/set_driver
+        await removeDriver(visitId);
+        // Quietly reflect in select2 without firing change events
+        const sel = document.querySelector(
+          `select.visit-drivers-select2[data-target-id="${visitId}"]`
+        );
+        if (sel) {
+          if (sel.querySelector('option[value="-1"]')) sel.value = "-1";
+          else if (sel.querySelector('option[value="0"]')) sel.value = "0";
+          else sel.value = "";
+          sel.dataset.currentId = "";
+          const rendered = sel
+            .closest(".select2-container")
+            ?.querySelector(".select2-selection__rendered");
+          if (rendered) rendered.textContent = "בחר נהג";
+        }
+      }
+    } catch (e) {
+      console.warn("clearDriverForContext failed:", e);
+    }
+  }
+
+  // Performance monitoring (only in development)
+  const DEBUG_PERFORMANCE = false;
+  
+  function logPerformance(label, startTime) {
+    if (DEBUG_PERFORMANCE) {
+      console.log(`[LW Performance] ${label}: ${Date.now() - startTime}ms`);
+    }
+  }
+  
   function buildButtons(wrapper) {
     if (!wrapper || wrapper.childElementCount) return;
+    
+    const startTime = DEBUG_PERFORMANCE ? Date.now() : 0;
 
     // סדר RTL: וי, חצי־וי, איקס
     const btnV = document.createElement("button");
     btnV.type = "button";
     btnV.className = "lw-quick-btn";
-    btnV.title = "לוקט";
+    btnV.title = "לוקט (Ctrl+click או החזקה: טרם אושר + חדש + הסר נהג)";
     btnV.innerHTML = SVG_GREEN_CHECK;
 
     const btnHalf = document.createElement("button");
     btnHalf.type = "button";
     btnHalf.className = "lw-quick-btn";
-    btnHalf.title = "לוקט חלקית";
+    btnHalf.title = "לוקט חלקית (Ctrl+click או החזקה: אושר + לוקט חלקית)";
     btnHalf.innerHTML = SVG_ORANGE_HALF;
 
     const btnX = document.createElement("button");
     btnX.type = "button";
     btnX.className = "lw-quick-btn";
-    btnX.title = "בהעברה";
+    btnX.title = "בהעברה (Ctrl+click או החזקה: אושר + המתנה)";
     btnX.innerHTML = SVG_RED_X;
 
     wrapper.appendChild(btnV);
@@ -364,70 +896,188 @@
     wrapper.appendChild(btnX);
 
     // פעולות
-    btnV.addEventListener("click", async () => {
+    // Per-button guard to prevent the default path after an alt Ctrl/⌘ click
+    let suppressNormalClick = false;
+
+    const handleGreenButtonClick = async (isAlternativeAction = false) => {
       if (btnV.disabled) return;
       const headerRow = findHeaderRow();
       if (!headerRow) return;
       disableFor(btnV, 1800);
 
-      clickStatus(headerRow, "ASSIGNED");            // 1) אושר
-      await sleep(200);
+      const taskId = getTaskIdRobust(headerRow);
 
-      await setDriver26055(headerRow);               // 2) נהג 26055
-      await sleep(200);
+      if (isAlternativeAction) {
+        // === Alternative: טרם אושר + חדש + הסר נהג ===
+        // 1) task status: UNASSIGNED (טרם אושר) — persist to server robustly
+        await setTaskStatusUNASSIGNED(headerRow, taskId);
+        await sleep(180);
+        // 2) pick status: NEW (חדש) — via UI if possible, fallback to POST
+        await setPickStatusNEW(headerRow, taskId);
+        await sleep(150);
+        // 3) remove driver (fullscreen or side-panel) and reflect UI
+        await clearDriverForContext(headerRow);
+        if (headerIsOffcanvas(headerRow)) {
+          const sidePanelRoot = headerRow.closest(".offcanvas, .modal, [id*='offcanvas']") || document;
+          await setDriverForSelect(sidePanelRoot, "", "");
+        } else {
+          await setDriverForSelect(headerRow, "", "");
+        }
+      } else {
+        // === Default: אושר → לוקט → נהג ברירת מחדל ===
+        // 1) אושר
+        clickStatus(headerRow, "ASSIGNED");
+        await sleep(200);
 
-      await openPickedQuantityModal(headerRow);      // 3+4) לוקט + מודל חבילות
+        if (headerIsOffcanvas(headerRow)) {
+          // side panel: existing flow opens the modal which flips to "לוקט"
+          await openPickedQuantityModal(headerRow);
+        } else {
+          // fullscreen: explicitly set "לוקט" (picked)
+          clickPickStatus(headerRow, "pick-status-picked");
+          await sleep(150);
+        }
+
+        // 3) נהג — LAST (so any Lionwheel reloads happen after statuses are done)
+        const visitId = getVisitId(headerRow);
+        const def = getEffectiveDefaultDriver();
+        
+        if (headerIsOffcanvas(headerRow)) {
+          // Side-panel: use visits endpoint and update UI
+          await postSetDriver(visitId, def.id);
+          const sidePanelRoot = headerRow.closest(".offcanvas, .modal, [id*='offcanvas']") || document;
+          await setDriverForSelect(sidePanelRoot, def.id, def.name);
+        } else {
+          // Fullscreen: use tasks endpoint and update UI
+          const taskMatch = location.pathname.match(/^\/tasks\/(\d+)/);
+          const fTaskId = taskMatch ? taskMatch[1] : null;
+          if (fTaskId) {
+            await assignDriverForTaskRobust(fTaskId, def.id);
+            await setDriverForSelect(headerRow, def.id, def.name);
+          }
+        }
+      }
+    };
+
+    // Ctrl+click on desktop triggers the alternative flow
+    btnV.addEventListener("click", async (event) => {
+      if (event.ctrlKey || event.metaKey) {
+        // Block any other click handlers and the normal click path
+        suppressNormalClick = true;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        try {
+          await handleGreenButtonClick(true);
+        } finally {
+          // Small delay to ensure mouseup/normal-path has fully settled
+          setTimeout(() => { suppressNormalClick = false; }, 250);
+        }
+      }
     });
 
-    btnHalf.addEventListener("click", async () => {
+    // Long press: alternative; Normal press: default
+    createLongPressHandler(
+      btnV,
+      () => handleGreenButtonClick(true),   // onLongPress -> alternative
+      () => {                               // onNormalClick -> default (unless suppressed)
+        if (suppressNormalClick) return;
+        handleGreenButtonClick(false);
+      }
+    );
+
+    const handleOrangeButtonClick = async (isAlternativeAction = false) => {
       if (btnHalf.disabled) return;
       const headerRow = findHeaderRow();
       if (!headerRow) return;
-      const taskId = getTaskId(headerRow);
+      const taskId = getTaskIdRobust(headerRow);
       const visitId = getVisitId(headerRow);
       disableFor(btnHalf, 1600);
 
-      clickStatus(headerRow, "IN_TRANSFER");         // 1) בהעברה
-      await sleep(200);
+      if (isAlternativeAction) {
+        // Long press or Ctrl+click: אושר + לוקט חלקית
+        clickStatus(headerRow, "ASSIGNED");         // 1) אושר
+        await sleep(200);
+      } else {
+        // Normal click: בהעברה + לוקט חלקית
+        clickStatus(headerRow, "IN_TRANSFER");         // 1) בהעברה
+        await sleep(200);
+      }
 
       clickPickStatus(headerRow, "pick-status-partially_picked"); // 2) לוקט חלקית
       await sleep(150);
 
       await openOrderItemsModal(headerRow, taskId);  // 3) חלונית ליקוט
       
-      // 4) הסרת נהג
-      if (visitId) {
-        try {
-          await removeDriver(visitId);
-          console.log("Driver removed successfully for visit:", visitId);
-        } catch (e) {
-          console.warn("Failed to remove driver:", e);
-        }
+      // 4) הסרת נהג — LAST (fullscreen or side-panel)
+      await clearDriverForContext(headerRow);
+      
+      // Also update UI in side panel if present
+      if (headerIsOffcanvas(headerRow)) {
+        const sidePanelRoot = headerRow.closest(".offcanvas, .modal, [id*='offcanvas']") || document;
+        await setDriverForSelect(sidePanelRoot, "", "");
+      }
+    };
+
+    // Handle Ctrl+click for desktop
+    btnHalf.addEventListener("click", async (event) => {
+      // Only handle Ctrl+click here, normal clicks are handled by long press handler
+      if (event.ctrlKey) {
+        handleOrangeButtonClick(true);
       }
     });
 
-    btnX.addEventListener("click", async () => {
+    // Use long press handler for touch-friendly interaction and normal clicks
+    createLongPressHandler(btnHalf, 
+      () => handleOrangeButtonClick(true),  // Long press: alternative action
+      () => handleOrangeButtonClick(false)  // Normal press: default action
+    );
+
+    const handleRedButtonClick = async (isAlternativeAction = false) => {
       if (btnX.disabled) return;
       const headerRow = findHeaderRow();
       if (!headerRow) return;
       const visitId = getVisitId(headerRow);
       disableFor(btnX, 900);
 
-      clickStatus(headerRow, "IN_TRANSFER");         // 1) בהעברה
-      await sleep(150);
+      if (isAlternativeAction) {
+        // Long press or Ctrl+click: אושר + המתנה
+        clickStatus(headerRow, "ASSIGNED");         // 1) אושר
+        await sleep(150);
+      } else {
+        // Normal click: בהעברה + המתנה
+        clickStatus(headerRow, "IN_TRANSFER");         // 1) בהעברה
+        await sleep(150);
+      }
 
       clickPickStatus(headerRow, "pick-status-pending"); // 2) המתנה
       
-      // 3) הסרת נהג
-      if (visitId) {
-        try {
-          await removeDriver(visitId);
-          console.log("Driver removed successfully for visit:", visitId);
-        } catch (e) {
-          console.warn("Failed to remove driver:", e);
-        }
+      // 3) הסרת נהג — LAST (fullscreen או side-panel)
+      await clearDriverForContext(headerRow);
+      
+      // Also update UI in side panel if present
+      if (headerIsOffcanvas(headerRow)) {
+        const sidePanelRoot = headerRow.closest(".offcanvas, .modal, [id*='offcanvas']") || document;
+        await setDriverForSelect(sidePanelRoot, "", "");
+      }
+    };
+
+    // Handle Ctrl+click for desktop
+    btnX.addEventListener("click", async (event) => {
+      // Only handle Ctrl+click here, normal clicks are handled by long press handler
+      if (event.ctrlKey) {
+        handleRedButtonClick(true);
       }
     });
+
+    // Use long press handler for touch-friendly interaction and normal clicks
+    createLongPressHandler(btnX, 
+      () => handleRedButtonClick(true),  // Long press: alternative action
+      () => handleRedButtonClick(false)  // Normal press: default action
+    );
+    
+    if (DEBUG_PERFORMANCE) {
+      logPerformance('Button creation', startTime);
+    }
   }
 
   /** ============================ Init & Observe ============================ */
@@ -436,10 +1086,135 @@
     if (!headerRow) return;
     const wrapper = ensureWrapper();
     buildButtons(wrapper);
+    // Fix layout issues specifically in the sidepanel header (tight space)
+    tightenSidepanelHeader(headerRow, wrapper);
+    
+    // Apply the new tight layout fix for sidepanel headers
+    if (headerIsOffcanvas(headerRow)) {
+      const sidepanel = headerRow.closest(".offcanvas, .drawer, [data-offcanvas]") || document;
+      tightenSidepanelTopbar(sidepanel);
+    }
   }
 
+  // ------------------------------------------------------------
+  // Layout helpers (compacting & CSS)
+  // ------------------------------------------------------------
+  function headerIsOffcanvas(headerRow){
+    return !!headerRow.closest("#task_offcanvas");
+  }
+
+  // Reduce spacing ONLY in the offcanvas header when we detect overflow.
+  function tightenSidepanelHeader(headerRow, wrapper){
+    if (!headerIsOffcanvas(headerRow)) return;
+
+    // Start in normal size
+    wrapper.classList.remove("lw-compact","lw-ultra");
+
+    // Reclaim a few pixels: soften the large left margin on price if present
+    const price = headerRow.querySelector('.font-weight-bolder .text-nowrap.ml-4[style*="color"]');
+    if (price && !price.dataset.lwTightened) {
+      price.dataset.lwTightened = "1";
+      price.classList.remove("ml-4");
+      price.classList.add("ml-2"); // save ~8px without visual harm
+    }
+
+    // Also trim the divider's horizontal margins a bit
+    const divider = headerRow.querySelector(".mo-divider");
+    if (divider && !divider.dataset.lwTightened) {
+      divider.dataset.lwTightened = "1";
+      divider.style.marginRight = "0.25rem";
+      divider.style.marginLeft = "0.25rem";
+    }
+
+    // If still overflowing, step down to compact, then ultra-compact
+    const container = headerRow; // flex container we measured against
+    const overflowing = () => container.scrollWidth > container.clientWidth + 2;
+
+    if (overflowing()) {
+      wrapper.classList.add("lw-compact");
+    }
+    if (overflowing()) {
+      wrapper.classList.add("lw-ultra");
+    }
+  }
+
+  // Simple resize handler for layout adjustments
+  function handleResize() {
+    const headerRow = findHeaderRow();
+    if (!headerRow) return;
+    const wrapper = qs('[data-lw-quick-wrapper="1"]', headerRow);
+    if (wrapper) {
+      tightenSidepanelHeader(headerRow, wrapper);
+    }
+  }
+
+  // Optimized debounced resize handler with RAF for better performance
+  let resizeTimeout;
+  let resizeRAF;
+  
+  function debouncedResize() {
+    clearTimeout(resizeTimeout);
+    if (resizeRAF) {
+      cancelAnimationFrame(resizeRAF);
+    }
+    
+    resizeTimeout = setTimeout(() => {
+      resizeRAF = requestAnimationFrame(handleResize);
+    }, 100);
+  }
+  
+  window.addEventListener("resize", debouncedResize, { passive: true });
+
+  // Tighten sidepanel header layout - prevents wrapping and removes phantom gaps
+  function tightenSidepanelTopbar(sidepanelRoot) {
+    const row = sidepanelRoot.querySelector(
+      ".d-flex.justify-content-between.align-items-center.position-relative.pr-8"
+    );
+    if (!row) return;
+
+    // Title (left) + Actions (right)
+    const title = row.children[0];
+    const actions = row.children[1];
+    if (!title || !actions) return;
+
+    row.classList.add("lw-sidepanel-header");
+    title.classList.add("lw-sidepanel-title");
+    actions.classList.add("lw-sidepanel-actions");
+
+    // Price span (may exist; may be empty)
+    const price = title.querySelector(".text-nowrap");
+    if (price) price.classList.add("lw-sidepanel-price");
+
+    // Remove bottom margins that bloat height when wrapping
+    actions.querySelectorAll(".btn.mb-2").forEach(btn => btn.classList.remove("mb-2"));
+
+    // If the row is still taller than one line, hide price to reclaim space
+    // (40–56px tends to be a single-line header height range; adjust if needed)
+    requestAnimationFrame(() => {
+      const singleLineMax = 56;
+      if (row.scrollHeight > singleLineMax && price) {
+        price.classList.add("lw-hide-price");
+      }
+    });
+  }
+
+  // Optimized mutation observer with debouncing
+  let initTimeout;
+  let isInitializing = false;
+  
+  function debouncedInit() {
+    if (isInitializing) return;
+    
+    clearTimeout(initTimeout);
+    initTimeout = setTimeout(() => {
+      isInitializing = true;
+      init();
+      isInitializing = false;
+    }, 100);
+  }
+  
   init();
-  const mo = new MutationObserver(() => init());
+  const mo = new MutationObserver(debouncedInit);
   mo.observe(document.documentElement, { childList: true, subtree: true });
 
   // ===== Tampermonkey Menu =====
@@ -459,5 +1234,35 @@
       setStoredDefaultDriver(ANIPET_DRIVER_ID, ANIPET_DRIVER_NAME);
       alert(`נהג ברירת מחדל אופס ל: ${ANIPET_DRIVER_NAME} (id=${ANIPET_DRIVER_ID})`);
     });
+    
+    // Performance monitoring toggle
+    GM_registerMenuCommand("הפעל/כבה ניטור ביצועים", () => {
+      DEBUG_PERFORMANCE = !DEBUG_PERFORMANCE;
+      alert(`ניטור ביצועים ${DEBUG_PERFORMANCE ? 'מופעל' : 'כבוי'}`);
+    });
   } catch {}
+  
+  // Cleanup function for better memory management
+  function cleanup() {
+    // Clear timers
+    if (resizeTimeout) clearTimeout(resizeTimeout);
+    if (resizeRAF) cancelAnimationFrame(resizeRAF);
+    if (initTimeout) clearTimeout(initTimeout);
+    
+    // Disconnect mutation observer
+    if (mo) mo.disconnect();
+    
+    // Clear DOM cache
+    clearDomCache();
+    
+    // Clear header cache
+    cachedHeaderRow = null;
+    lastHeaderCheck = 0;
+    
+    // Remove event listeners
+    window.removeEventListener("resize", debouncedResize);
+  }
+  
+  // Cleanup on page unload
+  window.addEventListener("beforeunload", cleanup);
 })();
