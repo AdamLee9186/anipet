@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LionWheel Refresh Button
 // @namespace    http://tampermonkey.net/
-// @version      6.5
+// @version      6.6
 // @description  Combined script: Auto-redirect to full open range in LionWheel with refresh button and loading animation
 // @match        https://members.lionwheel.com/*
 // @grant        GM_registerMenuCommand
@@ -49,6 +49,7 @@
     const SETTING_KEY = 'enabled_all_open_redirect';
     const DEFAULT_FROM = '01/01/2020';
     const DEFAULT_TO = '01/01/2100';
+    const ALL_OPEN_URL = `${location.origin}/operator/store_visits?date=range&from=${DEFAULT_FROM}&to=${DEFAULT_TO}`;
     const SCRIPT_NAME = 'LionWheel Combined';
     const SESSION_KEY = 'lionwheel_redirect_session';
     const DELAY_OPTION_KEY = 'redirect_delay_ms';
@@ -225,6 +226,31 @@
         return out;
     }
 
+    // ===== MAKE THE 'משלוחים' MENU GO STRAIGHT TO "כל הפתוחים" =====
+    function ensureAllOpenOnMenu() {
+        // Any anchor to /operator/store_visits (main doc + same-origin iframes)
+        const anchors = queryAllDocs('a[href="/operator/store_visits"]');
+        for (const a of anchors) {
+            // Skip if already rewritten
+            if (a.dataset.lwAllOpen === '1') continue;
+
+            // 1) Update href so Ctrl/Cmd-click & middle-click open the right URL
+            a.setAttribute('href', ALL_OPEN_URL);
+
+            // 2) Click guard for sites that intercept and force plain route
+            a.addEventListener('click', (ev) => {
+                // Respect modifier clicks that open new tabs/windows
+                if (ev.defaultPrevented) return;
+                if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button === 1) return;
+                ev.preventDefault();
+                // Use assign to preserve history; replace() if you prefer not to.
+                location.assign(ALL_OPEN_URL);
+            }, { capture: true });
+
+            a.dataset.lwAllOpen = '1';
+        }
+    }
+
     // ===== FIND THE EXACT HEADER AND INSERTION POINT =====
     // Finds the header wrapper you pasted: <div class="d-flex justify-content-between position-relative"> ... />
     function getStoreVisitsHeader() {
@@ -314,13 +340,17 @@
     // ===== BOOTSTRAP + ROBUST DOM WATCHING (SPA + IFRAMES) =====
     function observeDoc(doc) {
         if (!doc?.body) return;
-        const mo = new MutationObserver(() => { addRefreshButtonExactlyThere(); });
+        const mo = new MutationObserver(() => {
+            addRefreshButtonExactlyThere();
+            ensureAllOpenOnMenu();
+        });
         mo.observe(doc.body, { childList: true, subtree: true });
     }
 
     function bootstrapReloadButton() {
         // First attempt immediately
         addRefreshButtonExactlyThere();
+        ensureAllOpenOnMenu();
 
         // Watch main doc
         observeDoc(document);
@@ -329,9 +359,14 @@
         document.querySelectorAll('iframe').forEach(ifr => {
             try {
                 const d = ifr.contentDocument || ifr.contentWindow?.document;
-                if (d) observeDoc(d);
+                if (d) { observeDoc(d); ensureAllOpenOnMenu(); }
                 ifr.addEventListener('load', () => {
-                    try { observeDoc(ifr.contentDocument || ifr.contentWindow?.document); addRefreshButtonExactlyThere(); } catch {}
+                    try {
+                        const idoc = ifr.contentDocument || ifr.contentWindow?.document;
+                        observeDoc(idoc);
+                        addRefreshButtonExactlyThere();
+                        ensureAllOpenOnMenu();
+                    } catch {}
                 });
             } catch {}
         });
@@ -687,6 +722,7 @@
     const initialObserver = createSafeMutationObserver((mutationsList, observer) => {
         if (addRefreshButtonExactlyThere()) {
             log('Refresh button added, starting continuous monitoring.');
+            ensureAllOpenOnMenu();
             
             // Continuous monitoring handled by bootstrapReloadButton
             
@@ -723,6 +759,7 @@
         if (!addRefreshButtonExactlyThere()) {
             log('Immediate attempt failed, relying on observers...', 'warn');
         }
+        ensureAllOpenOnMenu();
     }, 0);
 
     // iframe monitoring handled by bootstrapReloadButton
