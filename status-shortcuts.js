@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel – כפתורי סטטוס
 // @namespace    https://github.com/AdamLee9186/anipet
-// @version      1.9.0
+// @version      2.0.0
 // @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. Ctrl+click או החזקה ארוכה: חצי־וי — אושר → לוקט חלקית, איקס — אושר → המתנה. יוצר: Adam Lee
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
@@ -41,8 +41,9 @@
       .lw-quick-wrapper{
         direction: rtl;
         display:flex;
-        align-items:center;
-        gap:.5rem;
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 0.5rem;
         margin:0 .5rem 0 0;
         flex:0 0 auto;
         white-space:nowrap;
@@ -59,31 +60,92 @@
         background:transparent !important;
         line-height:1;
         cursor:pointer;
-        transition:transform .06s ease, opacity .15s ease, filter .15s ease;
+        /* Compose transforms via CSS vars so different states don't override each other */
+        --tx: 0;          /* translateX offset (e.g., bottom-row centering) */
+        --scale: 1;       /* press/long-press scale */
+        transition: transform .06s ease, opacity .15s ease, filter .15s ease;
+        transform: translateX(var(--tx)) scale(var(--scale));
       }
       .lw-quick-btn:hover{ 
         filter: brightness(1.2);
       }
-      .lw-quick-btn:active{ transform:scale(0.96); }
+      .lw-quick-btn:active{ --scale: 0.96; }
       .lw-quick-btn svg{ width:100%; height:100%; display:block; }
       .lw-quick-btn[disabled]{ opacity:.6; cursor:not-allowed; }
       
       /* Spinning animation for loader */
-      .lw-quick-btn.spinning {
-        animation: spin 1s linear infinite;
-      }
+      /* Rotate only the SVG so button-level translateX/scale stay intact */
+      .lw-quick-btn.spinning svg { animation: spin 1s linear infinite; }
       
       @keyframes spin {
         from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
+        to   { transform: rotate(360deg); }
       }
       
       /* Long press visual feedback */
       .lw-quick-btn.long-pressing {
-        transform: scale(0.9);
+        --scale: 0.9;
         opacity: 0.8;
         transition: transform 0.1s ease, opacity 0.1s ease;
       }
+      
+      /* Sidepanel "Olympics": 3 on top, 2 centered under the gaps — without growing width */
+      .lw-sidepanel-header .lw-quick-wrapper.lw-quick--stacked{
+        --slot: 36px;        /* sidepanel button size - same as fullscreen */
+        --gap: 8px;          /* horizontal gap */
+        display: grid;
+        grid-template-columns: repeat(3, var(--slot));
+        column-gap: var(--gap);
+        row-gap: 4px;        /* reduced from 8px for denser layout */
+        align-items: center;
+        justify-items: center;       /* center each icon in its cell */
+        justify-content: center;     /* center the whole 3-slot block */
+        flex: 0 0 auto;
+        min-width: 0;
+        /* top-align this 2-row block with the rest of the toolbar */
+        align-self: flex-start;
+        margin-top: -4px;   /* tweak: -2..-6px to match your exact toolbar height */
+      }
+      
+      /* Make sure long neighbors don't wrap because of grid sizing */
+      .lw-sidepanel-actions{ flex-wrap: nowrap; }
+      
+      /* Top-align the whole actions bar when the stacked quick-buttons exist */
+      .lw-sidepanel-header .lw-sidepanel-actions{
+        align-items: flex-start !important;
+      }
+      
+      /* Make sure the stacked grid itself uses the top edge, not center */
+      .lw-sidepanel-header .lw-quick-wrapper.lw-quick--stacked{
+        align-self: flex-start;
+        align-content: start;         /* grid's cross-axis distribution */
+        margin-top: 0 !important;     /* cancel the earlier nudge */
+      }
+      
+      /* Make sure grid items use the top edge as their baseline (prevents subtle re-centering) */
+      .lw-quick--stacked .lw-quick-btn{ align-self: start; }
+      
+      /* Top row (✓, ◐, ✕) fills the 3 columns */
+      .lw-quick--stacked .lw-quick-btn:nth-child(1){ grid-column: 1; grid-row: 1; }
+      .lw-quick--stacked .lw-quick-btn:nth-child(2){ grid-column: 2; grid-row: 1; }
+      .lw-quick--stacked .lw-quick-btn:nth-child(3){ grid-column: 3; grid-row: 1; }
+      /* Bottom row circles: center them under the gaps between top buttons */
+      .lw-quick--stacked .lw-quick-btn:nth-child(4){
+        grid-column: 2; grid-row: 2;
+        --tx: calc(-1 * (var(--slot) + var(--gap)) / 2);
+      }
+      .lw-quick--stacked .lw-quick-btn:nth-child(5){
+        grid-column: 2; grid-row: 2;
+        --tx: calc((var(--slot) + var(--gap)) / 2);
+      }
+      
+      /* Size (sidepanel) */
+      .lw-quick--stacked .lw-quick-btn{ width: var(--slot); height: var(--slot); }
+      .lw-quick--stacked .lw-quick-btn svg{ width: 36px; height: 36px; }
+      
+      /* Auto-tighten when space is tight (uses your existing classes) */
+      .lw-quick-wrapper.lw-compact{ --slot: 38px; --gap: 6px; }
+      .lw-quick-wrapper.lw-ultra  { --slot: 32px; --gap: 4px; }
       
       /* Compact mode when space is tight */
       .lw-quick-wrapper.lw-compact{gap:.35rem; margin-right:.25rem; padding-left: 0.35rem}
@@ -113,6 +175,7 @@
       /* Sidepanel header layout - tight, safe fix */
       .lw-sidepanel-header {               /* applied to the top bar row */
         flex-wrap: nowrap !important;      /* keep title + actions on the same row */
+        align-items: flex-start !important; /* align content to top instead of center */
       }
 
       /* Let title shrink, avoid pushing actions to a new line */
@@ -121,6 +184,11 @@
         min-width: 0;                      /* allow ellipsis */
         display: flex;
         align-items: center;
+      }
+      
+      /* Add spacing between "משלוח" and the order number */
+      .lw-sidepanel-title .font-size-h2:first-child {
+        margin-left: 0.5rem;  /* Add right margin to create space after "משלוח" */
       }
 
       /* Price shouldn't force wrapping */
@@ -340,14 +408,14 @@
   }
 
   // Fullscreen: assign, then re-assign shortly after to beat late writers
-  async function assignDriverForTaskRobust(taskId, driverId) {
+  async function assignDriverForTaskRobust(taskId, driverId, transferDetails) {
     // let Lionwheel finish any status writes
     await waitForAjaxIdle(2000);
     await sleep(150);
 
     // first assign
     try {
-      const r1 = await assignDriverForTask(taskId, driverId);
+      const r1 = await assignDriverForTask(taskId, driverId, transferDetails);
       console.log("[LW] assign_driver #1 ok", r1);
     } catch (e) {
       console.warn("[LW] assign_driver #1 failed", e);
@@ -356,7 +424,7 @@
     // second pass a bit later in case something wrote after us
     setTimeout(async () => {
       try {
-        const r2 = await assignDriverForTask(taskId, driverId);
+        const r2 = await assignDriverForTask(taskId, driverId, transferDetails);
         console.log("[LW] assign_driver #2 ok", r2);
       } catch (e) {
         console.warn("[LW] assign_driver #2 failed", e);
@@ -367,6 +435,9 @@
   // === Driver persistence helpers ===
   const ANIPET_DRIVER_ID = 26055;
   const ANIPET_DRIVER_NAME = "אניפט שליחויות";
+  // Special driver: שיגור למרלוג
+  const MERLOG_DRIVER_ID = 14151;
+  const MERLOG_DRIVER_NAME = "שיגור למרלוג";
 
   // ===== Default-driver storage (Tampermonkey) =====
   const DEFAULT_KEY = "lw_default_driver";
@@ -438,7 +509,7 @@
     return true;
   }
 
-  async function assignDriverForTask(taskId, driverId) {
+  async function assignDriverForTask(taskId, driverId, transferDetails) {
     const token =
       document.querySelector('meta[name="csrf-token"]')?.content ||
       document.querySelector('meta[name=csrf-token]')?.content;
@@ -452,7 +523,11 @@
         "X-Requested-With": "XMLHttpRequest",
       },
       credentials: "include",
-      body: JSON.stringify({ task_id: String(taskId), driver_id: String(driverId) }),
+      body: JSON.stringify({
+        task_id: String(taskId),
+        driver_id: String(driverId),
+        ...(transferDetails ? { transfer_details: transferDetails } : {})
+      }),
     });
 
     const text = await res.text();
@@ -622,6 +697,11 @@
     wrapper = document.createElement("div");
     wrapper.className = "lw-quick-wrapper";
     wrapper.setAttribute("data-lw-quick-wrapper", "1");
+
+    // Tag as stacked if we're in sidepanel
+    if (headerIsOffcanvas(headerRow)) {
+      wrapper.classList.add("lw-quick--stacked");
+    }
 
     // Find the ajax-status-container (the first status dropdown)
     const statusContainer = qs(".position-relative.ajax-status-container", headerRow);
@@ -872,7 +952,7 @@
     
     const startTime = DEBUG_PERFORMANCE ? Date.now() : 0;
 
-    // סדר RTL: וי, חצי־וי, איקס
+    // סדר RTL: וי, חצי־וי, איקס, עיגול 1, עיגול 2 (כל הכפתורים בשורה אחת)
     const btnV = document.createElement("button");
     btnV.type = "button";
     btnV.className = "lw-quick-btn";
@@ -891,9 +971,32 @@
     btnX.title = "בהעברה (Ctrl+click או החזקה: אושר + המתנה)";
     btnX.innerHTML = SVG_RED_X;
 
+    // Blue button  — : בהעברה → המתנה → שיגור למרלוג
+    const btnCircle1 = document.createElement("button");
+    btnCircle1.type = "button";
+    btnCircle1.className = "lw-quick-btn";
+    btnCircle1.title = "בהעברה → המתנה → נהג: שיגור למרלוג";
+    btnCircle1.innerHTML = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true" focusable="false">
+  <path fill="#3333ff" d="M320,112c114.9,0,208,93.1,208,208s-93.1,208-208,208-208-93.1-208-208,93.1-208,208-208ZM320,576c141.4,0,256-114.6,256-256S461.4,64,320,64,64,178.6,64,320s114.6,256,256,256ZM423.16,394.71l-40.64,35.61-103.35-115.35v108.38h-54.97v-127.35l31.35-7.35-38.71-43.35,41.03-35.61,97.93,109.54v-46.45h-23.23l10.45-53.03h34.84c22.06,0,32.9,11.23,32.9,33.68v75.87l-31.74,15.87,44.13,49.55Z"/>
+</svg>`.trim();
+
+    // New button 2 - Reload symbol icon (pink/magenta)
+    const btnCircle2 = document.createElement("button");
+    btnCircle2.type = "button";
+    btnCircle2.className = "lw-quick-btn";
+    btnCircle2.title = "אושר → חדש → הסר נהג";
+    btnCircle2.innerHTML = `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true" focusable="false">
+  <path fill="#FF00FF" d="M320,112c114.9,0,208,93.1,208,208s-93.1,208-208,208-208-93.1-208-208,93.1-208,208-208ZM320,576c141.4,0,256-114.6,256-256S461.4,64,320,64,64,178.6,64,320s114.6,256,256,256ZM241.1,308.41c5.53-38.68,38.85-68.43,79.07-68.43,22.05,0,42.01,8.94,56.49,23.38.08.08.17.17.25.25l3.16,2.99h-19.92c-7.36,0-13.31,5.95-13.31,13.31s5.95,13.31,13.31,13.31h53.24c7.36,0,13.31-5.95,13.31-13.31v-53.24c0-7.36-5.95-13.31-13.31-13.31s-13.31,5.95-13.31,13.31v22.21l-4.7-4.45c-19.26-19.18-45.88-31.07-75.21-31.07-53.66,0-98.04,39.68-105.4,91.3-1.04,7.28,3.99,14.02,11.27,15.06s14.02-4.03,15.06-11.27v-.04ZM425.58,335.03c1.04-7.28-4.03-14.02-11.27-15.06-7.24-1.04-14.02,4.03-15.06,11.27-5.53,38.68-38.85,68.43-79.07,68.43-22.05,0-42.01-8.94-56.49-23.38-.08-.08-.17-.17-.25-.25l-3.16-2.99h19.92c7.36,0,13.31-5.95,13.31-13.31s-5.95-13.31-13.31-13.31l-53.2.04c-3.54,0-6.95,1.41-9.44,3.95s-3.91,5.91-3.87,9.48l.42,52.83c.04,7.36,6.07,13.27,13.44,13.19,7.36-.08,13.27-6.07,13.19-13.44l-.17-21.42,4.45,4.2c19.26,19.18,45.84,31.07,75.16,31.07,53.66,0,98.04-39.68,105.4-91.3Z"/>
+</svg>`.trim();
+
+    // Add all buttons directly to wrapper (single row)
     wrapper.appendChild(btnV);
     wrapper.appendChild(btnHalf);
     wrapper.appendChild(btnX);
+    wrapper.appendChild(btnCircle1);
+    wrapper.appendChild(btnCircle2);
 
     // פעולות
     // Per-button guard to prevent the default path after an alt Ctrl/⌘ click
@@ -952,7 +1055,7 @@
           const taskMatch = location.pathname.match(/^\/tasks\/(\d+)/);
           const fTaskId = taskMatch ? taskMatch[1] : null;
           if (fTaskId) {
-            await assignDriverForTaskRobust(fTaskId, def.id);
+            await assignDriverForTaskRobust(fTaskId, def.id, null);
             await setDriverForSelect(headerRow, def.id, def.name);
           }
         }
@@ -1074,6 +1177,79 @@
       () => handleRedButtonClick(true),  // Long press: alternative action
       () => handleRedButtonClick(false)  // Normal press: default action
     );
+
+    // === BLUE button: בהעברה → המתנה → assign "שיגור למרלוג" ===
+    const handleBlueButtonClick = async () => {
+      if (btnCircle1.disabled) return;
+      const headerRow = findHeaderRow();
+      if (!headerRow) return;
+      disableFor(btnCircle1, 1800);
+
+      const taskId  = getTaskIdRobust(headerRow);
+      const visitId = getVisitId(headerRow);
+
+      // (1) First status → בהעברה
+      clickStatus(headerRow, "IN_TRANSFER");
+      await sleep(160);
+
+      // (2) Second status → בהמתנה
+      clickPickStatus(headerRow, "pick-status-pending");
+      await sleep(140);
+
+      // (3) Driver → שיגור למרלוג (id=14151)
+      if (headerIsOffcanvas(headerRow)) {
+        // Side-panel: try visits API first (usually no modal),
+        // then mirror the select2 UI
+        try {
+          if (visitId) {
+            await postSetDriver(visitId, MERLOG_DRIVER_ID);
+          }
+        } catch (e) {
+          console.warn("[BLUE] postSetDriver failed, fallback to /tasks/assign_driver.json with transfer_details={}", e);
+          if (taskId) {
+            await assignDriverForTaskRobust(taskId, MERLOG_DRIVER_ID, {});
+          }
+        }
+        const sideRoot = headerRow.closest(".offcanvas, .modal, [id*='offcanvas']") || document;
+        await setDriverForSelect(sideRoot, MERLOG_DRIVER_ID, MERLOG_DRIVER_NAME);
+      } else {
+        // Fullscreen: call assign_driver.json with transfer_details to skip the confirm modal
+        if (taskId) {
+          await assignDriverForTaskRobust(taskId, MERLOG_DRIVER_ID, {});
+        }
+        await setDriverForSelect(headerRow, MERLOG_DRIVER_ID, MERLOG_DRIVER_NAME);
+      }
+    };
+    btnCircle1.addEventListener("click", handleBlueButtonClick);
+
+    // === MAGENTA button: אושר → חדש → הסר נהג ===
+    const handleMagentaButtonClick = async () => {
+      if (btnCircle2.disabled) return;
+      const headerRow = findHeaderRow();
+      if (!headerRow) return;
+      disableFor(btnCircle2, 1600);
+
+      const taskId = getTaskIdRobust(headerRow);
+
+      // (1) First status → אושר
+      clickStatus(headerRow, "ASSIGNED");
+      await sleep(150);
+
+      // (2) Second status → חדש  (UI first; fallback POST inside helper)
+      await setPickStatusNEW(headerRow, taskId);
+      await sleep(120);
+
+      // (3) הסר נהג — handles fullscreen/side-panel + UI sync
+      await clearDriverForContext(headerRow);
+      // Force-select2/UI sync in current scope (mirrors other buttons' pattern)
+      if (headerIsOffcanvas(headerRow)) {
+        const sideRoot = headerRow.closest(".offcanvas, .modal, [id*='offcanvas']") || document;
+        await setDriverForSelect(sideRoot, "", "");
+      } else {
+        await setDriverForSelect(headerRow, "", "");
+      }
+    };
+    btnCircle2.addEventListener("click", handleMagentaButtonClick);
     
     if (DEBUG_PERFORMANCE) {
       logPerformance('Button creation', startTime);
