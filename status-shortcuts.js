@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel – כפתורי סטטוס
 // @namespace    https://github.com/AdamLee9186/anipet
-// @version      2.0.0
+// @version      2.0.1
 // @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. Ctrl+click או החזקה ארוכה: חצי־וי — אושר → לוקט חלקית, איקס — אושר → המתנה. יוצר: Adam Lee
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
@@ -956,26 +956,26 @@
     const btnV = document.createElement("button");
     btnV.type = "button";
     btnV.className = "lw-quick-btn";
-    btnV.title = "לוקט (Ctrl+click או החזקה: טרם אושר + חדש + הסר נהג)";
+    btnV.title = "לוקט";
     btnV.innerHTML = SVG_GREEN_CHECK;
 
     const btnHalf = document.createElement("button");
     btnHalf.type = "button";
     btnHalf.className = "lw-quick-btn";
-    btnHalf.title = "לוקט חלקית (Ctrl+click או החזקה: אושר + לוקט חלקית)";
+    btnHalf.title = "לוקט חלקית";
     btnHalf.innerHTML = SVG_ORANGE_HALF;
 
     const btnX = document.createElement("button");
     btnX.type = "button";
     btnX.className = "lw-quick-btn";
-    btnX.title = "בהעברה (Ctrl+click או החזקה: אושר + המתנה)";
+    btnX.title = "בהעברה";
     btnX.innerHTML = SVG_RED_X;
 
     // Blue button  — : בהעברה → המתנה → שיגור למרלוג
     const btnCircle1 = document.createElement("button");
     btnCircle1.type = "button";
     btnCircle1.className = "lw-quick-btn";
-    btnCircle1.title = "בהעברה → המתנה → נהג: שיגור למרלוג";
+    btnCircle1.title = "שיגור למרלוג";
     btnCircle1.innerHTML = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true" focusable="false">
   <path fill="#3333ff" d="M320,112c114.9,0,208,93.1,208,208s-93.1,208-208,208-208-93.1-208-208,93.1-208,208-208ZM320,576c141.4,0,256-114.6,256-256S461.4,64,320,64,64,178.6,64,320s114.6,256,256,256ZM423.16,394.71l-40.64,35.61-103.35-115.35v108.38h-54.97v-127.35l31.35-7.35-38.71-43.35,41.03-35.61,97.93,109.54v-46.45h-23.23l10.45-53.03h34.84c22.06,0,32.9,11.23,32.9,33.68v75.87l-31.74,15.87,44.13,49.55Z"/>
@@ -985,7 +985,7 @@
     const btnCircle2 = document.createElement("button");
     btnCircle2.type = "button";
     btnCircle2.className = "lw-quick-btn";
-    btnCircle2.title = "אושר → חדש → הסר נהג";
+    btnCircle2.title = "חדש";
     btnCircle2.innerHTML = `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true" focusable="false">
   <path fill="#FF00FF" d="M320,112c114.9,0,208,93.1,208,208s-93.1,208-208,208-208-93.1-208-208,93.1-208,208-208ZM320,576c141.4,0,256-114.6,256-256S461.4,64,320,64,64,178.6,64,320s114.6,256,256,256ZM241.1,308.41c5.53-38.68,38.85-68.43,79.07-68.43,22.05,0,42.01,8.94,56.49,23.38.08.08.17.17.25.25l3.16,2.99h-19.92c-7.36,0-13.31,5.95-13.31,13.31s5.95,13.31,13.31,13.31h53.24c7.36,0,13.31-5.95,13.31-13.31v-53.24c0-7.36-5.95-13.31-13.31-13.31s-13.31,5.95-13.31,13.31v22.21l-4.7-4.45c-19.26-19.18-45.88-31.07-75.21-31.07-53.66,0-98.04,39.68-105.4,91.3-1.04,7.28,3.99,14.02,11.27,15.06s14.02-4.03,15.06-11.27v-.04ZM425.58,335.03c1.04-7.28-4.03-14.02-11.27-15.06-7.24-1.04-14.02,4.03-15.06,11.27-5.53,38.68-38.85,68.43-79.07,68.43-22.05,0-42.01-8.94-56.49-23.38-.08-.08-.17-.17-.25-.25l-3.16-2.99h19.92c7.36,0,13.31-5.95,13.31-13.31s-5.95-13.31-13.31-13.31l-53.2.04c-3.54,0-6.95,1.41-9.44,3.95s-3.91,5.91-3.87,9.48l.42,52.83c.04,7.36,6.07,13.27,13.44,13.19,7.36-.08,13.27-6.07,13.19-13.44l-.17-21.42,4.45,4.2c19.26,19.18,45.84,31.07,75.16,31.07,53.66,0,98.04-39.68,105.4-91.3Z"/>
