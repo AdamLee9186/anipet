@@ -2665,7 +2665,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                             targetCell.append(createImageElement(match, name, sku, { maxHeight: '80px', maxWidth: '80px' }));
                         }
 
-                        if (match.link && !nameCell.querySelector('a')) {
+                        if (match.link && !nameCell.querySelector('a:not(.google-image-icon)')) {
                             // Check if there's an Anipet button in this cell or nearby
                             const hasAnipetButton = nameCell.querySelector('.anipet-alternatives-btn') ||
                                                    nameCell.closest('tr').querySelector('.anipet-alternatives-btn');
@@ -2674,8 +2674,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
                             if (!hasAnipetButton) {
                                 const productName = nameCell.textContent.trim();
 
+                                // Preserve Google image icon if exists
+                                const googleIcon = nameCell.querySelector('.google-image-icon');
                                 // Clear the cell content
                                 nameCell.innerHTML = '';
+                                if (googleIcon) nameCell.appendChild(googleIcon);
 
                                 // Create copy icon with enhanced feedback
                                 const copyIcon = createCopyIcon(productName);
@@ -3811,6 +3814,14 @@ function initializeSidePanelResizeObserver() {
       document.addEventListener('shown.bs.offcanvas', applyGapVars);
       document.addEventListener('hidden.bs.offcanvas', applyGapVars);
       
+      // Monitor for side panel events to add links and copy icons
+      document.addEventListener('shown.bs.offcanvas', () => {
+        setTimeout(() => addClickableLinksToAllTables(), 100);
+      });
+      document.addEventListener('shown.bs.modal', () => {
+        setTimeout(() => addClickableLinksToAllTables(), 100);
+      });
+      
       // Periodic check for map panel changes (fallback)
       setInterval(() => {
         const currentGap = measurePanelWidth();
@@ -4450,6 +4461,10 @@ td[data-label="מק״ט"] .fa-light.fa-check {
 td[data-label="שם"] {
     text-align: right !important;
 }
+
+/* שמירת ריווח סביב אייקון חיפוש תמונות של גוגל */
+td[data-label="שם"] .google-image-icon{ margin-inline-end:6px; }
+.tampermonkey-copy-wrap .copy-icon{ margin-inline-start:6px; }
 
 td[data-label="שם"] .fa-light.fa-clone,
 td[data-label="שם"] .fa-light.fa-check {
@@ -5242,13 +5257,17 @@ function prepareCopyElements() {
                     return; // Skip name cells in store visits table
                 }
                 // Skip adding copy-enabled to name cells that already have links with copy icons
-                if (el.querySelector('a') || el.querySelector('.copy-icon')) {
+                const hasNonGoogleLink = el.querySelector('a:not(.google-image-icon)');
+                if (hasNonGoogleLink || el.querySelector('.copy-icon')) {
                     return;
                 }
             }
             // Skip adding copy-enabled to gallery product names that have links with copy icons
-            if (el.classList.contains('gallery-product-name') && (el.querySelector('a') || el.querySelector('.copy-icon'))) {
-                return;
+            if (el.classList.contains('gallery-product-name')) {
+                const hasNonGoogleLink = el.querySelector('a:not(.google-image-icon)');
+                if (hasNonGoogleLink || el.querySelector('.copy-icon')) {
+                    return;
+                }
             }
             // Skip adding copy-enabled to barcode cells that already have copy icons
             if (el.getAttribute('data-label') === 'מק״ט' && el.querySelector('.copy-icon')) {
@@ -6347,25 +6366,50 @@ function applyCopyIconFix(root = document){
 
     const wrap = ensureWrap(td);
 
-    // Prefer <a>, else first child/text
-    let nameNode = wrap.querySelector(':scope > a') || wrap.firstChild;
-    if (!nameNode) return;
-
     // Ensure BDI AUTO around the name/link for mixed RTL/LTR
     let bdi = wrap.querySelector(':scope > .tampermonkey-name-bdi');
     if (!bdi){
       bdi = document.createElement('bdi');
       bdi.className = 'tampermonkey-name-bdi';
       bdi.dir = 'auto';
-      bdi.appendChild(nameNode.parentNode ? nameNode.parentNode.removeChild(nameNode) : nameNode);
       if (wrap.firstChild) wrap.insertBefore(bdi, wrap.firstChild); else wrap.appendChild(bdi);
     }
+
+    // מיזוג טקסט/אלמנטים שאינם אייקון גוגל/אייקון העתקה לתוך ה-BDI
+    // (ב-side panel הטקסט ישב מחוץ ל-BDI ולכן nameText יוצא ריק והאייקון מוסתר)
+    let node = bdi.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      const isEl = node.nodeType === 1;
+      const isCopyIcon = isEl && node.classList.contains('copy-icon');
+      const isGoogleIcon = isEl && node.classList.contains('google-image-icon');
+      
+      // מכניסים לתוך ה-BDI טקסטים ואלמנטים שאינם אייקון גוגל/העתקה
+      if (node.nodeType === Node.TEXT_NODE || (isEl && !isGoogleIcon && !isCopyIcon)) {
+        bdi.appendChild(node);
+      }
+      // עוצרים לפני ה-copy-icon אם יש
+      if (isCopyIcon) break;
+      node = next;
+    }
+
+    // בחירת node לשם: העדף <a> שאינו אייקון גוגל, אחרת ה-BDI, אחרת טקסט ראשון לא-ריק
+    let nameNode =
+      wrap.querySelector(':scope > a:not(.google-image-icon)') ||
+      wrap.querySelector(':scope > .tampermonkey-name-bdi') ||
+      Array.from(wrap.childNodes).find(n => n.nodeType === Node.TEXT_NODE && n.textContent.trim()) ||
+      wrap.firstChild;
+    if (!nameNode) return;
 
     // Check if name has content before showing icon
     const nameText = (bdi.innerText || bdi.textContent || '').trim();
     if (nameText) {
       // Ensure icon right after the BDI (i.e., at the visual end of the name)
-      ensureCopyIcon(wrap, () => bdi.innerText || bdi.textContent);
+      const icon = ensureCopyIcon(wrap, () => bdi.innerText || bdi.textContent);
+      // אם האייקון קיים אך מוסתר, ובפועל יש טקסט – נציג אותו
+      if (icon && nameText && getComputedStyle(icon).display === 'none') {
+        icon.style.display = '';
+      }
     } else {
       // Hide icon if no name content
       ensureCopyIcon(wrap, () => '');
@@ -6399,8 +6443,8 @@ function createCopyIcon(textToCopy, { title='העתק' } = {}){
 
 function addClickableLinksToAllTables() {
     try {
-        // Find all tables with data-label="שם" cells (not just visit-row tables)
-        const allTables = document.querySelectorAll('table.table.table-hover[data-columns-tagged="true"]');
+        // Find all tables with data-label="שם" cells (including side panels)
+        const allTables = document.querySelectorAll('table.table.table-hover[data-columns-tagged="true"], .offcanvas table.table, .modal table.table, #panel_view table.table');
 
         allTables.forEach(table => {
             // Skip store visits table - don't add copy icons for names there
@@ -6419,20 +6463,23 @@ function addClickableLinksToAllTables() {
                                (row.cells && row.cells[2]) ||
                                row.querySelector('td:nth-child(3)');
                 if (!nameCell) return;
-                // Skip if already linked or has a copy icon
-                if (nameCell.querySelector('a') || nameCell.querySelector('.copy-icon')) return;
+                // אל תדלג בגלל אייקון גוגל: דלג רק אם יש קישור "אמיתי" שאינו אייקון גוגל,
+                // וגם אל תדלג אם כבר יש copy-icon אבל הוא מוסתר (נרצה להחיות אותו)
+                const existingIcon = nameCell.querySelector('.copy-icon');
+                const iconHidden = existingIcon && getComputedStyle(existingIcon).display === 'none';
+                const hasNonGoogleLink = nameCell.querySelector('a:not(.google-image-icon)');
+                if (hasNonGoogleLink || (existingIcon && !iconHidden)) return;
 
-                // Find SKU cell robustly
+                // Find SKU cell robustly (optional for side panels)
                 let skuCell = row.querySelector('td[data-label="מק״ט"]') ||
                               (row.querySelector('td [data-original-sku]') && row.querySelector('td [data-original-sku]').closest('td')) ||
                               (row.cells && row.cells[1]) ||
                               row.querySelector('td:nth-child(2)');
-                if (!skuCell) return;
 
+                // אפשר לעבוד גם בלי מק"ט (side panel) – נחשב sku רק אם יש תא מתאים
                 const productName = nameCell.textContent.trim();
-                const sku = (skuCell.dataset.originalSku || skuCell.textContent || '').trim();
-
-                if (!productName || !sku) return;
+                const sku = skuCell ? (skuCell.dataset.originalSku || skuCell.textContent || '').trim() : '';
+                if (!productName) return;
 
                 // Check if there's an Anipet button in this cell or nearby
                 const hasAnipetButton = nameCell.querySelector('.anipet-alternatives-btn') ||
@@ -6444,9 +6491,12 @@ function addClickableLinksToAllTables() {
                     const match = findImageMatch(sku, productName);
 
                     if (match && match.link) {
+                        // Preserve Google image icon if exists
+                        const googleIcon = nameCell.querySelector('.google-image-icon');
                         // Clear the cell content
                         nameCell.innerHTML = '';
-
+                        if (googleIcon) nameCell.appendChild(googleIcon);
+                        
                         // Create copy icon with enhanced feedback
                         const copyIcon = createCopyIcon(productName);
 
@@ -6464,7 +6514,10 @@ function addClickableLinksToAllTables() {
                     } else {
                         // Even if no link, add copy icon for the product name
                         const originalContent = nameCell.innerHTML;
+                        // Preserve Google image icon if exists
+                        const googleIcon = nameCell.querySelector('.google-image-icon');
                         nameCell.innerHTML = '';
+                        if (googleIcon) nameCell.appendChild(googleIcon);
 
                         // Create copy icon with enhanced feedback
                         const copyIcon = createCopyIcon(productName);
@@ -6476,19 +6529,21 @@ function addClickableLinksToAllTables() {
                     }
                 }
 
-                // Add copy icon to barcode cell if it has barcode-highlight
-                const skuCellBarcode = skuCell.querySelector('.barcode-highlight, span.barcode-highlight');
-                if (skuCellBarcode && !skuCell.querySelector('.copy-icon')) {
-                    const barcodeText = skuCellBarcode.textContent.trim();
-                    if (barcodeText) {
-                        // Create copy icon for barcode
-                        const barcodeCopyIcon = createCopyIcon(barcodeText);
-                        barcodeCopyIcon.style.marginLeft = '4px';
-                        barcodeCopyIcon.style.marginRight = '0px';
+                // הוספת אייקון העתקה למק"ט – רק אם קיימת עמודת מק"ט בטבלה הזו
+                if (skuCell) {
+                    const skuCellBarcode = skuCell.querySelector('.barcode-highlight, span.barcode-highlight');
+                    if (skuCellBarcode && !skuCell.querySelector('.copy-icon')) {
+                        const barcodeText = skuCellBarcode.textContent.trim();
+                        if (barcodeText) {
+                            // Create copy icon for barcode
+                            const barcodeCopyIcon = createCopyIcon(barcodeText);
+                            barcodeCopyIcon.style.marginLeft = '4px';
+                            barcodeCopyIcon.style.marginRight = '0px';
 
-                        // Insert the copy icon after the barcode
-                        skuCellBarcode.parentNode.insertBefore(barcodeCopyIcon, skuCellBarcode.nextSibling);
-                        didWork = true;
+                            // Insert the copy icon after the barcode
+                            skuCellBarcode.parentNode.insertBefore(barcodeCopyIcon, skuCellBarcode.nextSibling);
+                            didWork = true;
+                        }
                     }
                 }
 
@@ -6502,26 +6557,60 @@ function addClickableLinksToAllTables() {
     
     // Fix shipment wrapping after adding clickable links
     // fixShipmentWrapping(); // Removed for performance
+    
+    return true; // Return success indicator
 }
 
 // Give late-rendered cells a second and third pass
-requestAnimationFrame(() => addClickableLinksToAllTables());
-setTimeout(() => addClickableLinksToAllTables(), 400);
-setTimeout(() => addClickableLinksToAllTables(), 1200);
+requestAnimationFrame(() => {
+  addClickableLinksToAllTables();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) addClickableLinksToAllTables();
+});
+setTimeout(() => {
+  addClickableLinksToAllTables();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) addClickableLinksToAllTables();
+}, 400);
+setTimeout(() => {
+  addClickableLinksToAllTables();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) addClickableLinksToAllTables();
+}, 1200);
 
-// MutationObserver hook for dynamically added rows
-const table = document.querySelector('table.table.table-hover[data-columns-tagged="true"]');
-if (table) {
+// MutationObserver hook for dynamically added rows (including side panels)
+(function observeTablesEverywhere(){
+  const runFor = (root) => {
+    addClickableLinksToAllTables();
+  };
+
   const mo = new MutationObserver(muts => {
+    let touched = false, touchedPanel = false;
     for (const m of muts) {
       if (m.addedNodes && m.addedNodes.length) {
-        addClickableLinksToAllTables();
-        break;
+        touched = true;
+        if ([...m.addedNodes].some(n =>
+          n.nodeType === 1 && (n.matches?.('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view') ||
+          n.closest?.('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view')))) {
+          touchedPanel = true;
+        }
       }
     }
+    if (touched) {
+      runFor(document);
+      const panel = document.querySelector('.offcanvas.show, .offcanvas-right.show, .offcanvas-custom.show, #panel_view');
+      if (panel && touchedPanel) runFor(panel);
+    }
   });
-  mo.observe(table.tBodies[0] || table, { childList: true, subtree: true });
-}
+
+  mo.observe(document.body, { childList: true, subtree: true });
+
+  // Bootstrap offcanvas events – כשנפתח/נסגר, תריץ על הפאנל
+  document.addEventListener('shown.bs.offcanvas', () => {
+    const panel = document.querySelector('.offcanvas.show, .offcanvas-right.show, .offcanvas-custom.show, #panel_view');
+    if (panel) runFor(panel);
+  });
+})();
 
 // Expose function immediately for console access
 window.addClickableLinksToAllTables = addClickableLinksToAllTables;
