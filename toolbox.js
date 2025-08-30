@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.7.6
+// @version      13.8.2
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -25,22 +25,197 @@
 /* global jQuery */
 /* global Papa */ // ENSURING PAPA IS GLOBAL
 
+// IMMEDIATE Crisp safe mode configuration - run before any other code
+(function() {
+  // Set up Crisp safe mode as early as possible
+  if (typeof window !== 'undefined') {
+    window.CRISP_SAFE_MODE = true;
+    window.USERSCRIPT_SAFE_MODE = true;
+    
+    if (!window.$crisp) window.$crisp = [];
+    if (Array.isArray(window.$crisp)) window.$crisp.push(["safe", true]);
+    
+    if (!window.crisp) window.crisp = [];
+    if (Array.isArray(window.crisp)) window.crisp.push(["safe", true]);
+  }
+})();
+
 // DEBUG flag for production logging control
-window.DEBUG_TOOLBOX = window.DEBUG_TOOLBOX || false;
+const DEBUG = window.DEBUG_TOOLBOX || false;
+window.DEBUG_TOOLBOX = DEBUG;
+
+// ===== [Noise & Perf Quieting Pack] START =====
+// 1) Hard-block common trackers to reduce net::ERR_BLOCKED_BY_CLIENT spam
+(function hardBlockTrackers(){
+  try {
+    // Guarded CSP: manage ONLY our own tag; never add duplicates; never override host CSP.
+    const HEAD = document.head || document.getElementsByTagName('head')[0];
+    if (!HEAD) return;
+
+    // If the page ALREADY has any CSP meta (server/host), respect it and DO NOT add ours.
+    // We only proceed if there is NO CSP at all, or if our tag already exists (to update it).
+    const existingCspMetas = Array.from(HEAD.querySelectorAll('meta[http-equiv="Content-Security-Policy"]'));
+    const oursId = 'lwtb-csp';
+    const ours = HEAD.querySelector(`meta#${oursId}[http-equiv="Content-Security-Policy"]`);
+    if (existingCspMetas.length > 0 && !ours) {
+      // Host (or another script) controls CSP. Do nothing to avoid stricter intersections.
+      return;
+    }
+
+    // Create or update ONLY our CSP meta.
+    const meta = ours || document.createElement('meta');
+    meta.id = oursId;
+    meta.httpEquiv = 'Content-Security-Policy';
+    meta.content = [
+      "default-src * 'unsafe-inline' 'unsafe-eval' data: blob:",
+      // IMPORTANT: allow WebSockets; do NOT restrict specific hosts here.
+      // Using wss: keeps Pusher/Crisp working while adblock still blocks trackers.
+      "connect-src * 'unsafe-inline' 'unsafe-eval' data: blob: https: wss:",
+      "img-src * data: blob:",
+      "script-src * 'unsafe-inline' 'unsafe-eval' data: blob: https:",
+      "style-src * 'unsafe-inline' https:",
+      "block-all-mixed-content"
+    ].join('; ');
+    if (!ours) HEAD.appendChild(meta);
+
+    // Runtime guard: if later a new CSP meta is injected by the page, we DO NOT add another.
+    // We only keep OUR tag as-is and never duplicate.
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) {
+        for (const n of m.addedNodes) {
+          if (n.nodeType === 1 && n.matches && n.matches('meta[http-equiv="Content-Security-Policy"]')) {
+            // If a new CSP (not ours) appears, we leave it alone and DO NOT touch CSP anymore.
+            // We disconnect to avoid reprocessing; our single tag remains, no duplicates added.
+            mo.disconnect();
+            return;
+          }
+        }
+      }
+    });
+    mo.observe(HEAD, { childList: true });
+  } catch(_) {}
+})();
+
+// 2) Quiet "Added non-passive event listener …" for scroll/touch/wheel safely
+(function defaultPassiveForScrollEvents(){
+  try {
+    const passiveEvents = new Set(['touchstart','touchmove','wheel','mousewheel','scroll']);
+    const _add = EventTarget.prototype.addEventListener;
+    EventTarget.prototype.addEventListener = function(type, listener, options){
+      try{
+        let opts = options;
+        if (passiveEvents.has(String(type))) {
+          if (opts === undefined) opts = { passive: true };
+          else if (typeof opts === 'boolean') opts = { capture: !!opts, passive: true };
+          else if (typeof opts === 'object' && !('passive' in opts)) opts = Object.assign({}, opts, { passive: true });
+        }
+        return _add.call(this, type, listener, opts);
+      } catch(e){
+        return _add.call(this, type, listener, options);
+      }
+    };
+  } catch(_) {}
+})();
+
+// 3) DOM batching (read → write) to reduce "Forced reflow while executing JS"
+const domBatch = (() => {
+  let readQ = [], writeQ = [], scheduled = false;
+  function schedule(){
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => {
+      scheduled = false;
+      const reads = readQ; readQ = [];
+      const readResults = reads.map(fn => { try{return fn();}catch(_){return null;} });
+      const writes = writeQ; writeQ = [];
+      writes.forEach(fn => { try{ fn(readResults); }catch(_){ } });
+    });
+  }
+  return {
+    read(fn){ readQ.push(fn); schedule(); },
+    write(fn){ writeQ.push(fn); schedule(); }
+  };
+})();
+
+// 4) Lightweight gating helpers to avoid hot-loop work & noisy timers
+function createDistinctByKey(fn, keyFn){
+  let lastKey = null, lastRes = null;
+  return (...args) => {
+    const k = keyFn(...args);
+    if (k === lastKey) return lastRes;
+    lastKey = k; lastRes = fn(...args);
+    return lastRes;
+  };
+}
+
+function oncePerAnimationFrame(fn){
+  let raf = 0, lastArgs = null;
+  return (...args) => {
+    lastArgs = args;
+    if (raf) return;
+    raf = requestAnimationFrame(() => {
+      raf = 0;
+      try { fn(...lastArgs); } catch(_){}
+    });
+  };
+}
+
+// 5) Filter known tracker noise from console.error without muting real errors
+(function quietKnownNoise(){
+  try {
+    const NOISE = [
+      /google-analytics\.com/i,
+      /connect\.facebook\.net/i,
+      /clarity\.ms/i
+    ];
+    const origErr = console.error;
+    console.error = function(...args){
+      try{
+        if (args.some(a => typeof a === 'string' && NOISE.some(rx => rx.test(a)))) return;
+      }catch(_){}
+      return origErr.apply(console, args);
+    };
+  } catch(_) {}
+})();
+// ===== [Noise & Perf Quieting Pack] END =====
+
+// Rate-limited warning system
+const warnOnce = (() => {
+  const seen = new Set();
+  return (key, ...args) => { 
+    if (!seen.has(key)) { 
+      seen.add(key); 
+      console.warn(...args); 
+    } 
+  };
+})();
+
+// Debounce utility for performance optimization
+function debounce(fn, ms = 120) { 
+  let t; 
+  return (...a) => { 
+    clearTimeout(t); 
+    t = setTimeout(() => fn(...a), ms); 
+  }; 
+}
+
+// Idle callback with fallback for non-critical work
+const scheduleIdleWork = window.requestIdleCallback || 
+  ((cb) => setTimeout(() => cb({didTimeout: true, timeRemaining: () => 0}), 200));
 
 // Clean up old debug logs from console
-if (!window.DEBUG_TOOLBOX) {
+if (!DEBUG) {
   // Override console.debug to suppress debug logs in production
   const originalDebug = console.debug;
   console.debug = function() {
-    // Only show debug logs if DEBUG_TOOLBOX is true
-    if (window.DEBUG_TOOLBOX) {
+    // Only show debug logs if DEBUG is true
+    if (DEBUG) {
       originalDebug.apply(console, arguments);
     }
   };
 }
 
-// Error handling for blocked resources
+// Enhanced error handling for blocked resources and cross-script coordination
 window.addEventListener('error', function(e) {
   if (e.target && e.target.src && e.target.src.includes('rollbar.min.js')) {
     // Suppress Rollbar errors - they're blocked by ad blockers
@@ -69,63 +244,184 @@ window.addEventListener('error', function(e) {
   }
 }, true);
 
+// Global coordination for other userscripts
+window.LIONWHEEL_TOOLBOX_LOADED = true;
+window.LIONWHEEL_DEBUG_MODE = DEBUG;
+
+// Provide global utilities for other scripts
+window.LionwheelUtils = {
+  debounce: debounce,
+  warnOnce: warnOnce,
+  scheduleIdleWork: scheduleIdleWork,
+  // Added utilities:
+  domBatch: domBatch,
+  createDistinctByKey: createDistinctByKey,
+  oncePerAnimationFrame: oncePerAnimationFrame,
+  safeInsertAfter: safeInsertAfter,
+  safeInsertBefore: safeInsertBefore,
+  DEBUG: DEBUG
+};
+
+/* ============================================================
+   SAFE DOM INSERT HELPERS (no NotFoundError on racing updates)
+   ============================================================ */
+function safeInsertAfter(anchor, node, fallbackParent){
+  try{
+    if (anchor && anchor.isConnected){
+      if (anchor.insertAdjacentElement){
+        anchor.insertAdjacentElement('afterend', node);
+      } else if (anchor.parentNode){
+        anchor.parentNode.insertBefore(node, anchor.nextSibling);
+      } else {
+        (fallbackParent && fallbackParent.isConnected ? fallbackParent : document.body).appendChild(node);
+      }
+    } else {
+      (fallbackParent && fallbackParent.isConnected ? fallbackParent : document.body).appendChild(node);
+    }
+  }catch(e){
+    try{ (fallbackParent && fallbackParent.isConnected ? fallbackParent : document.body).appendChild(node); }catch(_){}
+    if (DEBUG) console.warn('[Toolbox] safeInsertAfter fallback:', e);
+  }
+}
+
+function safeInsertBefore(anchor, node, fallbackParent){
+  try{
+    if (anchor && anchor.isConnected){
+      if (anchor.insertAdjacentElement){
+        anchor.insertAdjacentElement('beforebegin', node);
+      } else if (anchor.parentNode){
+        anchor.parentNode.insertBefore(node, anchor);
+      } else {
+        (fallbackParent && fallbackParent.isConnected ? fallbackParent : document.body).appendChild(node);
+      }
+    } else {
+      (fallbackParent && fallbackParent.isConnected ? fallbackParent : document.body).appendChild(node);
+    }
+  }catch(e){
+    try{ (fallbackParent && fallbackParent.isConnected ? fallbackParent : document.body).appendChild(node); }catch(_){}
+    if (DEBUG) console.warn('[Toolbox] safeInsertBefore fallback:', e);
+  }
+}
+
+// Stable anchor helper for barcode elements
+function stableAnchorForBarcode(el, td) {
+  if (td) {
+    const bdi = td.querySelector(':scope > .tampermonkey-barcode-bdi');
+    if (bdi && bdi.isConnected) return bdi;
+  }
+  return el && el.nodeType === Node.TEXT_NODE ? el.parentNode : el || td;
+}
+
+// Configure Crisp to mark our script as safe - enhanced version
+function configureCrispSafeMode() {
+  // Multiple approaches to ensure Crisp gets the safe flag
+  const setCrispSafe = () => {
+    try {
+      // Method 1: Direct push if $crisp exists
+      if (window.$crisp && Array.isArray(window.$crisp)) {
+        window.$crisp.push(["safe", true]);
+        if (DEBUG) console.log('[Toolbox] Crisp safe mode configured via $crisp');
+        return true;
+      }
+      
+      // Method 2: Set global flag for other scripts
+      window.CRISP_SAFE_MODE = true;
+      
+      // Method 3: Try to configure via window.crisp (alternative API)
+      if (window.crisp && typeof window.crisp.push === 'function') {
+        window.crisp.push(["safe", true]);
+        if (DEBUG) console.log('[Toolbox] Crisp safe mode configured via crisp');
+        return true;
+      }
+      
+      return false;
+    } catch (e) {
+      if (DEBUG) console.warn('[Toolbox] Error configuring Crisp safe mode:', e);
+      return false;
+    }
+  };
+  
+  // Immediate attempt
+  if (setCrispSafe()) return;
+  
+  // Poll for Crisp with multiple strategies
+  let attempts = 0;
+  const maxAttempts = 100; // 20 seconds
+  
+  const pollInterval = setInterval(() => {
+    if (setCrispSafe() || ++attempts >= maxAttempts) {
+      clearInterval(pollInterval);
+    }
+  }, 200);
+  
+  // Also listen for DOM events that might indicate Crisp loading
+  const crispLoadEvents = ['DOMContentLoaded', 'load', 'crisp:ready'];
+  crispLoadEvents.forEach(event => {
+    document.addEventListener(event, () => {
+      setTimeout(setCrispSafe, 100);
+    }, { once: true, passive: true });
+  });
+}
+
+// Gentle console filtering - focuses only on our script's output
+function setupCrossScriptConsoleFiltering() {
+  // Set up global flag to help other scripts behave better
+  window.LIONWHEEL_PRODUCTION_MODE = !DEBUG;
+  
+  // Signal to other scripts that they should reduce logging
+  window.addEventListener('message', function(event) {
+    if (event.data && event.data.type === 'LIONWHEEL_GET_DEBUG_MODE') {
+      event.source.postMessage({
+        type: 'LIONWHEEL_DEBUG_MODE_RESPONSE',
+        debug: DEBUG
+      }, event.origin);
+    }
+  });
+  
+  // Set up early Crisp configuration to reduce warnings - multiple approaches
+  if (!window.$crisp) {
+    window.$crisp = [];
+  }
+  
+  // Add safe mode immediately if Crisp array exists
+  if (Array.isArray(window.$crisp)) {
+    window.$crisp.push(["safe", true]);
+  }
+  
+  // Also set up alternative Crisp APIs
+  if (!window.crisp) {
+    window.crisp = [];
+  }
+  
+  if (Array.isArray(window.crisp)) {
+    window.crisp.push(["safe", true]);
+  }
+  
+  // Set a global flag that Crisp can check
+  window.CRISP_SAFE_MODE = true;
+  window.USERSCRIPT_SAFE_MODE = true;
+  
+  if (DEBUG) {
+    console.log('[Toolbox] Cross-script coordination initialized');
+  }
+}
+
 // === Copy feedback + guard ===
 window._tmCopying = false;
-
+// מרכזים את הטוסט דרך המנגנון האחיד + מניעת כפילות
 function tmToast(msg = 'הועתק!', targetElement = null) {
-  const el = document.createElement('div');
-  el.textContent = msg;
-
-  // Base styles
-  el.style.cssText = 'position:fixed;' +
-    'background:rgba(0,0,0,.85);color:#fff;padding:6px 10px;border-radius:6px;' +
-    'font:12px/1.2 sans-serif;z-index:999999;pointer-events:none;opacity:0;transition:opacity .15s';
-
-  // Position the toast near the target element if provided
-  if (targetElement) {
-    try {
-      const rect = targetElement.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
-
-      // Calculate position - show above the element with some offset
-      let left = rect.left + (rect.width / 2);
-      let top = rect.top - 35; // Show above the element
-
-      // Ensure toast doesn't go outside viewport bounds
-      const toastWidth = 80; // Approximate toast width
-      if (left - toastWidth/2 < 10) {
-        left = toastWidth/2 + 10;
-      } else if (left + toastWidth/2 > viewportWidth - 10) {
-        left = viewportWidth - toastWidth/2 - 10;
-      }
-
-      if (top < 10) {
-        top = rect.bottom + 10; // Show below if no space above
-      }
-
-      el.style.left = left + 'px';
-      el.style.top = top + 'px';
-      el.style.transform = 'translateX(-50%)';
-    } catch (error) {
-      // Fallback to center bottom if positioning fails
-      el.style.left = '50%';
-      el.style.bottom = '24px';
-      el.style.transform = 'translateX(-50%)';
+  try {
+    const now = performance.now();
+    if (window.__tmToastStamp && (now - window.__tmToastStamp) < 600) return; // אל תציג כפול
+    const p = window.__tmLastPointer;
+    if (p && (now - p.t) < 1200) {
+      showCopyToastAtPoint(p.x, p.y, msg);
+    } else {
+      const anchor = targetElement || document.activeElement || document.body;
+      showCopyToastNearNode(anchor, msg);
     }
-  } else {
-    // Default position at bottom center
-    el.style.left = '50%';
-    el.style.bottom = '24px';
-    el.style.transform = 'translateX(-50%)';
-  }
-
-  document.body.appendChild(el);
-  requestAnimationFrame(()=> el.style.opacity = '1');
-  setTimeout(()=>{ el.style.opacity = '0'; setTimeout(()=> el.remove(), 150); }, 900);
-  
-  // Fix shipment wrapping after showing toast (debounced)
-  // fixShipmentWrapping(); // Removed for performance
+    window.__tmToastStamp = now;
+  } catch(_) {}
 }
 
 function withCopying(fn){
@@ -260,34 +556,46 @@ XMLHttpRequest.prototype.send = function(...args) {
   return originalXHRSend.apply(this, args);
 };
 
-// Override script loading to handle blocked scripts gracefully
-const originalCreateElement = document.createElement;
-document.createElement = function(tagName) {
-  const element = originalCreateElement.call(document, tagName);
-
-  if (tagName.toLowerCase() === 'script') {
-    const originalSetAttribute = element.setAttribute;
-    element.setAttribute = function(name, value) {
-      if (name === 'src') {
-        // Check if it's a blocked script
-        if (value && (
-          value.includes('rollbar.min.js') ||
-          value.includes('beacon.min.js') ||
-          value.includes('fbevents.js') ||
-          value.includes('clarity.ms') ||
-          value.includes('google-analytics.com')
-        )) {
-          // Suppress blocked script loading
-          console.debug('Script blocked by client (likely ad blocker):', value);
-          return element;
+// Use MutationObserver to handle blocked scripts instead of global createElement override
+function setupBlockedScriptObserver() {
+  // List of blocked script patterns
+  const blockedPatterns = [
+    'rollbar.min.js',
+    'beacon.min.js', 
+    'fbevents.js',
+    'clarity.ms',
+    'google-analytics.com'
+  ];
+  
+  // MutationObserver to detect and neutralize blocked scripts after they're added
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach((mutation) => {
+      mutation.addedNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE && node.tagName === 'SCRIPT') {
+          const src = node.src || node.getAttribute('src');
+          if (src && blockedPatterns.some(pattern => src.includes(pattern))) {
+            // Remove the script element to prevent errors
+            if (node.parentNode) {
+              node.parentNode.removeChild(node);
+              if (DEBUG) console.debug('[Toolbox] Removed blocked script:', src);
+            }
+          }
         }
-      }
-      return originalSetAttribute.call(this, name, value);
-    };
-  }
+      });
+    });
+  });
+  
+  // Start observing
+  observer.observe(document.documentElement, {
+    childList: true,
+    subtree: true
+  });
+  
+  if (DEBUG) console.log('[Toolbox] Blocked script observer initialized');
+}
 
-  return element;
-};
+// Initialize the observer
+setupBlockedScriptObserver();
 
 (function() {
     'use strict';
@@ -356,8 +664,14 @@ document.createElement = function(tagName) {
     `);
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.7.6"; // Fixed to match @version
-    console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
+    const SCRIPT_VERSION = "13.8.2"; // Match @version
+    if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
+
+    // Configure Crisp safe mode
+    configureCrispSafeMode();
+
+    // Enhanced console filtering for cross-script violations
+    setupCrossScriptConsoleFiltering();
 
     // ---< Constants >---
     const IMAGE_FINDER_CSV_URL = "https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v1.csv";
@@ -1080,7 +1394,7 @@ document.createElement = function(tagName) {
             if (thumbnailUrl.includes('cdn.modulus.co.il')) { return thumbnailUrl.split('?')[0]; }
             if (thumbnailUrl.includes('www.gag-lachayot.co.il')) { return thumbnailUrl.replace(/-\d+x\d+(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/-\d+x\d+$/, ''); }
             if (thumbnailUrl.includes('www.all4pet.co.il')) { return thumbnailUrl.replace(/_small(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/_small$/, ''); }
-            if (thumbnailUrl.includes('d3m9l0v76dty0.cloudfront.net')) { return thumbnailUrl.replace('/show/', '/extra_large/').replace('/index/', '/extra_large/').replace('/large/', '/extra_large/'); }
+            if (thumbnailUrl.includes('d3m9l0v76dty0.cloudfront.net')) { return thumbnailUrl.replace('/show/', '/original/').replace('/index/', '/original/').replace('/large/', '/original/'); }
             if (thumbnailUrl.includes('just4pet.co.il')) {
                 const parts = thumbnailUrl.split('/'); const filenameWithQuery = parts.pop(); const filenameParts = filenameWithQuery.split('?');
                 const filename = filenameParts[0]; const query = filenameParts.length > 1 ? `?${filenameParts[1]}` : '';
@@ -1253,7 +1567,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     try {
         // Prevent multiple galleries from being opened simultaneously
         if (document.getElementById('tampermonkey-gallery-overlay')) {
-            console.warn('Gallery already open, ignoring new request');
+            if (DEBUG) console.warn('Gallery already open, ignoring new request');
             return;
         }
 
@@ -1294,7 +1608,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     }
                 }
             } catch (error) {
-                console.warn('Gallery swipe error:', error);
+                if (DEBUG) console.warn('Gallery swipe error:', error);
             }
         }
 
@@ -1819,6 +2133,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
         nameWrap.appendChild(nameBdi);
         nameWrap.appendChild(createCopyIcon(item.productName || ''));
         productNameElement.appendChild(nameWrap);
+        
+        /* === FIX: אל תסמן תאי גלרייה — הם לא תאי טבלה === */
+        // productNameElement is not a table cell, so no need for tm-flex-cell
         const originalSku = item.sku;
         const barcode = settings.replaceBarcodes ? findBarcode(originalSku, item.productName) : null;
         // Build: "מק\"ט: " + [wrap(bdi+icon)]
@@ -1832,6 +2149,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
         skuWrap.appendChild(skuBdi);
         skuWrap.appendChild(createCopyIcon(skuBdi.textContent));
         skuElement.appendChild(skuWrap);
+        
+        /* === FIX: אל תסמן תאי גלרייה — הם לא תאי טבלה === */
+        // skuElement is not a table cell, so no need for tm-flex-cell
 
         // Add price if available (you can extend this based on your data structure)
         if (item.price) {
@@ -2055,7 +2375,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 initialZoom = zoomLevel;
             }
         } catch (error) {
-            console.warn('Gallery touchstart error:', error);
+            if (DEBUG) console.warn('Gallery touchstart error:', error);
         }
     }, { passive: false });
 
@@ -2091,7 +2411,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 });
             }
         } catch (error) {
-            console.warn('Gallery touchmove error:', error);
+            if (DEBUG) console.warn('Gallery touchmove error:', error);
         }
     }, { passive: false });
 
@@ -2125,7 +2445,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 startX = e.touches[0].clientX;
             }
         } catch (error) {
-            console.warn('Gallery touchend error:', error);
+            if (DEBUG) console.warn('Gallery touchend error:', error);
         }
     }, { passive: false });
 
@@ -2217,7 +2537,16 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
             const img = document.createElement('img');
             img.src = match.image; img.alt = `תמונה עבור ${nameText || 'מוצר'}`; img.className = 'tampermonkey-sku-image'; img.title = 'לחץ לפתיחת הגלריה';
-            Object.assign(img.style, { width: 'auto', objectFit: 'contain', borderRadius: '4px', cursor: 'pointer', ...styleObject });
+            Object.assign(img.style, { 
+                width: '100%', 
+                height: '100%', 
+                objectFit: 'contain', 
+                objectPosition: 'center',
+                borderRadius: '4px', 
+                cursor: 'pointer', 
+                display: 'block',
+                ...styleObject 
+            });
             img.onerror = function() { this.src = PLACEHOLDER_IMG_URL; this.onclick = null; };
             img.onclick = (e) => {
                 e.stopPropagation();
@@ -2505,6 +2834,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                         if (firstTd) {
                             // Clear the first cell and add the image
                             firstTd.innerHTML = '';
+                            firstTd.style.cssText = 'width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; padding: 4px;';
                             firstTd.appendChild(img);
                         }
                     }
@@ -2512,15 +2842,19 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     const firstTd = row.querySelector('td');
                     if (firstTd) {
                         firstTd.innerHTML = '';
+                        firstTd.style.cssText = 'width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; padding: 4px;';
                         const ph = document.createElement('img');
                         ph.src = PLACEHOLDER_IMG_URL;
                         ph.alt = 'No image';
                         Object.assign(ph.style, {
-                            width: 'auto',
+                            width: '100%',
+                            height: '100%',
                             maxHeight: '80px',
                             maxWidth: '80px',
                             objectFit: 'contain',
-                            borderRadius: '4px'
+                            objectPosition: 'center',
+                            borderRadius: '4px',
+                            display: 'block'
                         });
                         attachGalleryOpener(ph, sku, scope);
                         firstTd.appendChild(ph);
@@ -2540,22 +2874,27 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 const match = findImageMatch(sku, name);
                 if (match && match.image) {
                     const wrapper = document.createElement('div');
-                    wrapper.style.marginRight = '10px';
+                    wrapper.style.cssText = 'width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; margin-right: 10px;';
                     wrapper.append(createImageElement(match, name, sku, { maxHeight: '50px', maxWidth: '50px', padding: '5px' }));
                     imageContainer.prepend(wrapper);
                 } else {
                     const wrapper = document.createElement('div');
                     wrapper.style.marginRight = '10px';
+                    wrapper.style.cssText = 'width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; margin-right: 10px;';
 
                     const ph = document.createElement('img');
                     ph.src = PLACEHOLDER_IMG_URL;
                     ph.alt = 'No image';
                     Object.assign(ph.style, {
+                        width: '100%',
+                        height: '100%',
                         maxHeight: '50px',
                         maxWidth: '50px',
                         objectFit: 'contain',
+                        objectPosition: 'center',
                         borderRadius: '4px',
-                        padding: '5px'
+                        padding: '5px',
+                        display: 'block'
                     });
                     attachGalleryOpener(ph, sku, imageContainer.closest('.modal') || document.body);
 
@@ -2593,10 +2932,14 @@ function showGalleryOverlay(galleryItems, startIndex) {
                             ph.src = PLACEHOLDER_IMG_URL;
                             ph.alt = 'No image';
                             Object.assign(ph.style, {
+                                width: '100%',
+                                height: '100%',
                                 maxHeight: '70px',
                                 maxWidth: '80px',
                                 objectFit: 'contain',
-                                borderRadius: '4px'
+                                objectPosition: 'center',
+                                borderRadius: '4px',
+                                display: 'block'
                             });
                             attachGalleryOpener(ph, sku, placeholder.closest('.modal') || document.body);
                             placeholder.append(ph);
@@ -2645,9 +2988,8 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
                     }
 
-                    // Fallback to hardcoded positions if header method didn't work
+                    // Fallback to hardcoded positions if header method didn't work (name cell only)
                     if (!nameCell) nameCell = row.querySelector('td:nth-child(4)');
-                    if (!skuCell) skuCell = row.querySelector('td:nth-child(2)');
 
 
                     if(!nameCell || !skuCell) {
@@ -2662,6 +3004,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     if (match) {
                         if (match.image && !targetCell.querySelector('.tampermonkey-sku-image')) {
                             targetCell.innerHTML = '';
+                            targetCell.style.cssText = 'width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; padding: 4px;';
                             targetCell.append(createImageElement(match, name, sku, { maxHeight: '80px', maxWidth: '80px' }));
                         }
 
@@ -2700,15 +3043,19 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     } else {
                         if (targetCell && !targetCell.querySelector('img')) {
                             targetCell.innerHTML = '';
+                            targetCell.style.cssText = 'width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; padding: 4px;';
                             const ph = document.createElement('img');
                             ph.src = PLACEHOLDER_IMG_URL;
                             ph.alt = 'No image';
                             Object.assign(ph.style, {
-                                width: 'auto',
+                                width: '100%',
+                                height: '100%',
                                 maxHeight: '80px',
                                 maxWidth: '80px',
                                 objectFit: 'contain',
-                                borderRadius: '4px'
+                                objectPosition: 'center',
+                                borderRadius: '4px',
+                                display: 'block'
                             });
                             attachGalleryOpener(ph, sku, scope);
                             targetCell.appendChild(ph);
@@ -2784,7 +3131,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     placeholder = document.createElement('div');
                     placeholder.className = 'tampermonkey-image-placeholder';
                     placeholder.style.cssText = 'width: 88px; flex: 0 0 88px; display: flex; align-items: center; justify-content: center; margin-right: 8px;';
-                    container.insertBefore(placeholder, container.firstChild);
+                    if (container.firstChild) {
+                        safeInsertBefore(container.firstChild, placeholder, container);
+                    } else {
+                        container.appendChild(placeholder);
+                    }
                 } else {
                     return; // אין לאן להכניס
                 }
@@ -2794,8 +3145,16 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 const img = document.createElement('img');
                 img.src = product.image || product.imageUrl;
                 img.className = 'tampermonkey-sku-image';
-                img.style.maxHeight = '48px';
-                img.style.maxWidth = '80px';
+                Object.assign(img.style, {
+                    width: '100%',
+                    height: '100%',
+                    maxHeight: '48px',
+                    maxWidth: '80px',
+                    objectFit: 'contain',
+                    objectPosition: 'center',
+                    borderRadius: '4px',
+                    display: 'block'
+                });
                 placeholder.innerHTML = '';
                 placeholder.appendChild(img);
             }
@@ -2919,14 +3278,14 @@ function showGalleryOverlay(galleryItems, startIndex) {
                             // Find the SKU cell (empty or with minimal content)
                             let skuCell;
                             if (context.matches('.table.table-hover')) {
-                                // Regular tables: SKU cell is at td[data-label="מק״ט"]
-                                skuCell = row.querySelector('td[data-label="מק״ט"]');
+                                // Regular tables: SKU cell is at td[data-label="מק״ט"] or td[data-label="ברקוד"]
+                                skuCell = row.querySelector('td[data-label="מק״ט"], td[data-label="ברקוד"]');
                             } else if (context.matches('.pick-order-item-row')) {
                                 // Picking modal: SKU cell is the span with barcode-highlight class
                                 skuCell = row.querySelector('.barcode-highlight[data-original-sku]');
                             } else {
-                                // Other tables (including sidepanel): SKU cell is at td.text-nowrap or td[data-label="מק״ט"]
-                                skuCell = row.querySelector('td.text-nowrap, td[data-label="מק״ט"]');
+                                // Other tables (including sidepanel): SKU cell is at td.text-nowrap or td[data-label="מק״ט"] or td[data-label="ברקוד"]
+                                skuCell = row.querySelector('td.text-nowrap, td[data-label="מק״ט"], td[data-label="ברקוד"]');
                             }
                             if (!skuCell) return;
 
@@ -2993,12 +3352,27 @@ function showGalleryOverlay(galleryItems, startIndex) {
     // Helper function to process barcode elements consistently
     function processBarcodeElement(el, barcode, originalSku) {
         try {
+            if (!el || !el.isConnected) return;
             if (el.tagName === 'INPUT') {
                 el.value = barcode;
                 el.classList.add('barcode-input-highlight');
             } else {
                 el.textContent = barcode;
                 el.classList.add('barcode-highlight');
+                // Add copy-enabled class for click functionality
+                el.classList.add('copy-enabled');
+                el.setAttribute('title', 'לחץ להעתקה');
+
+                // Also enable copy styling for text elements inside this element
+                const textElements = el.querySelectorAll('span, div, strong, b, i, em');
+                textElements.forEach(textEl => {
+                    if (textEl.textContent.trim() && !textEl.classList.contains('copy-enabled')) {
+                        textEl.classList.add('copy-enabled');
+                        if (!textEl.hasAttribute('title')) {
+                            textEl.setAttribute('title', 'לחץ להעתקה');
+                        }
+                    }
+                });
             }
 
             el.title = `הוחלף אוטומטית. מקורי: ${originalSku}`;
@@ -3019,17 +3393,27 @@ function showGalleryOverlay(galleryItems, startIndex) {
             el.style.backgroundColor = '';
 
             // Add copy icon for dynamically replaced barcodes (if not already present)
-            if (el.tagName !== 'INPUT' && parentTd && !parentTd.querySelector('i.fa-clone')) {
+            // Skip adding copy icons for tables that already have proper copy functionality
+            const parentTable = el.closest('table[data-columns-tagged="true"]');
+            const hasProperCopyWrap = parentTd && parentTd.querySelector('.tampermonkey-copy-wrap');
+            
+            if (el.tagName !== 'INPUT' && parentTd && !parentTd.querySelector('.copy-icon') && 
+                !parentTable && !hasProperCopyWrap) {
                 const barcodeCopyIcon = createCopyIcon(barcode);
-                barcodeCopyIcon.style.marginLeft = '4px';
-                barcodeCopyIcon.style.marginRight = '0px';
+                barcodeCopyIcon.style.marginRight = '4px';
+                barcodeCopyIcon.style.marginLeft = '0px';
 
-                // Insert the copy icon after the barcode element
-                if (el.nextSibling && el.nextSibling.parentNode === parentTd) {
-                    parentTd.insertBefore(barcodeCopyIcon, el.nextSibling);
-                } else {
-                    parentTd.appendChild(barcodeCopyIcon);
-                }
+                // הכנס אייקון העתקה בצורה בטוחה (ללא NotFoundError)
+                const anchor = stableAnchorForBarcode(el, parentTd);
+                const place = () => {
+                    if (parentTd.contains(anchor)) {
+                        safeInsertBefore(anchor, barcodeCopyIcon, parentTd); // נשמר "לפני" הברקוד
+                    } else {
+                        parentTd.appendChild(barcodeCopyIcon);
+                    }
+                };
+                // אם ממש עכשיו בוצע שינוי DOM (למשל innerHTML/bdi) – תן מיקרו-תור לפני החדרה
+                queueMicrotask(place);
             }
         } catch (error) {
             console.warn(`[${SCRIPT_NAME}] Failed to process barcode element:`, error);
@@ -3041,6 +3425,100 @@ function showGalleryOverlay(galleryItems, startIndex) {
     function replaceBarcodesInDOM(scope = document) {
         replaceBarcodesInViews(scope);
     }
+
+    // MODIFICATION START: Add copy icons to all barcodes in pick-order-item-table
+    function addCopyIconsToPickOrderItems(scope = document) {
+        try {
+            // Find pick order tables or rows
+            const pickOrderTables = scope.querySelectorAll('.pick-order-item-table');
+            const pickOrderRows = scope.querySelectorAll('.pick-order-item-row');
+            
+            if (pickOrderTables.length === 0 && pickOrderRows.length === 0) return;
+
+            // Skip if this is a regular table that already has proper copy icon functionality
+            // Tables with data-columns-tagged="true" are handled by applyCopyIconFix()
+            const regularTables = scope.querySelectorAll('table[data-columns-tagged="true"]');
+            if (regularTables.length > 0 && pickOrderTables.length === 0) {
+                // This scope contains regular tables with existing copy functionality, skip
+                return;
+            }
+
+            // Process both table containers and individual rows
+            const elementsToProcess = [...pickOrderTables, ...pickOrderRows];
+            
+            elementsToProcess.forEach(container => {
+                // Find all barcode elements in the container
+                const barcodeElements = container.querySelectorAll('.text-muted.font-weight-bold.font-size-sm');
+                
+                barcodeElements.forEach(barcodeElement => {
+                    // Check if this element already has a copy icon
+                    const parentTd = barcodeElement.closest('td');
+                    if (!parentTd || parentTd.querySelector('.copy-icon')) return;
+
+                    // Skip if the parent cell is already properly wrapped with tampermonkey-copy-wrap
+                    if (parentTd.querySelector('.tampermonkey-copy-wrap')) return;
+
+                    // Skip if this is within a table that has data-columns-tagged="true" 
+                    // (those are handled by applyCopyIconFix)
+                    const parentTable = barcodeElement.closest('table[data-columns-tagged="true"]');
+                    if (parentTable) return;
+
+                    // Skip if this is a barcode-highlight element (already has copy icon)
+                    if (barcodeElement.classList.contains('barcode-highlight')) {
+                        // Add copy-enabled class to barcode-highlight elements for click functionality
+                        if (!barcodeElement.classList.contains('copy-enabled')) {
+                            barcodeElement.classList.add('copy-enabled');
+                            barcodeElement.setAttribute('title', 'לחץ להעתקה');
+                        }
+                        return;
+                    }
+
+                    const barcodeText = barcodeElement.textContent.trim();
+                    if (!barcodeText || barcodeText.length < 3) return;
+
+                    // Check if this looks like a barcode (numbers only, reasonable length)
+                    if (!/^\d{8,}$/.test(barcodeText)) return;
+
+                    // Add copy-enabled class to the barcode element for click functionality
+                    if (!barcodeElement.classList.contains('copy-enabled')) {
+                        barcodeElement.classList.add('copy-enabled');
+                        barcodeElement.setAttribute('title', 'לחץ להעתקה');
+                    }
+
+                    // Also enable copy styling for text elements inside the barcode element
+                    const textElements = barcodeElement.querySelectorAll('span, div, strong, b, i, em');
+                    textElements.forEach(textEl => {
+                        if (textEl.textContent.trim() && !textEl.classList.contains('copy-enabled')) {
+                            textEl.classList.add('copy-enabled');
+                            if (!textEl.hasAttribute('title')) {
+                                textEl.setAttribute('title', 'לחץ להעתקה');
+                            }
+                        }
+                    });
+
+                    // Create and add copy icon
+                    const barcodeCopyIcon = createCopyIcon(barcodeText);
+                    barcodeCopyIcon.style.marginRight = '4px';
+                    barcodeCopyIcon.style.marginLeft = '0px';
+
+                    // הכנס אייקון העתקה בצורה בטוחה (ללא NotFoundError)
+                    const anchor = stableAnchorForBarcode(barcodeElement, parentTd);
+                    queueMicrotask(() => {
+                        if (parentTd.contains(anchor)) {
+                            safeInsertBefore(anchor, barcodeCopyIcon, parentTd);
+                        } else {
+                            parentTd.appendChild(barcodeCopyIcon);
+                        }
+                    });
+                });
+            });
+        } catch (error) {
+            console.warn(`[${SCRIPT_NAME}] Failed to add copy icons to pick order items:`, error);
+        }
+    }
+
+    // Expose function to window for external access
+    window.addCopyIconsToPickOrderItems = addCopyIconsToPickOrderItems;
     // MODIFICATION END
 
     // This is the correct and ONLY definition for injectPreviewFunctionality
@@ -3075,12 +3553,22 @@ function showGalleryOverlay(galleryItems, startIndex) {
             if (checkboxHeader) {
                 previewHeaderCell = document.createElement('th');
                 previewHeaderCell.classList.add('preview-col');
-                headerRow.insertBefore(previewHeaderCell, checkboxHeader.nextSibling); // Insert AFTER checkbox header
+                // Insert AFTER checkbox header (safe method)
+                if (checkboxHeader && checkboxHeader.parentElement === headerRow) {
+                    safeInsertAfter(checkboxHeader, previewHeaderCell, headerRow);
+                } else {
+                    headerRow.appendChild(previewHeaderCell);
+                }
             } else {
                 // Fallback: If checkbox header not found, insert at the beginning (less ideal for precise alignment)
                 previewHeaderCell = document.createElement('th');
                 previewHeaderCell.classList.add('preview-col');
-                headerRow.insertBefore(previewHeaderCell, headerRow.children[0]); // Fallback to start
+                // Fallback to start (safe method)
+                if (headerRow.children.length > 0) {
+                    safeInsertBefore(headerRow.children[0], previewHeaderCell, headerRow);
+                } else {
+                    headerRow.appendChild(previewHeaderCell);
+                }
             }
         }
 
@@ -3143,7 +3631,11 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             cell.append(button);
             // Insert the button cell at index 1 (the second position after the original checkbox).
             // This is crucial: [Checkbox (0)], [OUR BUTTON (1)], [✅ Icon (2)], [Order ID (3)]
-            row.insertBefore(cell, row.children[1]);
+            if (row.children[1]) {
+                safeInsertBefore(row.children[1], cell, row);
+            } else {
+                row.appendChild(cell);
+            }
             // MODIFICATION END (for TD insertion)
 
             // Recalculate column widths if DataTables is present
@@ -3577,6 +4069,9 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                 if(historyHeader) historyHeader.classList.add('tm-hideable-column');
                 table.querySelectorAll('tbody td:has(i.order-item-history-json)').forEach(cell => cell.classList.add('tm-hideable-column'));
                 table.setAttribute('data-columns-tagged', 'true'); // Mark main tables as tagged
+                /* === Ensure programmatic focus without native outline === */
+                table.classList.add('tm-focusable');
+                if (!table.hasAttribute('tabindex')) table.setAttribute('tabindex','-1');
             });
         }
 
@@ -3822,14 +4317,23 @@ function initializeSidePanelResizeObserver() {
         setTimeout(() => addClickableLinksToAllTables(), 100);
       });
       
-      // Periodic check for map panel changes (fallback)
-      setInterval(() => {
-        const currentGap = measurePanelWidth();
-        const currentGapVar = parseInt(getComputedStyle(root).getPropertyValue('--map-gap')) || 0;
-        if (Math.abs(currentGap - currentGapVar) > 10) { // Only update if difference is significant
-          applyGapVars();
-        }
-      }, 2000); // Check every 2 seconds
+      // Periodic check for map panel changes (fallback) - using idle callback for better performance
+      const debouncedPanelCheck = debounce(() => {
+        scheduleIdleWork(() => {
+          const currentGap = measurePanelWidth();
+          const currentGapVar = parseInt(getComputedStyle(root).getPropertyValue('--map-gap')) || 0;
+          if (Math.abs(currentGap - currentGapVar) > 10) { // Only update if difference is significant
+            applyGapVars();
+          }
+        });
+      }, 2000);
+      
+      // Start periodic checking
+      const startPeriodicCheck = () => {
+        debouncedPanelCheck();
+        setTimeout(startPeriodicCheck, 2000);
+      };
+      startPeriodicCheck();
       
       // Debug logging (only in development)
       if (window.DEBUG_TOOLBOX) {
@@ -4217,16 +4721,46 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
 
 table td.sorting_1.copy-enabled.cell-copied {
     background-color: #CDE5FF !important;
-
 }
 
-
-    td.copy-enabled.cell-copied {
+td.copy-enabled.cell-copied {
     background-color: #CDE5FF !important;
 }
 
+/* Ensure text color change works for copy-enabled elements */
+.copy-enabled.cell-copied {
+    transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+/* Ensure text color change works for all elements with copy-enabled */
+.copy-enabled.cell-copied,
+span.copy-enabled.cell-copied,
+div.copy-enabled.cell-copied,
+strong.copy-enabled.cell-copied,
+.barcode-highlight.copy-enabled.cell-copied,
+.barcode-highlight-gallery.copy-enabled.cell-copied {
+    transition: color 0.3s ease, background-color 0.3s ease;
+}
+
+/* Override barcode-highlight color when copied */
+.pick-order-item-table .barcode-highlight.copy-enabled.cell-copied {
+    color: #3699ff !important;
+}
+
+/* Ensure all copy-enabled elements have copy cursor */
+.copy-enabled,
+span.copy-enabled,
+div.copy-enabled,
+strong.copy-enabled,
+td.copy-enabled,
+.barcode-highlight.copy-enabled,
+.barcode-highlight-gallery.copy-enabled,
+.pick-order-item-table .barcode-highlight.copy-enabled {
+    cursor: copy !important;
+}
+
 td.copy-enabled {
-    cursor: copy;
+    cursor: copy !important;
     transition: background-color 0.3s ease;
 }
 
@@ -4246,7 +4780,7 @@ td.copy-enabled.cell-copied {
 
 
         .copy-enabled {
-            cursor: copy;
+            cursor: copy !important;
             transition: background-color 0.3s ease;
         }
             tr[id^="visit-row-"] td.copy-enabled:hover {
@@ -4283,12 +4817,18 @@ td.copy-enabled.cell-copied {
             transition: all 0.3s ease;
             animation: barcodeReplacement 0.5s ease-in-out;
         }
+        .barcode-highlight.copy-enabled {
+            cursor: copy !important;
+        }
         .barcode-highlight-gallery {
             color: #90ee90 !important;
             font-weight: bold;
             cursor: help;
             transition: all 0.3s ease;
             animation: barcodeReplacement 0.5s ease-in-out;
+        }
+        .barcode-highlight-gallery.copy-enabled {
+            cursor: copy !important;
         }
         td.barcode-highlight, tr[id^="preview-for-"] .barcode-highlight {
             background-color: #e6ffed;
@@ -4321,6 +4861,9 @@ td.copy-enabled.cell-copied {
             cursor: help !important;
             transition: all 0.3s ease;
             animation: barcodeReplacement 0.5s ease-in-out;
+        }
+        .pick-order-item-table .barcode-highlight.copy-enabled {
+            cursor: copy !important;
         }
         .barcode-input-highlight {
             background-color: #e6ffed !important;
@@ -4446,12 +4989,14 @@ td[data-label="שם"] a:hover,
 }
 
 /* Simple positioning for barcode cells - keep natural table flow */
-td[data-label="מק״ט"] {
+td[data-label="מק״ט"], td[data-label="ברקוד"] {
     white-space: nowrap !important;
 }
 
 td[data-label="מק״ט"] .fa-light.fa-clone,
-td[data-label="מק״ט"] .fa-light.fa-check {
+td[data-label="מק״ט"] .fa-light.fa-check,
+td[data-label="ברקוד"] .fa-light.fa-clone,
+td[data-label="ברקוד"] .fa-light.fa-check {
     margin-left: 4px !important;
     margin-right: 0px !important;
     font-size: 0.85em;
@@ -4477,7 +5022,7 @@ td[data-label="שם"] .fa-light.fa-check {
 /* עטיפה אחידה לטקסט+אייקון, כמו בטבלה */
 .tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;unicode-bidi:plaintext}
 /* תאי ברקוד - לא לשבור שורות */
-td[data-label="מק״ט"] .tampermonkey-copy-wrap{white-space:nowrap}
+td[data-label="מק״ט"] .tampermonkey-copy-wrap, td[data-label="ברקוד"] .tampermonkey-copy-wrap{white-space:nowrap}
 /* תאי שם - לאפשר שבירת שורות */
 td[data-label="שם"] .tampermonkey-copy-wrap{white-space:normal;word-wrap:break-word}
 /* וידוא שתאי השם יכולים להישבר לשורות */
@@ -5230,6 +5775,19 @@ function enableCopyStyling(el) {
     if (!el.hasAttribute('title')) {
         el.setAttribute('title', 'לחץ להעתקה');
     }
+
+    // Also enable copy styling for text nodes inside this element
+    if (el.tagName === 'TD' || el.tagName === 'SPAN' || el.tagName === 'DIV' || el.tagName === 'STRONG') {
+        const textElements = el.querySelectorAll('span, div, strong, b, i, em');
+        textElements.forEach(textEl => {
+            if (textEl.textContent.trim() && !textEl.classList.contains('copy-enabled')) {
+                textEl.classList.add('copy-enabled');
+                if (!textEl.hasAttribute('title')) {
+                    textEl.setAttribute('title', 'לחץ להעתקה');
+                }
+            }
+        });
+    }
     
     // Fix shipment wrapping after enabling copy styling
     // fixShipmentWrapping(); // Removed for performance
@@ -5243,7 +5801,10 @@ function prepareCopyElements() {
             strong.barcode-highlight,
             strong.barcode-highlight-gallery,
             .font-weight-bold,
-            .gallery-product-name
+            .gallery-product-name,
+            .text-muted.font-weight-bold.font-size-sm,
+            span.text-muted.font-weight-bold.font-size-sm,
+            .copy-enabled
         `).forEach(el => {
             // Skip adding copy-enabled to quantity/לוקט cells to prevent flicker
             if (el.getAttribute('data-label') === 'כמות / לוקט') {
@@ -5279,9 +5840,36 @@ function prepareCopyElements() {
                 if (parentCell && parentCell.querySelector('.copy-icon')) {
                     return;
                 }
+                // Add copy-enabled to barcode-highlight elements for click functionality
+                enableCopyStyling(el);
+                return;
             }
+
+            // Also handle text elements inside copy-enabled elements
+            if (el.classList.contains('copy-enabled')) {
+                const textElements = el.querySelectorAll('span, div, strong, b, i, em');
+                textElements.forEach(textEl => {
+                    if (textEl.textContent.trim() && !textEl.classList.contains('copy-enabled')) {
+                        textEl.classList.add('copy-enabled');
+                        if (!textEl.hasAttribute('title')) {
+                            textEl.setAttribute('title', 'לחץ להעתקה');
+                        }
+                    }
+                });
+                return; // Skip further processing for elements that already have copy-enabled
+            }
+            // Skip adding copy-enabled to elements that already have copy icons nearby
+            const parentCell = el.closest('td');
+            if (parentCell && parentCell.querySelector('.copy-icon')) {
+                return;
+            }
+            
+            // Enable copy styling for the element and its text children
             enableCopyStyling(el);
         });
+
+        // Also add copy icons to pick order items
+        addCopyIconsToPickOrderItems();
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error preparing copy elements:`, error);
     }
@@ -5699,6 +6287,7 @@ function prepareCopyElements() {
             });
             // MODIFICATION: Call these with default scope (document)
             replaceBarcodesInViews(); // Unified barcode replacement function
+            addCopyIconsToPickOrderItems(document); // Add copy icons to all barcodes in pick order table
             injectImagesAndLinks(document);
             injectImagesInRegularTables(document);
             injectImagesInOrderItemRows(document);
@@ -5774,6 +6363,7 @@ function prepareCopyElements() {
                             safeExecute(() => injectImagesInRegularTables(modalForm)); // Re-process regular table images
                             safeExecute(() => injectImagesInOrderItemRows(modalForm)); // Re-process .order-item-row images
                             safeExecute(() => replaceBarcodesInViews(modalForm)); // Re-process barcodes (unified function)
+                            safeExecute(() => addCopyIconsToPickOrderItems(modalForm)); // Add copy icons to all barcodes in pick order table
                         }
                     }, 50); // Small debounce delay
                 });
@@ -5816,6 +6406,8 @@ function prepareCopyElements() {
                         if (settings && settings.replaceBarcodes) {
                             replaceBarcodesInViews(panelView);
                         }
+                        // NEW: Also add copy icons to pick order items in panel view
+                        addCopyIconsToPickOrderItems(panelView);
                     }, 200);
                 });
                 panelObserver.observe(panelView, { childList: true, subtree: true });
@@ -5987,6 +6579,9 @@ async function initialize() {
 
   prepareCopyElements();
 
+  // Add copy icons to all barcodes in pick order table initially
+  addCopyIconsToPickOrderItems();
+
   highlightPickQuantities();
 
   // Fix shipment number wrapping immediately
@@ -6029,6 +6624,22 @@ async function initialize() {
 
   // === Apply Copy Icon RTL/LTR Fix ===
   requestAnimationFrame(() => applyCopyIconFix());
+  /* === Give initial focus to the first tagged table (no scroll, no border) === */
+  requestAnimationFrame(() => {
+    const t = document.querySelector('table[data-columns-tagged="true"]');
+    if (t) t.focus({ preventScroll:true });
+  });
+
+  /* === Init ripple on copy targets === */
+  requestAnimationFrame(() => initCopyRipple());
+  /* === Init copy toast from pointer (click point) === */
+  requestAnimationFrame(() => initCopyToastFromPointer());
+  /* === Install unified toast CSS once (no CSS animations) === */
+  requestAnimationFrame(() => installCopyToastBaseCSS());
+  /* === Enable copy by clicking Name cell (td[data-label="שם"]) === */
+  requestAnimationFrame(() => enableNameCellCopy());
+  /* === Clean up incorrectly marked cells === */
+  requestAnimationFrame(() => cleanupFlexCells());
 
   // Set up MutationObserver to keep copy icons fixed on dynamic updates
   (function observeTableForCopyIconFix(){
@@ -6124,6 +6735,8 @@ async function initialize() {
         if (settings && settings.replaceBarcodes) {
           replaceBarcodesInViews(table);
         }
+        // NEW: Also add copy icons to pick order items when table changes
+        addCopyIconsToPickOrderItems(table);
       }, 200); // הגדל את ה-debounce ל-200ms
     });
     tableObserver.observe(table, {
@@ -6204,6 +6817,9 @@ async function initialize() {
       if (settings && settings.replaceBarcodes) {
         replaceBarcodesInViews();
       }
+
+      // NEW: Also add copy icons to pick order items for any DOM changes
+      addCopyIconsToPickOrderItems();
     }, 100);
   });
   observer.observe(document.body, { childList: true, subtree: true });
@@ -6214,11 +6830,108 @@ async function initialize() {
   }
 }
 
+/* =========================
+   Ripple for copy actions
+   ========================= */
+function initCopyRipple(root = document) {
+  try {
+    // Respect reduced motion
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce) return;
+
+    // הוסף גם תא "שם" כדי לקבל ripple כשמקישים על התא עצמו
+    const COPY_SELECTOR = 'td[data-label="שם"], .copy-enabled, .copy-icon, .tampermonkey-copy-wrap, .gallery-product-name, .gallery-sku strong, .font-weight-bold';
+
+    // 1) pointerdown: הכי מוקדם ומכיל קואורדינטות מדויקות
+    root.addEventListener('pointerdown', (e) => {
+      const target = e.target.closest(COPY_SELECTOR);
+      if (!target) return;
+      // שמור יעד וקואורדינטות ללוגיקת הטוסט
+      window.__tmLastCopyTarget = target;
+      window.__tmLastPointer = { x: e.clientX, y: e.clientY, t: performance.now(), target };
+      spawnRipple(target, e); // ripple מיידי
+    }, { capture:false, passive:true });
+
+    // 2) click: לכיסוי הפעלות מקלדת (Enter/Space) או קליק בלי pointerdown
+    root.addEventListener('click', (e) => {
+      const target = e.target.closest(COPY_SELECTOR);
+      if (!target) return;
+      window.__tmLastCopyTarget = target;
+      // ייתכן שכבר יצרנו ripple ב-pointerdown; ה-guard ימנע כפילות
+      spawnRipple(target, e);
+    }, { capture:false, passive:true });
+  } catch(_e) {}
+}
+
+/* חשב גודל ripple קבוע לפי גובה השורה, עם תחום בטוח */
+function getRowRippleSizePx(cell) {
+  try {
+    const row = cell && cell.closest ? cell.closest('tr') : null;
+    const h = (row ? row.getBoundingClientRect().height : 80) || 80;
+    // קצת גדול יותר: ~70% מגובה השורה, מוגבל 32–64px
+    return Math.max(32, Math.min(64, Math.round(h * 0.7)));
+  } catch (_) {
+    return 56; // fallback מעט־גדול
+  }
+}
+
+// Guard לגלי־ripple כפולים: מפת זמנים חלשה פר־Host
+const __tmRippleGuard = new WeakMap();
+const RIPPLE_GUARD_MS = 200;
+
+function spawnRipple(container, evt) {
+  try {
+    // ארח את ה-ripple על תא הטבלה כדי לקלף בתוך גבולות התא
+    const cell = container.closest('td,th');
+    const host = cell || container.closest('.tampermonkey-copy-wrap') || container;
+    if (cell && !cell.classList.contains('tm-ripple-host')) {
+      cell.classList.add('tm-ripple-host'); // position:relative + overflow:hidden
+    }
+
+    // מניעת כפילויות: אם ב־RIPPLE_GUARD_MS אחרונים כבר נוצר ripple לאותו host — דלג
+    const now = performance.now();
+    const lastAt = __tmRippleGuard.get(host) || 0;
+    if (now - lastAt < RIPPLE_GUARD_MS) return;
+    __tmRippleGuard.set(host, now);
+
+    const rect = host.getBoundingClientRect();
+    // גודל קבוע לפי גובה השורה (ללא דיאגון ענק)
+    const d = getRowRippleSizePx(cell || host);
+    const r = d / 2;
+
+    // מיקום: מרכז התא כברירת מחדל; אם יש קליק משתמש—נשתמש בו
+    const x = (evt && typeof evt.clientX === 'number') ? (evt.clientX - rect.left) : (rect.width  / 2);
+    const y = (evt && typeof evt.clientY === 'number') ? (evt.clientY - rect.top )  : (rect.height / 2);
+
+    const ripple = document.createElement('span');
+    ripple.className = 'tm-ripple';
+    ripple.style.width = ripple.style.height = d + 'px';
+    ripple.style.left = (x - r) + 'px';
+    ripple.style.top  = (y - r) + 'px';
+    ripple.style.color = getComputedStyle(host).color; // currentColor (תומך ב-hover #3699ff)
+    host.appendChild(ripple);
+    ripple.addEventListener('animationend', () => ripple.remove(), { once:true });
+  } catch(_e) {}
+}
+
 document.body.addEventListener('click', function (e) {
     // Ignore clicks on buttons, links, inputs, or media
     if (e.target.closest('button, a, input, textarea, svg, img')) return;
 
     let target = e.target;
+
+    // --- Handle copy-enabled elements (system-wide) ---
+    if (target.classList.contains('copy-enabled')) {
+        copyWithFeedback(target, target.textContent.trim());
+        return;
+    }
+
+    // --- Handle copy-enabled elements inside other elements ---
+    const copyEnabledParent = target.closest('.copy-enabled');
+    if (copyEnabledParent) {
+        copyWithFeedback(copyEnabledParent, copyEnabledParent.textContent.trim());
+        return;
+    }
 
     // --- Handle barcode in preview or gallery ---
     if (target.matches('strong.barcode-highlight, strong.barcode-highlight-gallery')) {
@@ -6265,10 +6978,76 @@ document.body.addEventListener('click', function (e) {
   style.id = 'tm-copy-css';
   style.textContent = `
     .tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;unicode-bidi:plaintext}
+    /* NEW: allow ripple to sit inside without clipping */
+    .tampermonkey-copy-wrap{position:relative;overflow:visible}
+    
+    /* === NEW: סדר מבוסס כיוון (LTR/RTL) + מרווח לוגי === */
+    /* ברירת מחדל LTR: [Copy][Name][Google] */
+    html[dir="ltr"] .tampermonkey-copy-wrap > .copy-icon { order:1 }
+    html[dir="ltr"] .tampermonkey-copy-wrap > .tm-name-link,
+    html[dir="ltr"] .tampermonkey-copy-wrap > .tampermonkey-name-bdi { order:2 }
+    html[dir="ltr"] .tampermonkey-copy-wrap > .google-image-icon { order:3 }
+
+    /* RTL: [Google][Name][Copy] — אייקון Google מימין לשם, Copy משמאל */
+    html[dir="rtl"] .tampermonkey-copy-wrap > .google-image-icon { order:1 }
+    html[dir="rtl"] .tampermonkey-copy-wrap > .tm-name-link,
+    html[dir="rtl"] .tampermonkey-copy-wrap > .tampermonkey-name-bdi { order:2 }
+    html[dir="rtl"] .tampermonkey-copy-wrap > .copy-icon { order:3 }
+
+    /* מרווח לוגי סביב אייקון Google כדי להפרידו מהשם */
+    .tampermonkey-copy-wrap > .google-image-icon {
+      display:inline-flex; align-items:center;
+      margin-inline-start:6px !important;  /* LTR: רווח אחרי השם */
+      margin-inline-end:0 !important;
+    }
+    html[dir="rtl"] .tampermonkey-copy-wrap > .google-image-icon {
+      margin-inline-start:0 !important;
+      margin-inline-end:6px !important;    /* RTL: רווח בין האייקון לשם מימין */
+    }
+    .tampermonkey-copy-wrap > .google-image-icon img { width:14px; height:14px; display:block; }
     .tampermonkey-barcode-bdi{direction:ltr;unicode-bidi:plaintext}
     .tampermonkey-name-bdi{direction:auto;unicode-bidi:plaintext}
     .copy-icon{color:#3699ff;cursor:pointer;line-height:1;flex:0 0 auto;display:inline-block;width:1.2em;height:1.2em;vertical-align:middle}
     .copy-icon svg{width:100%;height:100%;display:block;fill:currentColor}
+    /* === NEW: Hover color on copyable text + text cursor without clicking === */
+    .copy-enabled:hover,
+    .tampermonkey-copy-wrap:hover,
+    .gallery-product-name:hover,
+    .font-weight-bold:hover,
+    .gallery-sku strong:hover {
+      color:#3699ff !important;
+    }
+    /* Always show text-cursor inside tagged tables */
+    table[data-columns-tagged="true"] td { cursor:text; }
+    /* No visible focus border on focused tables */
+    table.tm-focusable:focus { outline:none !important; }
+
+    /* === NEW: Ripple effect === */
+    .tm-ripple {
+      position:absolute;
+      border-radius:50%;
+      transform:scale(0);
+      opacity:0.35;
+      pointer-events:none;
+      background: currentColor;
+      animation: tm-ripple 450ms ease-out;
+      will-change: transform, opacity;
+    }
+    /* תאים שמארחים ripple צריכים position:relative ו-overflow:hidden */
+    .tm-ripple-host {
+      position: relative !important;
+      overflow: hidden !important;
+    }
+
+    /* === FIX: אל תשנה display של תאי טבלה — רק יישור אנכי קלאסי === */
+    td.tm-flex-cell, th.tm-flex-cell { vertical-align: middle; }
+    td[data-label="שם"], th[data-label="שם"] { vertical-align: middle; }
+    @keyframes tm-ripple {
+      /* שמור על scale מתון כדי למנוע גלישה/גלישה */
+      to { transform:scale(2.2); opacity:0; }
+    }
+
+
   `;
   document.head.appendChild(style);
 })();
@@ -6289,6 +7068,17 @@ function applyCopyIconFix(root = document){
       while (td.firstChild) wrap.appendChild(td.firstChild);
       td.appendChild(wrap);
     }
+    
+    /* === FIX: סמן רק את תא "שם" — לא עמודות אחרות === */
+    if (td) {
+      const isNameCell =
+        (td.getAttribute('data-label') === 'שם') ||
+        (td.tagName === 'TH' && /^\s*שם\s*$/.test(td.textContent || ''));
+      if (isNameCell && !td.classList.contains('tm-flex-cell')) {
+        td.classList.add('tm-flex-cell');
+      }
+    }
+    
     return wrap;
   }
 
@@ -6308,7 +7098,8 @@ function applyCopyIconFix(root = document){
       icon = buildCopySvgIcon('העתק', withCopying(() => {
         const t = (getText?.() || '').trim();
         if (!t) return;
-        navigator.clipboard.writeText(t).then(()=> tmToast('הועתק!', icon)).catch(console.warn);
+        // ה־override של clipboard ידאג לטוסט; לא נקרא ישירות ל-tmToast כדי למנוע כפילויות
+        navigator.clipboard.writeText(t).catch(console.warn);
       }));
     }else{
       icon.classList.add('copy-icon');
@@ -6320,7 +7111,7 @@ function applyCopyIconFix(root = document){
   }
 
   function fixBarcodeCell(tr){
-    const td = tr.querySelector('td[data-label="מק״ט"]');
+    const td = tr.querySelector('td[data-label="מק״ט"], td[data-label="ברקוד"]');
     if (!td) return;
     const wrap = ensureWrap(td);
 
@@ -6339,7 +7130,11 @@ function applyCopyIconFix(root = document){
       // Move the value node inside the BDI
       bdi.appendChild(valEl.parentNode ? valEl.parentNode.removeChild(valEl) : valEl);
       // Insert BDI as first child
-      if (wrap.firstChild) wrap.insertBefore(bdi, wrap.firstChild); else wrap.appendChild(bdi);
+      if (wrap.firstChild) {
+        safeInsertBefore(wrap.firstChild, bdi, wrap);
+      } else {
+        wrap.appendChild(bdi);
+      }
     }
 
     // Check if barcode has content before showing icon
@@ -6372,7 +7167,11 @@ function applyCopyIconFix(root = document){
       bdi = document.createElement('bdi');
       bdi.className = 'tampermonkey-name-bdi';
       bdi.dir = 'auto';
-      if (wrap.firstChild) wrap.insertBefore(bdi, wrap.firstChild); else wrap.appendChild(bdi);
+      if (wrap.firstChild) {
+        safeInsertBefore(wrap.firstChild, bdi, wrap);
+      } else {
+        wrap.appendChild(bdi);
+      }
     }
 
     // מיזוג טקסט/אלמנטים שאינם אייקון גוגל/אייקון העתקה לתוך ה-BDI
@@ -6414,6 +7213,10 @@ function applyCopyIconFix(root = document){
       // Hide icon if no name content
       ensureCopyIcon(wrap, () => '');
     }
+
+    // ודא שהתא מסומן להעתקה גם בפאנלים צדדיים
+    if (!td.classList.contains('copy-enabled')) td.classList.add('copy-enabled');
+    if (!td.hasAttribute('title')) td.setAttribute('title','לחץ להעתקה');
   }
   
   // Fix shipment wrapping after applying copy icon fix
@@ -6470,15 +7273,18 @@ function addClickableLinksToAllTables() {
                 const hasNonGoogleLink = nameCell.querySelector('a:not(.google-image-icon)');
                 if (hasNonGoogleLink || (existingIcon && !iconHidden)) return;
 
-                // Find SKU cell robustly (optional for side panels)
-                let skuCell = row.querySelector('td[data-label="מק״ט"]') ||
+                // Find barcode/SKU cell robustly (recognize both headers; no blind column fallback)
+                let skuCell = row.querySelector('td[data-label="מק״ט"], td[data-label="ברקוד"]') ||
                               (row.querySelector('td [data-original-sku]') && row.querySelector('td [data-original-sku]').closest('td')) ||
-                              (row.cells && row.cells[1]) ||
-                              row.querySelector('td:nth-child(2)');
+                              (row.querySelector('td .barcode-highlight') && row.querySelector('td .barcode-highlight').closest('td'));
 
                 // אפשר לעבוד גם בלי מק"ט (side panel) – נחשב sku רק אם יש תא מתאים
                 const productName = nameCell.textContent.trim();
-                const sku = skuCell ? (skuCell.dataset.originalSku || skuCell.textContent || '').trim() : '';
+                const sku = skuCell
+                  ? ((skuCell.querySelector('.barcode-highlight')?.textContent) ||
+                     skuCell.dataset.originalSku ||
+                     skuCell.textContent || '').trim()
+                  : '';
                 if (!productName) return;
 
                 // Check if there's an Anipet button in this cell or nearby
@@ -6531,7 +7337,17 @@ function addClickableLinksToAllTables() {
 
                 // הוספת אייקון העתקה למק"ט – רק אם קיימת עמודת מק"ט בטבלה הזו
                 if (skuCell) {
-                    const skuCellBarcode = skuCell.querySelector('.barcode-highlight, span.barcode-highlight');
+                    let skuCellBarcode = skuCell.querySelector('.barcode-highlight, span.barcode-highlight');
+                    if (!skuCellBarcode) {
+                        const tn = [...skuCell.childNodes].find(n => n.nodeType === 3 && n.textContent.trim());
+                        if (tn) {
+                            const span = document.createElement('span');
+                            span.className = 'barcode-highlight';
+                            span.textContent = tn.textContent.trim();
+                            skuCell.replaceChild(span, tn);
+                            skuCellBarcode = span;
+                        }
+                    }
                     if (skuCellBarcode && !skuCell.querySelector('.copy-icon')) {
                         const barcodeText = skuCellBarcode.textContent.trim();
                         if (barcodeText) {
@@ -6540,8 +7356,14 @@ function addClickableLinksToAllTables() {
                             barcodeCopyIcon.style.marginLeft = '4px';
                             barcodeCopyIcon.style.marginRight = '0px';
 
-                            // Insert the copy icon after the barcode
-                            skuCellBarcode.parentNode.insertBefore(barcodeCopyIcon, skuCellBarcode.nextSibling);
+                            // Insert the copy icon after the barcode (safe method)
+                            if (skuCellBarcode && skuCellBarcode.isConnected) {
+                                skuCellBarcode.insertAdjacentElement('afterend', barcodeCopyIcon);
+                            } else {
+                                // Fallback: append to parent cell
+                                const parentCell = skuCellBarcode?.closest('td') || skuCellBarcode?.parentNode;
+                                if (parentCell) parentCell.appendChild(barcodeCopyIcon);
+                            }
                             didWork = true;
                         }
                     }
@@ -6639,15 +7461,27 @@ function copyWithFeedback(element, text) {
         if (!element || !text) return;
 
         navigator.clipboard.writeText(text).then(() => {
+            // Add visual feedback
             element.classList.add('cell-copied');
-            // ✅ Clean up inline style to avoid interference
-            element.style.removeProperty('background-color');
+            
+            // Change text color to #3699ff for 1 second
+            const originalColor = element.style.color || getComputedStyle(element).color;
+            element.style.color = '#3699ff !important';
+            
+            // Show toast notification
+            tmToast('הועתק!', element);
+
+            // Add ripple effect for programmatic copy
+            spawnRipple(element, {clientX: null, clientY: null});
 
             setTimeout(() => {
                 element.classList.remove('cell-copied');
-                // ✅ Clean up inline style to avoid interference
-                element.style.removeProperty('background-color');
-            }, 400);
+                if (originalColor && originalColor !== 'rgba(0, 0, 0, 0)') {
+                    element.style.color = originalColor + ' !important';
+                } else {
+                    element.style.removeProperty('color');
+                }
+            }, 1000); // 1 second
         }).catch(err => {
             console.warn('Copy failed:', err);
         });
@@ -6956,7 +7790,15 @@ async function openPreviewForTask(taskId) {
             newCell.appendChild(container);
         }
 
-        newRow.appendChild(newCell); parentRow.parentNode.insertBefore(newRow, parentRow.nextSibling);
+        newRow.appendChild(newCell); 
+        // Insert new row after parent row (safe method)
+        if (parentRow && parentRow.parentNode && parentRow.isConnected) {
+            safeInsertAfter(parentRow, newRow, parentRow.parentNode);
+        } else {
+            // Fallback: append to table body
+            const tableBody = parentRow?.closest('tbody') || document.querySelector('tbody');
+            if (tableBody) tableBody.appendChild(newRow);
+        }
         updateButtonState(currentButton, true);
         currentButton.blur(); // מסיר פוקוס מהכפתור כדי שמקשי חץ יעבדו על ה-side panel
 
@@ -7122,6 +7964,209 @@ function togglePreviewSection(button, sectionType) {
 
 })(); //
 
+/* ==========================================
+   Unified "Copied!" toast (single element + smooth GPU anim)
+   ========================================== */
+let __tmToastEl = null;
+let __tmToastTimer = null;
+
+function installCopyToastBaseCSS(){
+  try{
+    if (document.getElementById('tm-copy-toast-style-v3')) return;
+    const style = document.createElement('style');
+    style.id = 'tm-copy-toast-style-v3';
+    style.textContent = `
+      .tm-copy-toast-pop{
+        position:fixed;
+        transform:translate3d(-50%,0,0) translateY(6px);
+        background:rgba(0,0,0,0.85); /* 85% שקיפות אמיתית */
+        color:#fff;
+        font:500 13px/1.2 system-ui,-apple-system,Segoe UI,Roboto,Arial;
+        padding:8px 12px;
+        border-radius:10px;
+        opacity:0;
+        z-index:2147483647;
+        pointer-events:none;
+        white-space:nowrap;
+        will-change:transform,opacity;
+        backface-visibility:hidden;
+        contain:paint;
+      }
+    `;
+    document.head.appendChild(style);
+  }catch(_e){}
+}
+
+function ensureToastEl(){
+  if (__tmToastEl && document.body.contains(__tmToastEl)) return __tmToastEl;
+  __tmToastEl = document.createElement('div');
+  __tmToastEl.id = 'tm-copy-toast';
+  __tmToastEl.className = 'tm-copy-toast-pop';
+  __tmToastEl.setAttribute('aria-live','polite');
+  // זמני אנימציה (ms)
+  __tmToastEl.dataset.in = '420';
+  __tmToastEl.dataset.visible = '1200';
+  __tmToastEl.dataset.out = '800';
+  document.body.appendChild(__tmToastEl);
+  return __tmToastEl;
+}
+
+function initCopyToastFromPointer(doc = document) {
+  try {
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // עטיפה עדינה של writeText כדי לזהות הצלחה
+    const nav = window.navigator;
+    if (!nav || !nav.clipboard || typeof nav.clipboard.writeText !== 'function') return;
+    const orig = nav.clipboard.writeText.bind(nav.clipboard);
+    nav.clipboard.writeText = async function(text) {
+      try {
+        const res = await orig(text);
+        if (!reduce) {
+          const now = performance.now();
+          const p = window.__tmLastPointer;
+          if (p && (now - p.t) < 1200) {
+            showCopyToastAtPoint(p.x, p.y, 'הועתק!');
+          } else {
+            const anchor = window.__tmLastCopyTarget || document.activeElement || document.body;
+            showCopyToastNearNode(anchor, 'הועתק!');
+          }
+          // סימון שנוצר טוסט הרגע כדי למנוע טוסט כפול מ-tmToast
+          window.__tmToastStamp = now;
+        }
+        return res;
+      } catch (err) {
+        throw err;
+      }
+    };
+  } catch(_e) {}
+}
+
+function showCopyToastNearNode(anchor, msg='הועתק!'){
+  try{
+    installCopyToastBaseCSS();
+    const el = ensureToastEl();
+    el.textContent = msg;
+    const cell = anchor && anchor.closest ? (anchor.closest('td,th') || anchor.closest('.tm-ripple-host')) : null;
+    const host = cell || anchor || document.body;
+    
+    // Separate DOM reads from writes to avoid forced reflow
+    const rect = host.getBoundingClientRect(); // READ first
+    requestAnimationFrame(() => {             // WRITE in rAF
+      el.style.left = (rect.left + rect.width/2) + 'px';
+      el.style.top  = Math.max(0, rect.top - 8) + 'px';
+      playToastWAAPI(el);
+    });
+  }catch(_e){}
+}
+
+// טוסט לפי נקודת קליק בפועל (clientX/clientY)
+function showCopyToastAtPoint(x, y, msg='הועתק!'){
+  try{
+    installCopyToastBaseCSS();
+    const el = ensureToastEl();
+    el.textContent = msg;
+    const pad = 12;
+    const vw = window.innerWidth || document.documentElement.clientWidth || 1024;
+    const vh = window.innerHeight || document.documentElement.clientHeight || 768;
+    const clampedX = Math.max(pad, Math.min(vw - pad, x));
+    const clampedY = Math.max(pad, Math.min(vh - pad, y));
+    el.style.left = clampedX + 'px';
+    el.style.top  = clampedY + 'px';
+    playToastWAAPI(el);
+  }catch(_e){}
+}
+
+// הפעלה חלקה עם Web Animations API (ללא CSS keyframes)
+function playToastWAAPI(el){
+  try{
+    const IN = +el.dataset.in || 420;
+    const VISIBLE = +el.dataset.visible || 1200;
+    const OUT = +el.dataset.out || 800;
+    const shift = 6; // px
+    // בטל אנימציות פעילות כדי שלא יקפצו פריימים
+    el.getAnimations({subtree:false}).forEach(a => { try{a.cancel();}catch(_e){} });
+    // מצב התחלתי
+    el.style.opacity = '0';
+    el.style.transform = `translate3d(-50%,0,0) translateY(${shift}px)`;
+    // Fade-in
+    el.animate(
+      [
+        { opacity: 0,   transform: `translate3d(-50%,0,0) translateY(${shift}px)` },
+        { opacity: 1,   transform: `translate3d(-50%,0,0) translateY(0)` }
+      ],
+      { duration: IN, easing: 'linear', fill: 'forwards', composite: 'replace' }
+    );
+    // תיזמון ה-Fade-out
+    if (__tmToastTimer) clearTimeout(__tmToastTimer);
+    __tmToastTimer = setTimeout(() => {
+      el.animate(
+        [
+          { opacity: 1, transform: `translate3d(-50%,0,0) translateY(0)` },
+          { opacity: 0, transform: `translate3d(-50%,0,0) translateY(${shift}px)` }
+        ],
+        { duration: OUT, easing: 'linear', fill: 'forwards', composite: 'replace' }
+      );
+    }, IN + VISIBLE);
+  }catch(_e){}
+}
+
+/* ==========================================
+   Copy when clicking the Name cell (side panel + fullscreen)
+   ========================================== */
+function enableNameCellCopy(root = document){
+  try{
+    // סימון כל תאי "שם" כיעדי העתקה (כותרת + class) – עדין ובטוח
+    const markAll = () => {
+      root.querySelectorAll('td[data-label="שם"]').forEach(td => {
+        if (!td.classList.contains('copy-enabled')) td.classList.add('copy-enabled');
+        if (!td.hasAttribute('title')) td.setAttribute('title','לחץ להעתקה');
+      });
+    };
+    markAll();
+
+    // גם לעתיד: אם DOM משתנה (side panel) – נסמן שוב
+    const mo = new MutationObserver(() => markAll());
+    mo.observe(root.documentElement || root, {subtree:true, childList:true, attributes:false});
+
+    // האזנה ב-delegation: קליק על תא "שם" -> העתקת שם המוצר
+    root.addEventListener('click', (e) => {
+      const td = e.target.closest && e.target.closest('td[data-label="שם"]');
+      if (!td) return;
+      // אל תשכפל: אם הקליק הוא על אייקון/כפתור/קלט – תן להתנהגות המקורית
+      if (e.target.closest('button, .copy-icon, .google-image-icon, input, textarea, select')) return;
+      // אם זה קליק ישיר על לינק השם – אל תבטל ניווט; רק העתק בנוסף
+      const wrap = td.querySelector('.tampermonkey-copy-wrap') || td;
+      const nameText =
+        (wrap.querySelector('a:not(.google-image-icon)')?.textContent ||
+         wrap.querySelector('.tampermonkey-name-bdi')?.textContent ||
+         td.textContent || '').trim();
+      if (!nameText) return;
+      // Ripple + העתקה (toast יופיע ע"י ה־override של clipboard)
+      try { spawnRipple(td, e); } catch(_e){}
+      navigator.clipboard.writeText(nameText).catch(()=>{ /* שקט */});
+    }, {capture:false, passive:true});
+  }catch(_e){}
+}
+
+/* ================================
+   Clean up incorrectly marked cells
+   ================================ */
+function cleanupFlexCells() {
+  try {
+    // Remove tm-flex-cell from all cells except name cells
+    const allCells = document.querySelectorAll('td.tm-flex-cell, th.tm-flex-cell');
+    allCells.forEach(cell => {
+      const isNameCell =
+        (cell.getAttribute('data-label') === 'שם') ||
+        (cell.tagName === 'TH' && /^\s*שם\s*$/.test(cell.textContent || ''));
+      
+      if (!isNameCell) {
+        cell.classList.remove('tm-flex-cell');
+      }
+    });
+  } catch(_e) {}
+}
+
 // Performance monitoring to reduce setTimeout violations
 const originalSetTimeout = window.setTimeout;
 window.setTimeout = function(callback, delay, ...args) {
@@ -7157,3 +8202,148 @@ window.requestAnimationFrame = function(callback) {
   };
   return originalRequestAnimationFrame.call(this, wrappedCallback);
 };
+
+// ===== Rename table header "מק״ט" -> "ברקוד" (and data-label) =====
+function _normalizeHeb(s){
+    return (s||'')
+      .replace(/\s+/g,' ')
+      // normalize possible quote variants (gereshayim and plain quotes)
+      .replace(/["״]/g, '״')
+      .trim();
+}
+
+function renameMakotHeaderToBarcode(root=document){
+    try{
+        // 1) Headers: <th> text "מק״ט" -> "ברקוד"
+        const ths = root.querySelectorAll('thead th, table thead th');
+        ths.forEach(th => {
+            const txt = _normalizeHeb(th.textContent);
+            if (txt === 'מק״ט') {
+                // Avoid unnecessary layout thrash: only update when needed
+                if (_normalizeHeb(th.textContent) !== 'ברקוד'){
+                    th.textContent = ' ברקוד ';
+                }
+            }
+        });
+        // 2) Data labels: data-label="מק״ט" -> "ברקוד" (th/td)
+        const labelled = root.querySelectorAll('[data-label]');
+        labelled.forEach(el => {
+            const dl = _normalizeHeb(el.getAttribute('data-label'));
+            if (dl === 'מק״ט') {
+                el.setAttribute('data-label', 'ברקוד');
+            }
+        });
+    }catch(e){
+        if (DEBUG) console.warn('[Toolbox] renameMakotHeaderToBarcode error:', e);
+    }
+}
+
+// Run once and observe for future tables
+renameMakotHeaderToBarcode(document);
+const _headersMO = new MutationObserver((muts) => {
+    // throttle via rAF to avoid spam
+    oncePerAnimationFrame(() => renameMakotHeaderToBarcode(document))();
+});
+_headersMO.observe(document.documentElement, { childList:true, subtree:true });
+
+// ===== Ensure BARCODE copy icon exists in all tables (works with "מק״ט" or "ברקוד") =====
+// A table is eligible if it's a picking table OR has a barcode header/data-label
+function isBarcodeTable(table){
+  if (!table) return false;
+  if (table.classList.contains('pick-order-item-table')) return true;
+  const ths = Array.from(table.querySelectorAll('thead th'));
+  const headers = ths.map(th => _normalizeHeb(th.textContent));
+  if (headers.includes('ברקוד') || headers.includes('מק״ט')) return true;
+  // Fallback: any row with explicit barcode markers
+  return !!table.querySelector('tbody td[data-label="ברקוד"], tbody td[data-label="מק״ט"], tbody td [data-original-sku], tbody td .barcode-highlight');
+}
+
+function findBarcodeCell(tr){
+  // Only search inside eligible tables
+  const table = tr.closest('table');
+  if (!isBarcodeTable(table)) return null;
+  // Prefer explicit markers; DO NOT blindly fall back to column indexes
+  return tr.querySelector('td[data-label="ברקוד"], td[data-label="מק״ט"]')
+      || tr.querySelector('td [data-original-sku]')?.closest('td')
+      || tr.querySelector('td .barcode-highlight')?.closest('td');
+}
+
+function ensureBarcodeHighlightSpan(skuCell){
+    if (!skuCell) return null;
+    let span = skuCell.querySelector('.barcode-highlight, span.barcode-highlight');
+    if (!span) {
+        // Only wrap when the visible text looks like a barcode (>=8 digits overall)
+        const tn = Array.from(skuCell.childNodes).find(n => n.nodeType === 3 && n.textContent.trim());
+        if (tn) {
+          const raw = tn.textContent.trim();
+          const digits = (raw.match(/\d/g) || []).length;
+          if (digits >= 8 && digits <= 20) {
+            span = document.createElement('span');
+            span.className = 'barcode-highlight';
+            span.textContent = raw;
+            skuCell.replaceChild(span, tn);
+          }
+        }
+    }
+    return span;
+}
+
+function ensureBarcodeCopyIconForRow(tr){
+    try{
+        const skuCell = findBarcodeCell(tr);
+        if (!skuCell) return;
+        const span = ensureBarcodeHighlightSpan(skuCell);
+        if (!span) return;
+
+        // If an icon already exists and is marked as barcode, do nothing
+        let next = span.nextElementSibling;
+        if (next?.classList?.contains('copy-icon') && next.dataset?.copyKind === 'barcode') return;
+
+        // If there is an untagged copy icon immediately after, adopt it as the barcode icon
+        if (next?.classList?.contains('copy-icon') && !next.dataset?.copyKind) {
+            next.dataset.copyKind = 'barcode';
+            next.title = 'העתק ברקוד';
+            next.onclick = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const raw = (skuCell.getAttribute('data-original-sku') || span.textContent || '').trim();
+                if (raw) {
+                    navigator.clipboard.writeText(raw).then(() => tmToast('הועתק!', next)).catch(console.warn);
+                }
+            };
+            return;
+        }
+
+        // Otherwise create a new icon after the barcode span
+        const icon = buildCopySvgIcon('העתק ברקוד', (e) => {
+            const raw = (skuCell.getAttribute('data-original-sku') || span.textContent || '').trim();
+            if (raw) {
+                navigator.clipboard.writeText(raw).then(() => tmToast('הועתק!', icon)).catch(console.warn);
+            }
+        });
+        icon.dataset.copyKind = 'barcode';
+        icon.style.marginInlineStart = '6px';
+        icon.style.marginInlineEnd = '0';
+        span.insertAdjacentElement('afterend', icon);
+    } catch(e){
+        if (DEBUG) console.warn('[Toolbox] ensureBarcodeCopyIconForRow error:', e);
+    }
+}
+
+function enhanceTablesBarcodeCopyIcons(root=document){
+  try{
+    const tables = root.querySelectorAll('table');
+    tables.forEach(table => {
+      if (!isBarcodeTable(table)) return;
+      table.querySelectorAll('tbody tr').forEach(tr => ensureBarcodeCopyIconForRow(tr));
+    });
+  }catch(e){
+    if (DEBUG) console.warn('[Toolbox] enhanceTablesBarcodeCopyIcons error:', e);
+  }
+}
+
+// Run now and keep in sync with DOM changes
+enhanceTablesBarcodeCopyIcons(document);
+const _tablesMO = new MutationObserver(() => {
+  oncePerAnimationFrame(() => enhanceTablesBarcodeCopyIcons(document))();
+});
+_tablesMO.observe(document.documentElement, { childList:true, subtree:true });
