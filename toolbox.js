@@ -661,7 +661,28 @@ setupBlockedScriptObserver();
         td.ready-highlight:hover {
             background-color: #bbf7d0 !important;
         }
+
+        /* Font Awesome copy icon styling */
+        .copy-icon > i.fa-light.fa-clone { 
+            font-size: 0.95em; 
+            line-height: 1; 
+            vertical-align: middle;
+            color: #3699ff;
+        }
+        .copy-icon { cursor: pointer; }
     `);
+    
+    // Custom PNG cursor for copy-enabled areas (hotspot 0 0). Force on descendants to beat more specific rules.
+    GM_addStyle(`
+      .copy-enabled,
+      .copy-enabled *:not(input):not(textarea) {
+        cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
+      }
+      .copy-enabled .copy-icon {
+        cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
+      }
+    `);
+    
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
     const SCRIPT_VERSION = "13.8.2"; // Match @version
@@ -778,7 +799,7 @@ setupBlockedScriptObserver();
         svg.setAttribute('xmlns', svgNS);
         svg.setAttribute('viewBox', '0 0 640 640');
         const path = document.createElementNS(svgNS, 'path');
-        path.setAttribute('d','M352 528L128 528C119.2 528 112 520.8 112 512L112 288C112 279.2 119.2 272 128 272L176 272L176 224L128 224C92.7 224 64 252.7 64 288L64 512C64 547.3 92.7 576 128 576L352 576C387.3 576 416 547.3 416 512L416 464L368 464L368 512C368 520.8 360.8 528 352 528zM288 368C279.2 368 272 360.8 272 352L272 128C272 119.2 279.2 112 288 112L512 112C520.8 112 528 119.2 528 128L528 352C528 360.8 520.8 368 512 368L288 368zM224 352C224 387.3 252.7 416 288 416L512 416C547.3 416 576 387.3 576 352L576 128C576 92.7 547.3 64 512 64L288 64C252.7 64 224 92.7 224 128L224 352z');
+        path.setAttribute('d','M352 528L128 528C119.2 528 112 520.8 112 512L112 288C112 279.2 119.2 272 128 272L176 272L176 224L128 224C92.7 224 64 252.7 64 288L64 512C64 547.3 92.7 576 128 576L352 576C387.3 576 416 547.3 416 512L416 464L368 464L368 512C368 520.8 360.8 528 352 528zM288 368C279.2 368 272 360.8 272 352L272 128C272 119.2 279.2 112 288 112L512 112C520.8 112 528 119.2 528 128L528 352C528 360.8 520.8 368 512 368L288 368zM224 352C224 387.3 252.7 416 288 416L512 416C576 387.3 576 352L576 128C576 92.7 547.3 64 512 64L288 64C252.7 64 224 92.7 224 128L224 352z');
         svg.appendChild(path);
         wrap.appendChild(svg);
 
@@ -790,6 +811,24 @@ setupBlockedScriptObserver();
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
         
         return wrap;
+    }
+
+    // Font Awesome icon factory (uses <i class="fa-light fa-clone">)
+    function buildCopyFAIcon(title, onClick) {
+        const span = document.createElement('span');
+        span.className = 'copy-icon';
+        span.setAttribute('role','button');
+        span.setAttribute('tabindex','0');
+        if (title) span.title = title;
+        span.style.marginInlineStart = '6px';
+        span.style.marginInlineEnd = '0';
+        const i = document.createElement('i');
+        i.className = 'fa-light fa-clone';
+        span.appendChild(i);
+        const handler = (e) => { e.preventDefault(); e.stopPropagation(); onClick?.(e); };
+        span.addEventListener('click', handler);
+        span.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ handler(e); }});
+        return span;
     }
 
     // ---< Cache Compression Functions >---
@@ -3428,93 +3467,8 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
     // MODIFICATION START: Add copy icons to all barcodes in pick-order-item-table
     function addCopyIconsToPickOrderItems(scope = document) {
-        try {
-            // Find pick order tables or rows
-            const pickOrderTables = scope.querySelectorAll('.pick-order-item-table');
-            const pickOrderRows = scope.querySelectorAll('.pick-order-item-row');
-            
-            if (pickOrderTables.length === 0 && pickOrderRows.length === 0) return;
-
-            // Skip if this is a regular table that already has proper copy icon functionality
-            // Tables with data-columns-tagged="true" are handled by applyCopyIconFix()
-            const regularTables = scope.querySelectorAll('table[data-columns-tagged="true"]');
-            if (regularTables.length > 0 && pickOrderTables.length === 0) {
-                // This scope contains regular tables with existing copy functionality, skip
-                return;
-            }
-
-            // Process both table containers and individual rows
-            const elementsToProcess = [...pickOrderTables, ...pickOrderRows];
-            
-            elementsToProcess.forEach(container => {
-                // Find all barcode elements in the container
-                const barcodeElements = container.querySelectorAll('.text-muted.font-weight-bold.font-size-sm');
-                
-                barcodeElements.forEach(barcodeElement => {
-                    // Check if this element already has a copy icon
-                    const parentTd = barcodeElement.closest('td');
-                    if (!parentTd || parentTd.querySelector('.copy-icon')) return;
-
-                    // Skip if the parent cell is already properly wrapped with tampermonkey-copy-wrap
-                    if (parentTd.querySelector('.tampermonkey-copy-wrap')) return;
-
-                    // Skip if this is within a table that has data-columns-tagged="true" 
-                    // (those are handled by applyCopyIconFix)
-                    const parentTable = barcodeElement.closest('table[data-columns-tagged="true"]');
-                    if (parentTable) return;
-
-                    // Skip if this is a barcode-highlight element (already has copy icon)
-                    if (barcodeElement.classList.contains('barcode-highlight')) {
-                        // Add copy-enabled class to barcode-highlight elements for click functionality
-                        if (!barcodeElement.classList.contains('copy-enabled')) {
-                            barcodeElement.classList.add('copy-enabled');
-                            barcodeElement.setAttribute('title', 'לחץ להעתקה');
-                        }
-                        return;
-                    }
-
-                    const barcodeText = barcodeElement.textContent.trim();
-                    if (!barcodeText || barcodeText.length < 3) return;
-
-                    // Check if this looks like a barcode (numbers only, reasonable length)
-                    if (!/^\d{8,}$/.test(barcodeText)) return;
-
-                    // Add copy-enabled class to the barcode element for click functionality
-                    if (!barcodeElement.classList.contains('copy-enabled')) {
-                        barcodeElement.classList.add('copy-enabled');
-                        barcodeElement.setAttribute('title', 'לחץ להעתקה');
-                    }
-
-                    // Also enable copy styling for text elements inside the barcode element
-                    const textElements = barcodeElement.querySelectorAll('span, div, strong, b, i, em');
-                    textElements.forEach(textEl => {
-                        if (textEl.textContent.trim() && !textEl.classList.contains('copy-enabled')) {
-                            textEl.classList.add('copy-enabled');
-                            if (!textEl.hasAttribute('title')) {
-                                textEl.setAttribute('title', 'לחץ להעתקה');
-                            }
-                        }
-                    });
-
-                    // Create and add copy icon
-                    const barcodeCopyIcon = createCopyIcon(barcodeText);
-                    barcodeCopyIcon.style.marginRight = '4px';
-                    barcodeCopyIcon.style.marginLeft = '0px';
-
-                    // הכנס אייקון העתקה בצורה בטוחה (ללא NotFoundError)
-                    const anchor = stableAnchorForBarcode(barcodeElement, parentTd);
-                    queueMicrotask(() => {
-                        if (parentTd.contains(anchor)) {
-                            safeInsertBefore(anchor, barcodeCopyIcon, parentTd);
-                        } else {
-                            parentTd.appendChild(barcodeCopyIcon);
-                        }
-                    });
-                });
-            });
-        } catch (error) {
-            console.warn(`[${SCRIPT_NAME}] Failed to add copy icons to pick order items:`, error);
-        }
+        // ⛔ מנוטרל לפי דרישה: אין צורך באייקון העתקה בחלונית ליקוט
+        return;
     }
 
     // Expose function to window for external access
@@ -3524,9 +3478,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
     // This is the correct and ONLY definition for injectPreviewFunctionality
     function injectPreviewFunctionality(mainTableBody) {
         try {
-            if (!settings || !settings.enablePreview || mainTableBody.hasAttribute('data-preview-injected')) {
-                return;
-            }
+                    if (!settings || !settings.enablePreview) {
+            return;
+        }
 
         const headerRow = mainTableBody.closest('table').querySelector('thead tr');
         let previewHeaderCell = null;
@@ -3613,6 +3567,8 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
         // CORRECTED FOR EACH LOOP (TD insertion logic):
         mainTableBody.querySelectorAll('tr[data-task-id]').forEach(row => {
+            // אל תיגע בשורות שכבר עובדו
+            if (row.hasAttribute('data-preview-processed')) return;
             if (row.querySelector('td.preview-cell')) { return; }
             // MODIFICATION START: DO NOT remove/move content from td.noVis.pt-2.
             // That TD (the ✅ icon) is an important visible column and should stay in its original position.
@@ -3986,7 +3942,6 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             }, { passive: false });
             row.setAttribute('data-preview-processed', 'true');
         });
-        mainTableBody.setAttribute('data-preview-injected', 'true');
 
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting preview functionality:`, error);
@@ -4756,11 +4711,11 @@ td.copy-enabled,
 .barcode-highlight.copy-enabled,
 .barcode-highlight-gallery.copy-enabled,
 .pick-order-item-table .barcode-highlight.copy-enabled {
-    cursor: copy !important;
+    cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
 }
 
 td.copy-enabled {
-    cursor: copy !important;
+    cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
     transition: background-color 0.3s ease;
 }
 
@@ -4780,7 +4735,7 @@ td.copy-enabled.cell-copied {
 
 
         .copy-enabled {
-            cursor: copy !important;
+            cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
             transition: background-color 0.3s ease;
         }
             tr[id^="visit-row-"] td.copy-enabled:hover {
@@ -4818,7 +4773,7 @@ td.copy-enabled.cell-copied {
             animation: barcodeReplacement 0.5s ease-in-out;
         }
         .barcode-highlight.copy-enabled {
-            cursor: copy !important;
+            cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
         }
         .barcode-highlight-gallery {
             color: #90ee90 !important;
@@ -4828,7 +4783,7 @@ td.copy-enabled.cell-copied {
             animation: barcodeReplacement 0.5s ease-in-out;
         }
         .barcode-highlight-gallery.copy-enabled {
-            cursor: copy !important;
+            cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
         }
         td.barcode-highlight, tr[id^="preview-for-"] .barcode-highlight {
             background-color: #e6ffed;
@@ -4863,7 +4818,7 @@ td.copy-enabled.cell-copied {
             animation: barcodeReplacement 0.5s ease-in-out;
         }
         .pick-order-item-table .barcode-highlight.copy-enabled {
-            cursor: copy !important;
+            cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
         }
         .barcode-input-highlight {
             background-color: #e6ffed !important;
@@ -5869,7 +5824,7 @@ function prepareCopyElements() {
         });
 
         // Also add copy icons to pick order items
-        addCopyIconsToPickOrderItems();
+        // addCopyIconsToPickOrderItems(); // מנוטרל בכוונה
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error preparing copy elements:`, error);
     }
@@ -5955,21 +5910,6 @@ function prepareCopyElements() {
                             shouldHighlight = true;
                             cell.classList.add('merlog-highlight');
                         }
-                    }
-                });
-
-                // Check client column - look for "אניפט מרלוג"
-                Array.from(row.cells).forEach(cell => {
-                    // Skip preview cells
-                    if (cell.classList.contains('preview-cell')) return;
-
-                    const dataLabel = cell.getAttribute('data-label');
-                    const cellText = cell.textContent.trim();
-
-                    // Look for "אניפט מרלוג" in client column
-                    if (dataLabel === 'לקוח' && cellText.includes('אניפט מרלוג')) {
-                        shouldHighlight = true;
-                        cell.classList.add('merlog-highlight');
                     }
                 });
 
@@ -6199,8 +6139,7 @@ function prepareCopyElements() {
             const merlogPatterns = [
               'שיגור למרלוג',
               "מרלוג צור יגאל",
-              "מרלוג צ'יטה",
-              'אניפט מרלוג'
+              "מרלוג צ'יטה"
             ];
             let shouldHighlight = false;
 
@@ -6231,16 +6170,7 @@ function prepareCopyElements() {
               }
             });
 
-            // בדיקת לקוח בפועל
-            areaSections.forEach(section => {
-              const labelSpan = section.querySelector('span');
-              if (labelSpan && labelSpan.textContent.trim() === 'לקוח') {
-                const valueSection = section.nextElementSibling;
-                if (valueSection && merlogPatterns.some(pattern => valueSection.textContent.trim().includes(pattern))) {
-                  shouldHighlight = true;
-                }
-              }
-            });
+            // (Removed Client field highlighting – no longer highlight by client name)
 
             // Check for "מוכן" in הערות (notes)
             let shouldHighlightReady = false;
@@ -6287,7 +6217,7 @@ function prepareCopyElements() {
             });
             // MODIFICATION: Call these with default scope (document)
             replaceBarcodesInViews(); // Unified barcode replacement function
-            addCopyIconsToPickOrderItems(document); // Add copy icons to all barcodes in pick order table
+            // addCopyIconsToPickOrderItems(document); // מנוטרל בכוונה
             injectImagesAndLinks(document);
             injectImagesInRegularTables(document);
             injectImagesInOrderItemRows(document);
@@ -6363,7 +6293,7 @@ function prepareCopyElements() {
                             safeExecute(() => injectImagesInRegularTables(modalForm)); // Re-process regular table images
                             safeExecute(() => injectImagesInOrderItemRows(modalForm)); // Re-process .order-item-row images
                             safeExecute(() => replaceBarcodesInViews(modalForm)); // Re-process barcodes (unified function)
-                            safeExecute(() => addCopyIconsToPickOrderItems(modalForm)); // Add copy icons to all barcodes in pick order table
+                            // safeExecute(() => addCopyIconsToPickOrderItems(modalForm)); // מנוטרל בכוונה
                         }
                     }, 50); // Small debounce delay
                 });
@@ -6407,7 +6337,7 @@ function prepareCopyElements() {
                             replaceBarcodesInViews(panelView);
                         }
                         // NEW: Also add copy icons to pick order items in panel view
-                        addCopyIconsToPickOrderItems(panelView);
+                        // addCopyIconsToPickOrderItems(panelView); // מנוטרל בכוונה
                     }, 200);
                 });
                 panelObserver.observe(panelView, { childList: true, subtree: true });
@@ -6547,6 +6477,62 @@ function highlightPickQuantities() {
 
 
 
+// --- DataTables draw hook (אופציונלי, פועל רק אם יש jQuery+DataTables) ---
+function hookDataTablesDraw() {
+  try {
+    const $ = window.jQuery || window.$;
+    // בדיקה סלחנית: גם dataTable (ישן) וגם DataTable (חדש)
+    if (!$ || !$.fn || (!$.fn.dataTable && !$.fn.DataTable)) return;
+
+    // נבטיח שלא נרשום מאזינים כפולים
+    $(document).off('.tmPreviewDraw');
+
+    // על כל אירועי רינדור/מיון/חיפוש/דפדוף – נזריק PREVIEW לשורות שחסר להן
+    $(document).on(
+      'draw.dt.tmPreviewDraw page.dt.tmPreviewDraw order.dt.tmPreviewDraw search.dt.tmPreviewDraw',
+      'table.dataTable',
+      function () {
+        try {
+          // דילוגים לפי הדרישה שלך (אין PREVIEW בליקוט/חוסרים)
+          const table = this;
+          if (table.classList && table.classList.contains('pick-order-item-table')) return;
+          if (table.closest && table.closest('#missing-table-container')) return;
+
+          const tb = table.tBodies && table.tBodies[0];
+          if (!tb) return;
+          
+          // הפונקציה אידמפוטנטית (מתוך התיקון הקודם): מוסיפה רק לשורות שחסר להן
+          injectPreviewFunctionality(tb);
+
+          // NEW: Re-apply row highlighting after every redraw/filter/search
+          // Red (Merlog) rows
+          if (typeof highlightMerlogRows === 'function') {
+            highlightMerlogRows();
+          }
+          // Green (Ready) rows – debounced
+          if (typeof debouncedHighlightReadyRows === 'function') {
+            debouncedHighlightReadyRows();
+          }
+        } catch (e) { /* no-op */ }
+      }
+    );
+  } catch (e) { /* no-op */ }
+}
+
+// ננסה להתחבר מיד, ואם jQuery נטען מאוחר יותר – ננסה שוב
+(function retryHookDTDraw(attempts = 0) {
+  hookDataTablesDraw();
+  // אם אין עדיין jQuery+DataTables, ננסה עוד כמה פעמים בפרק זמן קצר
+  const hasJQ = !!(window.jQuery || window.$);
+  const hasDT =
+    hasJQ &&
+    !!((window.jQuery || window.$).fn &&
+       (((window.jQuery || window.$).fn.dataTable) || ((window.jQuery || window.$).fn.DataTable)));
+  if (!hasDT && attempts < 20) {
+    setTimeout(() => retryHookDTDraw(attempts + 1), 300);
+  }
+})();
+
 async function initialize() {
   try {
 
@@ -6566,6 +6552,9 @@ async function initialize() {
 
     await loadSettings();
 
+    // --- DataTables draw hook (אופציונלי, פועל רק אם יש jQuery+DataTables) ---
+    hookDataTablesDraw();
+
     registerMenuCommands();
 
     injectGlobalStyles();
@@ -6580,7 +6569,7 @@ async function initialize() {
   prepareCopyElements();
 
   // Add copy icons to all barcodes in pick order table initially
-  addCopyIconsToPickOrderItems();
+  // addCopyIconsToPickOrderItems(); // מנוטרל בכוונה
 
   highlightPickQuantities();
 
@@ -6726,8 +6715,8 @@ async function initialize() {
           return;
         }
 
-        // רק הזרק פונקציונליות חדשה אם היא לא קיימת
-        if (!tb.hasAttribute('data-preview-injected') && settings && settings.enablePreview) {
+        // הזרק פונקציונליות חדשה (אידמפוטנטי - מוסיף רק לשורות שחסר להן)
+        if (settings && settings.enablePreview) {
           injectPreviewFunctionality(tb);
         }
 
@@ -6736,7 +6725,7 @@ async function initialize() {
           replaceBarcodesInViews(table);
         }
         // NEW: Also add copy icons to pick order items when table changes
-        addCopyIconsToPickOrderItems(table);
+        // addCopyIconsToPickOrderItems(table); // מנוטרל בכוונה
       }, 200); // הגדל את ה-debounce ל-200ms
     });
     tableObserver.observe(table, {
@@ -6819,7 +6808,7 @@ async function initialize() {
       }
 
       // NEW: Also add copy icons to pick order items for any DOM changes
-      addCopyIconsToPickOrderItems();
+      // addCopyIconsToPickOrderItems(); // מנוטרל בכוונה
     }, 100);
   });
   observer.observe(document.body, { childList: true, subtree: true });
@@ -6879,11 +6868,95 @@ function getRowRippleSizePx(cell) {
 const __tmRippleGuard = new WeakMap();
 const RIPPLE_GUARD_MS = 200;
 
+// Utility: remove copy styling/tooltip from a cell and its descendants
+function stripCopyFrom(root) {
+  if (!root) return;
+  root.classList.remove('copy-enabled');
+  if (root.getAttribute && root.getAttribute('title') === 'לחץ להעתקה') {
+    root.removeAttribute('title');
+  }
+  root.querySelectorAll('.copy-enabled').forEach(el => el.classList.remove('copy-enabled'));
+  root.querySelectorAll('[title="לחץ להעתקה"]').forEach(el => el.removeAttribute('title'));
+}
+
+// Proactive cleanup: remove copy styling from all dropdown-hosting cells on the page
+function cleanupDropdownCells() {
+  const dropdownCells = document.querySelectorAll('td[data-label="סטטוס"], td[data-label="ליקוט"]');
+  dropdownCells.forEach(cell => {
+    // Check if this cell actually contains dropdowns
+    if (cell.querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container')) {
+      stripCopyFrom(cell);
+    }
+  });
+  
+  // Also check any other cells that might contain dropdowns
+  const allCells = document.querySelectorAll('td');
+  allCells.forEach(cell => {
+    if (cell.querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container')) {
+      stripCopyFrom(cell);
+    }
+  });
+}
+
+// Run cleanup immediately and also when DOM is ready
+cleanupDropdownCells();
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', cleanupDropdownCells);
+} else {
+  // DOM is already ready, run cleanup
+  cleanupDropdownCells();
+}
+
+// Watch for new dropdown cells being added dynamically
+const dropdownCleanupObserver = new MutationObserver((mutations) => {
+  let needsCleanup = false;
+  mutations.forEach(mutation => {
+    if (mutation.type === 'childList') {
+      mutation.addedNodes.forEach(node => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          if (node.matches && (node.matches('td[data-label="סטטוס"], td[data-label="ליקוט"]') || 
+              node.querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container'))) {
+            needsCleanup = true;
+          }
+          if (node.querySelectorAll) {
+            if (node.querySelectorAll('td[data-label="סטטוס"], td[data-label="ליקוט"], .dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container').length > 0) {
+              needsCleanup = true;
+            }
+          }
+        }
+      });
+    }
+  });
+  
+  if (needsCleanup) {
+    // Debounce cleanup to avoid excessive calls
+    clearTimeout(window._dropdownCleanupTimeout);
+    window._dropdownCleanupTimeout = setTimeout(cleanupDropdownCells, 100);
+  }
+});
+
+// Start observing
+dropdownCleanupObserver.observe(document.documentElement, { 
+  childList: true, 
+  subtree: true 
+});
+
 function spawnRipple(container, evt) {
   try {
     // ארח את ה-ripple על תא הטבלה כדי לקלף בתוך גבולות התא
     const cell = container.closest('td,th');
     const host = cell || container.closest('.tampermonkey-copy-wrap') || container;
+    
+    // Avoid clipping/UX issues: disable ripple on dropdown/select2 cells
+    const dropdownHost = cell && (
+      cell.matches('[data-label="סטטוס"], [data-label="ליקוט"]') ||
+      cell.querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container')
+    );
+    if (dropdownHost) {
+      // also ensure no copy styling/tooltip remains
+      stripCopyFrom(cell);
+      return; // no ripple at all on these cells
+    }
     if (cell && !cell.classList.contains('tm-ripple-host')) {
       cell.classList.add('tm-ripple-host'); // position:relative + overflow:hidden
     }
@@ -6915,6 +6988,17 @@ function spawnRipple(container, evt) {
 }
 
 document.body.addEventListener('click', function (e) {
+    // Never trigger copy/ripple inside dropdown/select2 areas or their host cells
+    if (
+        e.target.closest('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container') ||
+        (e.target.closest('td') && (
+            e.target.closest('td').matches('[data-label="סטטוס"], [data-label="ליקוט"]') ||
+            e.target.closest('td').querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container')
+        ))
+    ) {
+        return;
+    }
+    
     // Ignore clicks on buttons, links, inputs, or media
     if (e.target.closest('button, a, input, textarea, svg, img')) return;
 
@@ -7095,7 +7179,7 @@ function applyCopyIconFix(root = document){
     }
 
     if (!icon){
-      icon = buildCopySvgIcon('העתק', withCopying(() => {
+      icon = buildCopyFAIcon('העתק', withCopying(() => {
         const t = (getText?.() || '').trim();
         if (!t) return;
         // ה־override של clipboard ידאג לטוסט; לא נקרא ישירות ל-tmToast כדי למנוע כפילויות
@@ -7215,12 +7299,24 @@ function applyCopyIconFix(root = document){
     }
 
     // ודא שהתא מסומן להעתקה גם בפאנלים צדדיים
-    if (!td.classList.contains('copy-enabled')) td.classList.add('copy-enabled');
-    if (!td.hasAttribute('title')) td.setAttribute('title','לחץ להעתקה');
+    // Do not enable copy on dropdown/select2 host cells (also strip existing marks)
+    const isDropdownHost = td && (
+      td.matches('[data-label="סטטוס"], [data-label="ליקוט"]') ||
+      td.querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container')
+    );
+    if (!isDropdownHost) {
+      if (!td.classList.contains('copy-enabled')) td.classList.add('copy-enabled');
+      if (!td.hasAttribute('title')) td.setAttribute('title','לחץ להעתקה');
+    } else {
+      stripCopyFrom(td);
+    }
   }
   
   // Fix shipment wrapping after applying copy icon fix
           // fixShipmentWrapping(); // Removed for performance
+  
+  // Also clean up any dropdown cells that might have copy styling
+  cleanupDropdownCells();
 }
 
 function createCopyIcon(textToCopy, { title='העתק' } = {}){
@@ -7232,7 +7328,7 @@ function createCopyIcon(textToCopy, { title='העתק' } = {}){
     hidden.style.display = 'none';
     return hidden;
   }
-  const svg = buildCopySvgIcon(title, withCopying(() => {
+  const svg = buildCopyFAIcon(title, withCopying(() => {
     const t = (textToCopy || '').trim();
     if (!t) return;
     navigator.clipboard.writeText(t).then(()=> tmToast('הועתק!', svg)).catch(console.warn);
@@ -7250,6 +7346,10 @@ function addClickableLinksToAllTables() {
         const allTables = document.querySelectorAll('table.table.table-hover[data-columns-tagged="true"], .offcanvas table.table, .modal table.table, #panel_view table.table');
 
         allTables.forEach(table => {
+            // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
+            if (table.classList && table.classList.contains('pick-order-item-table')) return;
+            if (table.closest && table.closest('#missing-table-container')) return;
+            
             // Skip store visits table - don't add copy icons for names there
             if (table.id === 'operator-store-visits-table' ||
                 table.closest('#operator-store-visits-table_wrapper')) {
@@ -8118,8 +8218,17 @@ function enableNameCellCopy(root = document){
     // סימון כל תאי "שם" כיעדי העתקה (כותרת + class) – עדין ובטוח
     const markAll = () => {
       root.querySelectorAll('td[data-label="שם"]').forEach(td => {
-        if (!td.classList.contains('copy-enabled')) td.classList.add('copy-enabled');
-        if (!td.hasAttribute('title')) td.setAttribute('title','לחץ להעתקה');
+        // Do not enable copy on dropdown/select2 host cells (also strip existing marks)
+        const isDropdownHost = td && (
+          td.matches('[data-label="סטטוס"], [data-label="ליקוט"]') ||
+          td.querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container')
+        );
+        if (!isDropdownHost) {
+          if (!td.classList.contains('copy-enabled')) td.classList.add('copy-enabled');
+          if (!td.hasAttribute('title')) td.setAttribute('title','לחץ להעתקה');
+        } else {
+          stripCopyFrom(td);
+        }
       });
     };
     markAll();
@@ -8250,7 +8359,10 @@ _headersMO.observe(document.documentElement, { childList:true, subtree:true });
 // A table is eligible if it's a picking table OR has a barcode header/data-label
 function isBarcodeTable(table){
   if (!table) return false;
-  if (table.classList.contains('pick-order-item-table')) return true;
+  // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
+  if (table.classList && table.classList.contains('pick-order-item-table')) return false;
+  if (table.closest && table.closest('#missing-table-container')) return false;
+  
   const ths = Array.from(table.querySelectorAll('thead th'));
   const headers = ths.map(th => _normalizeHeb(th.textContent));
   if (headers.includes('ברקוד') || headers.includes('מק״ט')) return true;
@@ -8290,6 +8402,13 @@ function ensureBarcodeHighlightSpan(skuCell){
 
 function ensureBarcodeCopyIconForRow(tr){
     try{
+        // ⛔ דלג בחלונית ליקוט ובטבלת החוסרים
+        const t = tr.closest && tr.closest('table');
+        if (t) {
+            if (t.classList && t.classList.contains('pick-order-item-table')) return;
+            if (t.closest && t.closest('#missing-table-container')) return;
+        }
+        
         const skuCell = findBarcodeCell(tr);
         if (!skuCell) return;
         const span = ensureBarcodeHighlightSpan(skuCell);
@@ -8314,7 +8433,7 @@ function ensureBarcodeCopyIconForRow(tr){
         }
 
         // Otherwise create a new icon after the barcode span
-        const icon = buildCopySvgIcon('העתק ברקוד', (e) => {
+        const icon = buildCopyFAIcon('העתק ברקוד', (e) => {
             const raw = (skuCell.getAttribute('data-original-sku') || span.textContent || '').trim();
             if (raw) {
                 navigator.clipboard.writeText(raw).then(() => tmToast('הועתק!', icon)).catch(console.warn);
@@ -8333,6 +8452,10 @@ function enhanceTablesBarcodeCopyIcons(root=document){
   try{
     const tables = root.querySelectorAll('table');
     tables.forEach(table => {
+      // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
+      if (table.classList && table.classList.contains('pick-order-item-table')) return;
+      if (table.closest && table.closest('#missing-table-container')) return;
+      
       if (!isBarcodeTable(table)) return;
       table.querySelectorAll('tbody tr').forEach(tr => ensureBarcodeCopyIconForRow(tr));
     });
