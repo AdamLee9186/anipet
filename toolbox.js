@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.3
+// @version      13.8.5
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -597,6 +597,36 @@ function setupBlockedScriptObserver() {
 // Initialize the observer
 setupBlockedScriptObserver();
 
+// Clean inline constraints + dead image
+(function fixPickModalThumb() {
+  function fixRow(row) {
+    const wrap = row.querySelector('div[style*="width: 50px"][style*="height: 50px"]');
+    if (wrap) {
+      wrap.classList.add('tm-thumb-wrap');
+      wrap.removeAttribute('style'); // kill the inline 50px + margins
+    }
+    const img = row.querySelector('img.tampermonkey-sku-image');
+    if (img) {
+      img.style.padding = '0';
+      img.style.maxWidth = '100%';
+      img.style.maxHeight = '100%';
+      img.style.width = '100%';
+      img.style.height = '100%';
+    }
+    row.querySelectorAll('.symbol img').forEach(el => {
+      if (!el.getAttribute('src')) el.closest('.symbol')?.remove();
+    });
+  }
+
+  function scan(root=document) {
+    root.querySelectorAll('.pick-order-item-row').forEach(fixRow);
+  }
+  scan();
+  new MutationObserver(m=>m.forEach(r=>r.addedNodes.forEach(n=>{
+    if (n.querySelectorAll) scan(n);
+  }))).observe(document.body,{childList:true,subtree:true});
+})();
+
 (function() {
     'use strict';
 
@@ -680,6 +710,89 @@ setupBlockedScriptObserver();
       }
       .copy-enabled .copy-icon {
         cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
+      }
+    `);
+    
+    // ---[ Pick Modal: force 64×64 thumb + spacing, override inline ]---
+    GM_addStyle(`
+      /* 1) Enlarge the WRAP (the 50×50 div before the <img>) */
+      .modal-dialog .pick-order-item-table td.pick-order-item-row .d-flex.align-items-center > div[style*="width: 50px"][style*="height: 50px"] {
+        width: 64px !important;
+        height: 64px !important;
+        flex: 0 0 64px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        /* breathing room from text (RTL/LTR safe) */
+        margin-inline-end: 12px !important;
+        /* kill any inline margin-right that was there */
+        margin-right: 12px !important;
+      }
+
+      /* 2) Make the IMG fill the wrapper completely (kill inline padding/max-*) */
+      .modal-dialog .pick-order-item-table td.pick-order-item-row img.tampermonkey-sku-image {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        object-fit: contain !important;   /* use 'cover' if you want a tight crop */
+        object-position: center center !important;
+        display: block !important;
+        border-radius: 4px !important;
+      }
+
+      /* 3) Let the text block wrap instead of squeezing the image */
+      .modal-dialog .pick-order-item-table td.pick-order-item-row .d-flex.flex-column.text-break {
+        min-width: 0 !important;
+        flex: 1 1 auto !important;
+      }
+
+      /* 4) Hide dead image blocks inside the row (Chromium supports :has) */
+      .modal-dialog .pick-order-item-table td.pick-order-item-row .symbol:has(img[src=""]) {
+        display: none !important;
+      }
+
+      /* 5) White tile for thumbs */
+      .modal-dialog .pick-order-item-table td.pick-order-item-row .tm-thumb-wrap,
+      .modal-dialog .pick-order-item-table td.pick-order-item-row .d-flex.align-items-center > div[style*="width: 50px"][style*="height: 50px"] {
+        background: #fff !important;
+        border-radius: 8px !important;
+        overflow: hidden !important;
+      }
+
+      .modal-dialog .pick-order-item-table td.pick-order-item-row img.tampermonkey-sku-image {
+        background: transparent !important;
+        border-radius: 6px !important;
+      }
+
+      /* Gallery thumbnail styling */
+      .gallery-thumbnails .gallery-thumbnail img {
+        background: #fff !important;
+        border-radius: 8px !important;
+        padding: 2px !important;
+        box-sizing: border-box !important;
+        transition: box-shadow 0.2s ease, transform 0.2s ease;
+      }
+
+      /* Hover effect */
+      .gallery-thumbnails .gallery-thumbnail img:hover {
+        box-shadow: 0 0 6px rgba(0,0,0,0.25);
+        transform: scale(1.03);
+        cursor: pointer;
+      }
+
+      /* Active (selected) thumbnail */
+      .gallery-thumbnails .gallery-thumbnail.active img {
+        box-shadow: 0 0 0 2px #3699ff, 0 0 8px rgba(54,153,255,0.4);
+        transform: scale(1.05);
+      }
+
+      /* Main preview image remains transparent */
+      .gallery-main img,
+      .gallery-preview img {
+        background: transparent !important;
       }
     `);
     
@@ -959,7 +1072,10 @@ setupBlockedScriptObserver();
                 try {
                     console.log(`[${SCRIPT_NAME}] Manually refreshing links and copy icons...`);
                     // Remove processed flags to force re-processing
-                    document.querySelectorAll('tr[data-links-processed]').forEach(tr => tr.removeAttribute('data-links-processed'));
+                    document.querySelectorAll('tr[data-tm-links-done], tr[data-links-processed]').forEach(tr => {
+                        tr.removeAttribute('data-tm-links-done');
+                        tr.removeAttribute('data-links-processed');
+                    });
                     // Re-run the link injection
                     addClickableLinksToAllTables();
                     alert('קישורים וסמלי העתקה רועננו בהצלחה!');
@@ -1112,6 +1228,9 @@ setupBlockedScriptObserver();
                 if (decompressed) {
                     productDataCache = decompressed;
                     if (callback) callback();
+                    // Force immediate link pass now that data is ready
+                    try { addClickableLinksToAllTables(true); } catch(e) { console.warn(e); }
+                    setTimeout(() => addClickableLinksToAllTables(true), 200);
                     return;
                 }
             }
@@ -1139,6 +1258,14 @@ setupBlockedScriptObserver();
         } finally {
             window.productDataLoading = false;
             if (callback) callback();
+            
+            // Clear done flags so rows can upgrade to clickable links after catalog loads
+            document.querySelectorAll('tr[data-tm-links-done]').forEach(tr => {
+                tr.removeAttribute('data-tm-links-done');
+                tr.removeAttribute('data-tm-last-scan');
+            });
+            setTimeout(() => addClickableLinksToAllTables(true), 0);
+            setTimeout(() => addClickableLinksToAllTables(true), 200);
             
             // Fix shipment wrapping after loading product data
             // fixShipmentWrapping(); // Removed for performance - will be called by main logic
@@ -3048,9 +3175,8 @@ function showGalleryOverlay(galleryItems, startIndex) {
                         }
 
                         if (match.link && !nameCell.querySelector('a:not(.google-image-icon)')) {
-                            // Check if there's an Anipet button in this cell or nearby
-                            const hasAnipetButton = nameCell.querySelector('.anipet-alternatives-btn') ||
-                                                   nameCell.closest('tr').querySelector('.anipet-alternatives-btn');
+                            // אל תמנע יצירת קישור בגלל כפתורים מחוץ לתא עצמו
+                            const hasAnipetButton = nameCell.querySelector('.anipet-alternatives-btn');
 
                             // Only create link if there's no Anipet button
                             if (!hasAnipetButton) {
@@ -3067,6 +3193,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
                                 // Create link
                                 const link = document.createElement('a');
+                                link.classList.add('tm-name-link'); // force link styling specifically for name links
                                 link.href = match.link;
                                 link.target = '_blank';
                                 link.rel = 'noopener noreferrer';
@@ -7105,6 +7232,18 @@ document.body.addEventListener('click', function (e) {
     table[data-columns-tagged="true"] td { cursor:text; }
     /* No visible focus border on focused tables */
     table.tm-focusable:focus { outline:none !important; }
+    
+    /* === Force visible link styling for product names === */
+    td[data-label="שם"] a.tm-name-link {
+      color: #3699ff !important;
+    }
+    td[data-label="שם"] a.tm-name-link:visited {
+      color: #3699ff !important;
+    }
+    /* Keep link color on hover even though the container changes color */
+    .tampermonkey-copy-wrap:hover a.tm-name-link {
+      color: #3699ff !important;
+    }
 
     /* === NEW: Ripple effect === */
     .tm-ripple {
@@ -7340,7 +7479,7 @@ function createCopyIcon(textToCopy, { title='העתק' } = {}){
   return svg;
 }
 
-function addClickableLinksToAllTables() {
+function addClickableLinksToAllTables(force = false) {
     try {
         // Find all tables with data-label="שם" cells (including side panels)
         const allTables = document.querySelectorAll('table.table.table-hover[data-columns-tagged="true"], .offcanvas table.table, .modal table.table, #panel_view table.table');
@@ -7356,25 +7495,31 @@ function addClickableLinksToAllTables() {
                 return;
             }
 
-            const rows = table.querySelectorAll('tbody tr:not([data-links-processed])');
+            const rows = table.querySelectorAll('tbody tr:not([data-tm-links-done])');
 
             rows.forEach(row => {
-                let didWork = false;
+                // Throttle rescans per row (extra safety)
+                const now = Date.now();
+                const last = +(row.getAttribute('data-tm-last-scan') || 0);
+                const THROTTLE_MS = 500; // was 1500
+                if (!force && (now - last < THROTTLE_MS)) return;
+                row.setAttribute('data-tm-last-scan', now);
+                
+                let didNameLink = false;
+                let didOtherWork = false;
 
                 // Find name cell robustly (tablet/responsive safe)
                 let nameCell = row.querySelector('td[data-label="שם"]') ||
                                (row.cells && row.cells[2]) ||
                                row.querySelector('td:nth-child(3)');
                 if (!nameCell) return;
-                // אל תדלג בגלל אייקון גוגל: דלג רק אם יש קישור "אמיתי" שאינו אייקון גוגל,
-                // וגם אל תדלג אם כבר יש copy-icon אבל הוא מוסתר (נרצה להחיות אותו)
-                const existingIcon = nameCell.querySelector('.copy-icon');
-                const iconHidden = existingIcon && getComputedStyle(existingIcon).display === 'none';
+                // דלג רק אם כבר קיים קישור "אמיתי" שאינו אייקון גוגל
                 const hasNonGoogleLink = nameCell.querySelector('a:not(.google-image-icon)');
-                if (hasNonGoogleLink || (existingIcon && !iconHidden)) return;
+                if (hasNonGoogleLink) return;
 
                 // Find barcode/SKU cell robustly (recognize both headers; no blind column fallback)
                 let skuCell = row.querySelector('td[data-label="מק״ט"], td[data-label="ברקוד"]') ||
+                              row.querySelector('td[data-original-sku]') ||
                               (row.querySelector('td [data-original-sku]') && row.querySelector('td [data-original-sku]').closest('td')) ||
                               (row.querySelector('td .barcode-highlight') && row.querySelector('td .barcode-highlight').closest('td'));
 
@@ -7387,9 +7532,8 @@ function addClickableLinksToAllTables() {
                   : '';
                 if (!productName) return;
 
-                // Check if there's an Anipet button in this cell or nearby
-                const hasAnipetButton = nameCell.querySelector('.anipet-alternatives-btn') ||
-                                       nameCell.closest('tr').querySelector('.anipet-alternatives-btn');
+                // אל תמנע יצירת קישור בגלל כפתורים מחוץ לתא עצמו
+                const hasAnipetButton = nameCell.querySelector('.anipet-alternatives-btn');
 
                 // Only process if there's no Anipet button
                 if (!hasAnipetButton) {
@@ -7408,6 +7552,7 @@ function addClickableLinksToAllTables() {
 
                         // Create link
                         const link = document.createElement('a');
+                        link.classList.add('tm-name-link'); // force link styling specifically for name links
                         link.href = match.link;
                         link.target = '_blank';
                         link.rel = 'noopener noreferrer';
@@ -7416,22 +7561,17 @@ function addClickableLinksToAllTables() {
                         // Append link first, then copy icon (icon will float left)
                         nameCell.appendChild(link);
                         nameCell.appendChild(copyIcon);
-                        didWork = true;
+                        didNameLink = true;
                     } else {
-                        // Even if no link, add copy icon for the product name
-                        const originalContent = nameCell.innerHTML;
-                        // Preserve Google image icon if exists
+                        // No link available → preserve existing text and just add a copy icon
                         const googleIcon = nameCell.querySelector('.google-image-icon');
+                        const existingText = productName; // already captured before any mutations
+                        // Rebuild minimally: [googleIcon?] plain text + copy icon
                         nameCell.innerHTML = '';
                         if (googleIcon) nameCell.appendChild(googleIcon);
-
-                        // Create copy icon with enhanced feedback
-                        const copyIcon = createCopyIcon(productName);
-
-                        // Append text first, then copy icon (icon will float left)
-                        nameCell.appendChild(document.createTextNode(productName));
-                        nameCell.appendChild(copyIcon);
-                        didWork = true;
+                        nameCell.appendChild(document.createTextNode(existingText));
+                        nameCell.appendChild(createCopyIcon(existingText));
+                        didOtherWork = true;
                     }
                 }
 
@@ -7464,13 +7604,13 @@ function addClickableLinksToAllTables() {
                                 const parentCell = skuCellBarcode?.closest('td') || skuCellBarcode?.parentNode;
                                 if (parentCell) parentCell.appendChild(barcodeCopyIcon);
                             }
-                            didWork = true;
+                            didOtherWork = true;
                         }
                     }
                 }
 
-                // Mark row as processed only if we actually changed something
-                if (didWork) row.setAttribute('data-links-processed', 'true');
+                // Mark row as processed only when we actually add a clickable name link
+                if (didNameLink) row.setAttribute('data-tm-links-done', 'true');
             });
         });
     } catch (error) {
@@ -7493,18 +7633,16 @@ setTimeout(() => {
   addClickableLinksToAllTables();
   const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
   if (panel) addClickableLinksToAllTables();
-}, 400);
+}, 200);
 setTimeout(() => {
   addClickableLinksToAllTables();
   const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
   if (panel) addClickableLinksToAllTables();
-}, 1200);
+}, 600);
 
 // MutationObserver hook for dynamically added rows (including side panels)
 (function observeTablesEverywhere(){
-  const runFor = (root) => {
-    addClickableLinksToAllTables();
-  };
+  const runFor = oncePerAnimationFrame(() => addClickableLinksToAllTables());
 
   const mo = new MutationObserver(muts => {
     let touched = false, touchedPanel = false;
