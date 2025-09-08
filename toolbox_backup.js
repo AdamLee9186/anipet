@@ -25,77 +25,6 @@
 /* global jQuery */
 /* global Papa */ // ENSURING PAPA IS GLOBAL
 
-// --- Passive listeners default for known scroll-blocking events ---
-(function installPassiveListenerDefault(){try{
-  const orig = EventTarget.prototype.addEventListener;
-  const PASSIVE_EVENTS = new Set(['touchstart','touchmove','wheel','mousewheel']);
-  EventTarget.prototype.addEventListener = function(type, listener, opts){
-    try{
-      if (PASSIVE_EVENTS.has(type) && (opts===undefined || opts===false)){
-        return orig.call(this, type, listener, { passive: true });
-      }
-    }catch(e){ /* no-op */ }
-    return orig.call(this, type, listener, opts);
-  };
-}catch(e){ /* ignore */ }}());
-
-// =========================
-// PREVIEW CSS (class-based)
-// =========================
-function __tmcEnsurePreviewCSS(){
-  try{
-    if (document.getElementById('tmc-preview-css')) return;
-    const css = `
-    /* container that holds the preview cards */
-    .tmc-preview-row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      white-space:normal;
-      overflow-x:visible;
-      width:100%;
-      max-width:100%;
-      min-width:0;
-      place-content:flex-start;
-    }
-    /* single card */
-    .tmc-preview-card{
-      display:inline-flex;
-      flex:0 0 max-content;
-      min-width:max-content;
-      width:auto;
-      max-width:100%;
-      align-self:flex-start;
-      border-radius:8px;
-    }
-    .tmc-preview-img{
-      width:70px;
-      height:70px;
-      object-fit:contain;
-      margin-left:10px; /* RTL-aware: intentional left to match existing layout */
-      cursor:pointer;
-      border-radius:6px;
-    }
-    .tmc-preview-title{
-      font-size:12px;
-      overflow-wrap:anywhere;
-      font-weight:bold;
-    }
-    .tmc-preview-meta{
-      font-size:10px;
-    }
-    /* quantity coloring (shared with sidepanel semantics) */
-    .tampermonkey-picked-full   { color:#0f5132; }
-    .tampermonkey-picked-partial{ color:#b26a00; }
-    .tampermonkey-picked-none   { color:#842029; }
-    `;
-    const st = document.createElement('style');
-    st.id = 'tmc-preview-css';
-    st.textContent = css;
-    document.head.appendChild(st);
-  }catch(_){}
-}
-
 // IMMEDIATE Crisp safe mode configuration - run before any other code
 (function() {
   // Set up Crisp safe mode as early as possible
@@ -109,169 +38,11 @@ function __tmcEnsurePreviewCSS(){
     if (!window.crisp) window.crisp = [];
     if (Array.isArray(window.crisp)) window.crisp.push(["safe", true]);
   }
-
-  // [PS PASSIVE FIX] install at startup (idempotent)
-  installPassiveFixForPerfectScrollbar();
-  document.addEventListener('DOMContentLoaded', installPassiveFixForPerfectScrollbar, { once: true });
-  window.addEventListener('load', installPassiveFixForPerfectScrollbar, { once: true });
-
-  // אם יש לך טריגר פנימי אחרי רינדור/עדכון DOM (למשל אחרי פתיחת/סגירת PREVIEW, או אחרי טעינה חלקית של טבלה):
-  window.addEventListener('tm:dom-updated', installPassiveFixForPerfectScrollbar);
-
-  // Clear preview-open list on real page unload/reload so refresh starts closed
-  const CLEAR_KEY = 'openPreviewTaskIds';
-  // Fires on reload/close; not on in-page SPA changes
-  window.addEventListener('pagehide', (e) => {
-    // e.persisted === true means bfcache restore; keep state in that edge-case
-    if (!e.persisted) {
-      try { sessionStorage.removeItem(CLEAR_KEY); } catch(e) {}
-    }
-  });
-  // Extra safety for older browsers
-  window.addEventListener('beforeunload', () => {
-    try { sessionStorage.removeItem(CLEAR_KEY); } catch(e) {}
-  });
-
-  // --------------------------------------------------------------------
-  // הסרה מיידית של taskId עם "סגירה ידנית" בלחיצה על כפתור/אייקון סגירה
-  // הנתיבים מכסים שמות שכיחים; אם יש כפתור אחר בדף – ייתפס דרך "fallback".
-  (function wireManualCloseListeners(){
-    const ROW_SEL = 'tr[id^="preview-for-"]';
-    // כפתורי סגירה אפשריים (הרחב/כווץ, X, אייקוני minimize, וכו')
-    const CLOSE_SEL = [
-      '.preview-close',
-      '.btn-close-preview',
-      '[data-close-preview]',
-      '.collapse-preview',
-      '.toggle-preview',
-      '.preview-minimized-icons .preview-icon-btn',  // אייקונים קטנים מתחת לקלף
-      '.fa-times', '.fa-xmark', '.fa-chevron-up', '.fa-angle-up', '.fa-chevron-left', '.fa-angle-left'
-    ].join(',');
-
-    // האזנה מואצלת: מזהה על מה לחצו, מאתר את שורת ה-preview הרלוונטית, ומסיר מהסט.
-    document.addEventListener('click', (ev) => {
-      const target = ev.target instanceof Element ? ev.target : null;
-      if (!target) return;
-
-      // נזהה אם הכפתור/האייקון תואם לאחד הסלקטורים
-      const btn = target.closest(CLOSE_SEL);
-      if (!btn) return;
-
-      const row = btn.closest(ROW_SEL);
-      if (!row) return;
-
-      const id = (row?.id || "").match(/^preview-for-(\d+)/)?.[1];
-      if (!id) return;
-
-      // קבע: המשתמש התכוון לסגור – אל תשחזר אותו יותר בסשן הזה
-      try {
-        const openPreviews = JSON.parse(sessionStorage.getItem(CLEAR_KEY) || '[]');
-        const filtered = openPreviews.filter(taskId => String(taskId) !== String(id));
-        sessionStorage.setItem(CLEAR_KEY, JSON.stringify(filtered));
-      } catch(e) {}
-
-      // Fallback: לאחר הטיפול של האפליקציה בכפתור, נבדוק אם השורה באמת נסגרה
-      // ונעדכן את הסט במקרה שהאפליקציה מחליפה DOM/סטייל באיחור.
-      setTimeout(() => {
-        const isHidden = row.style.display === 'none' || row.hidden || row.offsetParent === null;
-        if (isHidden) {
-          try {
-            const openPreviews = JSON.parse(sessionStorage.getItem(CLEAR_KEY) || '[]');
-            const filtered = openPreviews.filter(taskId => String(taskId) !== String(id));
-            sessionStorage.setItem(CLEAR_KEY, JSON.stringify(filtered));
-          } catch(e) {}
-        }
-      }, 0);
-    }, true); // useCapture=true כדי לתפוס גם אם האפליקציה עוצרת bubbling
-  })();
 })();
-
-// ==== TM: global flag to disable prototype wrapping of addEventListener ====
-const DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP = true;
 
 // DEBUG flag for production logging control
 const DEBUG = window.DEBUG_TOOLBOX || false;
 window.DEBUG_TOOLBOX = DEBUG;
-
-// Clear previews on reload detection via Performance API
-try {
-  const nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
-  
-  // Treat both hard reload AND hard navigation as "fresh entry" => start closed
-  const type = nav && nav[0] && nav[0].type;
-  if (type === 'reload' || type === 'navigate') {
-    try {
-      sessionStorage.removeItem('openPreviewTaskIds');
-      sessionStorage.setItem('sessionStartTime', String(Date.now()));
-      sessionStorage.removeItem('tmcRestoreIntent');
-      sessionStorage.removeItem('tmcStickyPreviews');
-    } catch(e) {}
-  }
-} catch(e){}
-
-// [PS PASSIVE FIX] -----------------------------------------------------------
-function installPassiveFixForPerfectScrollbar() {
-  try { applyPsCssTouchAction(); } catch (e) {}
-  try { patchPassiveForPs(); } catch (e) {}
-}
-
-function applyPsCssTouchAction() {
-  // CSS קשיח שמוודא שאין צורך ב-preventDefault עבור מגע/גלילה בתוך PS
-  const styleId = 'tm-ps-touchaction-style';
-  if (!document.getElementById(styleId)) {
-    const s = document.createElement('style');
-    s.id = styleId;
-    s.textContent = `
-      /* Make touch scrolling not require preventDefault on PS containers */
-      .ps, .ps-container { touch-action: auto !important; }
-    `;
-    document.documentElement.appendChild(s);
-  }
-  // redundancy להבטיח גם inline style כשצריך
-  document.querySelectorAll('.ps, .ps-container').forEach(el => {
-    if (!el.style.touchAction) el.style.touchAction = 'auto';
-  });
-}
-
-function patchPassiveForPs() {
-  if (typeof DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP !== 'undefined' && DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP) {
-    // keep only CSS/touch-action fixes; skip wrapping addEventListener
-    try { applyPsCssTouchAction && applyPsCssTouchAction(); } catch {}
-    return;
-  }
-  // רוץ פעם אחת בלבד
-  if (window.__tmPsPassivePatched) return;
-  window.__tmPsPassivePatched = true;
-
-  const Orig = EventTarget.prototype.addEventListener;
-  EventTarget.prototype.addEventListener = function(type, listener, options){
-    try {
-      // נרמל options לבחינת passive
-      let opts = options;
-      if (typeof opts === 'boolean') opts = { capture: opts };
-
-      // נתקן passive רק לאירועי גלילה/מגע ובאזורי perfect-scrollbar
-      if ((type === 'wheel' || type === 'touchmove') && opts && opts.passive === true) {
-        const t = this;
-        const isElement = t && t.nodeType === 1;
-        const withinPs = isElement && (
-          t.classList.contains('ps') ||
-          t.classList.contains('ps-container') ||
-          (typeof t.closest === 'function' && t.closest('.ps, .ps-container'))
-        );
-        if (withinPs) {
-          // רק פה הופכים ל-passive:false. הכלליות האחרות נשארות כמו שהיו.
-          opts = Object.assign({}, opts, { passive: false });
-        }
-      }
-      return Orig.call(this, type, listener, opts);
-    } catch (e) {
-      // fallback זהיר — אם משהו נכשל, אל תשבור addEventListener
-      return Orig.call(this, type, listener, options);
-    }
-  };
-}
-// [END PS PASSIVE FIX] -------------------------------------------------------
 
 // ===== [Noise & Perf Quieting Pack] START =====
 // 1) Hard-block common trackers to reduce net::ERR_BLOCKED_BY_CLIENT spam
@@ -327,9 +98,6 @@ function patchPassiveForPs() {
 
 // 2) Quiet "Added non-passive event listener …" for scroll/touch/wheel safely
 (function defaultPassiveForScrollEvents(){
-  if (typeof DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP !== 'undefined' && DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP) {
-    return; // TM: do not wrap EventTarget.prototype.addEventListener globally
-  }
   try {
     const passiveEvents = new Set(['touchstart','touchmove','wheel','mousewheel','scroll']);
     const _add = EventTarget.prototype.addEventListener;
@@ -543,334 +311,6 @@ function stableAnchorForBarcode(el, td) {
   }
   return el && el.nodeType === Node.TEXT_NODE ? el.parentNode : el || td;
 }
-
-// מחיל inline styles חזקים על קלפי ה-PREVIEW כדי שיתאימו לרוחב התוכן
-function __forceInlineFlexOnPreviewCards(root){
-  const SEL = 'tr[id^="preview-for-"] .d-flex.align-items-center.border.rounded.p-2.m-1.bg-white';
-  root.querySelectorAll(SEL).forEach(card => {
-    // להסרת Utilities שעלולים למתוח
-    card.classList.remove('w-100','flex-fill');
-    // הכרטיס: אל תכווץ; תרד שורה כשאין מקום
-    card.style.setProperty('display','inline-flex','important');
-    card.style.setProperty('flex','0 0 auto','important');           // אל תכווץ; תרד שורה
-    card.style.setProperty('flex-basis','max-content','important');   // גודל תוכן אמיתי
-    card.style.setProperty('min-width','max-content','important');    // שלא יקרוס לרוחב קטן מדיי
-    card.style.setProperty('width','auto','important');               // בלי fit-content
-    card.style.setProperty('max-width','100%','important');           // עדיין לא לחצות קונטיינר
-    card.style.setProperty('align-self','flex-start','important');
-    // פינות פחות מעוגלות
-    card.style.setProperty('border-radius','8px','important');
-    // שברי מילים קיצוניות בשם המוצר שלא יגררו רוחב
-    const title = card.querySelector('.font-weight-bold');
-    if (title) {
-      title.style.setProperty('overflow-wrap','anywhere','important');
-      title.style.setProperty('font-weight','bold','important');
-      title.style.setProperty('font-size','12px','important');
-    }
-    
-    // הקטנת כל הטקסטים בכרטיסיה
-    const textMuted = card.querySelector('.text-muted');
-    if (textMuted) {
-      textMuted.style.setProperty('font-size','10px','important');
-    }
-    
-    // הגדלת התמונות
-    const img = card.querySelector('img');
-    if (img) {
-      img.style.setProperty('width','70px','important');
-      img.style.setProperty('height','70px','important');
-      img.style.setProperty('border-radius','6px','important');
-      img.style.setProperty('object-fit','contain','important');
-    }
-  });
-
-  // מכולת הכרטיסים: ה-div הראשון בתוך ה-td (זה עם display:flex; flex-wrap:wrap; gap:8px)
-  const row = root.querySelector('tr[id^="preview-for-"] > td > div[style*="display: flex"]');
-  if (row) {
-    row.style.setProperty('display','flex','important');
-    row.style.setProperty('flex-wrap','wrap','important');
-    row.style.setProperty('gap','8px','important');
-    row.style.setProperty('white-space','normal','important');
-    row.style.setProperty('overflow-x','visible','important');
-    row.style.setProperty('width','100%','important');     // ← מכריח התאמה לרוחב התא
-    row.style.setProperty('max-width','100%','important'); // ← לא לחרוג מהרוחב
-    row.style.setProperty('min-width','0','important');    // ← מאפשר כיווץ אמיתי בתוך td
-    // לוודא שגם התא עצמו לא חותך:
-    const td = row.closest('td');
-    if (td) {
-      td.style.setProperty('overflow','visible','important');
-      td.style.setProperty('min-width','0','important');
-    }
-    row.style.setProperty('justify-content','flex-start','important');
-    row.style.setProperty('align-content','flex-start','important');
-    // מסמן שנעבוד עליו במנגנון ה"שבירה לפני חיתוך"
-    row.dataset.tmcWrapRow = '1';
-  }
-}
-
-// === PREVIEW viewport clamping so cards wrap by the visible container ===
-function __tmcFindScrollViewport(el){
-  // מחפש אב עם overflow-x != visible (הגליל האופקי)
-  let n = el && el.parentElement;
-  while (n){
-    const cs = getComputedStyle(n);
-    if (/(auto|scroll|hidden)/.test(cs.overflowX)) return n;
-    n = n.parentElement;
-  }
-  // גיבוי: מזהה ה־wrapper של הדאטאטייבלס/טבלה הרספונסיבית
-  return document.getElementById('operator-store-visits-table_wrapper') ||
-         document.querySelector('.dataTables_wrapper, .table-responsive, .simple-scroll') ||
-         document.documentElement;
-}
-
-function __tmcClampPreviewRowWidth(row){
-  const viewport = __tmcFindScrollViewport(row);
-  const vw = (viewport === document.documentElement) ? window.innerWidth : viewport.clientWidth;
-  let pl = 0, pr = 0;
-  try {
-    const cs = getComputedStyle(viewport);
-    pl = parseFloat(cs.paddingLeft)  || 0;
-    pr = parseFloat(cs.paddingRight) || 0;
-  } catch(_){}
-  const visible = Math.max(320, Math.floor(vw - pl - pr));
-  row.style.setProperty('box-sizing','border-box','important');
-  row.style.setProperty('width','100%','important');
-  row.style.setProperty('max-width', visible + 'px','important'); // ← פה הקסם: השבירה לפי viewport
-
-  // עדכון אוטומטי בשינויי גודל
-  if (!row.__tmcClampRO){
-    const ro = new ResizeObserver(() => __tmcClampPreviewRowWidth(row));
-    ro.observe(viewport);
-    window.addEventListener('resize', () => __tmcClampPreviewRowWidth(row), { passive:true });
-    row.__tmcClampRO = ro;
-  }
-}
-
-function __tmcClampAllPreviewRows(ctx=document){
-  ctx.querySelectorAll('div[data-tmc-wrap-row="1"]').forEach(row => __tmcClampPreviewRowWidth(row));
-}
-
-// Re-run viewport clamping when viewport or content changes
-window.addEventListener('resize', debounce(() => __tmcClampAllPreviewRows(document), 150), { passive: true });
-window.addEventListener('tm:dom-updated', () => __tmcClampAllPreviewRows(document), { passive: true });
-
-/* ================== PREVIEW: Hard Replace (matches live DOM) ==================
- * Targets rows like:
- * <tr id="preview-for-XXXXX"> ... <div class="d-flex align-items-center border rounded p-2 m-1 bg-white"> ... </div>
- * Inside: <img> + <div><div class="font-weight-bold copy-enabled">NAME</div><div class="text-muted">META</div></div>
- * Replaces the card content with: Title + 3 lines (SKU / Price / Qty), each on its own line.
- * ============================================================================ */
-
-
-// --- Quantity color helper reused by PREVIEW and table cells ---
-function __tmcColorQtySpan(qtyText){
-  try{
-    if (!qtyText) return qtyText;
-    const m = String(qtyText).trim().match(/^(\d+)\s*\/\s*(\d+)$/);
-    if (!m) return qtyText;
-    const picked = parseInt(m[1],10), total = parseInt(m[2],10);
-    if (picked === 0 && total === 1) return qtyText; // skip trivial 0/1
-    if (picked > total || total > 1000) return qtyText; // sanity
-    const cls = picked === total ? 'tampermonkey-picked-full'
-              : picked === 0 && total > 1 ? 'tampermonkey-picked-none'
-              : 'tampermonkey-picked-partial';
-    return `<span class="${cls}">${picked} / ${total}</span>`;
-  }catch(e){ return qtyText; }
-}
-
-// =========================================
-// Schedulers / Budget helpers
-// =========================================
-const __tmcReqIdle = window.requestIdleCallback || function(cb){return setTimeout(()=>cb({timeRemaining:()=>0,didTimeout:true}),50);};
-const __tmcCancelIdle = window.cancelIdleCallback || clearTimeout;
-
-function __tmcRunInIdle(fn){ try{ return __tmcReqIdle(fn); }catch(_){ return setTimeout(fn,0); } }
-
-// יחלק עבודה לפריימים כדי לא לעבור ~16ms
-function __tmcFrameSlicer(iterateFn, {maxMs=12} = {}){
-  let stopped = false;
-  function step(){
-    const start = performance.now();
-    while(!stopped){
-      if (performance.now() - start > maxMs) break;
-      const more = iterateFn();
-      if (!more){ stopped = true; break; }
-    }
-    if (!stopped) requestAnimationFrame(step);
-  }
-  requestAnimationFrame(step);
-  return ()=>{ stopped = true; };
-}
-
-// ===============================
-// rAF batching + inline cleanup
-// ===============================
-function __tmcRemoveInlineProps(el, props){
-  try{
-    if (!el || !el.getAttribute) return;
-    const styleAttr = el.getAttribute('style');
-    if (!styleAttr) return;
-    const style = el.style;
-    props.forEach(p=>{ try{ style.removeProperty(p); }catch(_){ } });
-    // if style is now empty, drop the attribute
-    if (!style.cssText || !style.cssText.trim()) el.removeAttribute('style');
-  }catch(_){}
-}
-
-function __tmcNormalizePreviewStyles(root){
-  try{
-    __tmcEnsurePreviewCSS();
-    // 1) container
-    const row = root.querySelector('div[data-tmc-wrap-row], div[data-tmc-wrap-row="1"]') ||
-                root.querySelector('div'); // fallback: first div in the cell
-    if (row){
-      row.classList.add('tmc-preview-row');
-      __tmcRemoveInlineProps(row, [
-        'display','flex','flex-wrap','gap','white-space','overflow-x',
-        'width','max-width','min-width','place-content'
-      ]);
-    }
-    // 2) cards — process in smaller chunks to avoid long tasks
-    const cards = row ? Array.from(row.children) : [];
-    const perFrame = 10; // היה 25 — הקטנו כדי לקצר rAF handlers
-    let i = 0;
-    function _batch(){
-      const end = Math.min(i + perFrame, cards.length);
-      for (; i < end; i++){
-        const card = cards[i];
-        if (!(card && card.nodeType === 1)) continue;
-        card.classList.add('tmc-preview-card');
-        __tmcRemoveInlineProps(card, [
-          'display','flex','flex-basis','flex-grow','flex-shrink',
-          'min-width','width','max-width','align-self','border-radius'
-        ]);
-        // img
-        const img = card.querySelector('img');
-        if (img){
-          img.classList.add('tmc-preview-img');
-          __tmcRemoveInlineProps(img, ['width','height','object-fit','margin-left','cursor','border-radius']);
-        }
-        // title
-        const title = card.querySelector('.font-weight-bold.copy-enabled');
-        if (title){
-          title.classList.add('tmc-preview-title');
-          __tmcRemoveInlineProps(title, ['font-size','overflow-wrap','font-weight']);
-        }
-        // meta block (gray text)
-        const meta = card.querySelector('.text-muted');
-        if (meta){
-          meta.classList.add('tmc-preview-meta');
-          __tmcRemoveInlineProps(meta, ['font-size']);
-          try{ if (typeof highlightPickQuantities === 'function') highlightPickQuantities(meta); }catch(_){}
-        }
-      }
-      return i < cards.length;
-    }
-    // פריימסלייסר: מריץ _batch במספר פריימים בלי לחרוג מתקציב זמן
-    __tmcFrameSlicer(()=> _batch() ? true : false, {maxMs:12});
-  }catch(_){}
-}
-
-// --- Deep DOM deduplication to avoid duplicate PREVIEW rows ---
-function __tmcDeepDeduplicateDom(){
-  try{
-    // דחיפת דה-דאופ כבד ל-idle כדי לא לחסום קליקים/גלילה
-    __tmcRunInIdle(()=>{
-      const rows = document.querySelectorAll('tr[id^="preview-for-"]');
-      let lastById = new Map();
-      rows.forEach(tr => {
-        const key = tr.id;
-        const last = lastById.get(key);
-        if (last && last.nextElementSibling === tr && last.outerHTML === tr.outerHTML){
-          tr.remove();
-        } else {
-          lastById.set(key, tr);
-        }
-      });
-    });
-  }catch(e){ /* ignore */ }
-}
-
-// --- Split current preview META line into 3 lines (SKU / Price / Qty) ---
-function splitPreviewMetaLines(rootEl){
-  if (!rootEl) return;
-  // תומך במבנה כפי שנשלח בדוגמה: div.d-flex.align-items-center.border.rounded.p-2.m-1.bg-white
-  const cards = rootEl.querySelectorAll('.d-flex.align-items-center.border.rounded.p-2.m-1.bg-white');
-  cards.forEach(card => {
-    const meta = card.querySelector(':scope .text-muted');
-    if (!meta || meta.__tmSplitDone) return;
-    const raw = (meta.textContent || '').replace(/\s+/g,' ').trim();
-
-    // חילוץ ערכים מתוך "מק\"ט: … | כמות: … | מחיר: ₪… (סה\"כ: …)"
-    const sku   = (raw.match(/מק"?ט[:\s]*([0-9]{7,14})/)||[])[1] || '';
-    const qty   = (raw.match(/כמות[:\s]*([^|)]+)/)||[])[1]?.trim() || '';
-    const price = (raw.match(/מחיר[:\s]*₪?\s*([\d.,]+)/)||[])[1] || '';
-    const total = (raw.match(/סה"?כ[:\s]*₪?\s*([\d.,]+)/)||[])[1] || '';
-
-    // בונים HTML חדש אך שומרים על העיצוב הקיים (אותה class ו-inline-style של meta)
-    const keepStyle = meta.getAttribute('style') || '';
-    const keepClass = meta.getAttribute('class') || 'text-muted';
-    const lines = [
-      sku   ? `<div><b>מק״ט:</b> ${sku}</div>` : '',
-      price ? `<div><b>מחיר:</b> ₪${price}</div>` : '',
-      qty   ? `<div><b>כמות:</b> ${__tmcColorQtySpan(qty)}</div>` : '',
-      // אם תרצה גם את הסה"כ, בטל הערה בשורה הבאה:
-      // total ? `<div><span>(סה״כ: ₪${total})</span></div>` : ''
-    ].filter(Boolean).join('');
-
-    meta.setAttribute('class', keepClass);
-    if (keepStyle) meta.setAttribute('style', keepStyle);
-    meta.innerHTML = lines;
-    // keep the same coloring semantics the sidepanel uses
-    try { if (typeof highlightPickQuantities === 'function') highlightPickQuantities(meta); }catch(_){ }
-    meta.__tmSplitDone = true;
-  });
-  try { __tmcDeepDeduplicateDom(); } catch(_) {}
-}
-
-// Observe any future preview rows and split their meta lines as well
-(function wireSplitPreviewObserver(){
-  if (window.__tmcPreviewMO) return;
-  const sel = 'tr[id^="preview-for-"] td[colspan]';
-  let pending = new Set();
-  let rafId = null;
-  function flush(){
-    // מעבדים את ה-pending בקבוצות קטנות בכל frame
-    const items = Array.from(pending);
-    pending.clear();
-    let idx = 0;
-    const CHUNK = 6; // קטן כדי להקטין סיכוי ל־rAF "long"
-    __tmcFrameSlicer(()=>{
-      const end = Math.min(idx + CHUNK, items.length);
-      for (; idx < end; idx++){
-        const targetEl = items[idx];
-        try { splitPreviewMetaLines(targetEl); } catch(_){}
-        try { __tmcNormalizePreviewStyles(targetEl); } catch(_){}
-      }
-      if (idx >= items.length){
-        // דידופ נריץ ב-idle
-        try { __tmcDeepDeduplicateDom(); } catch(_) {}
-        rafId = null;
-        return false;
-      }
-      return true;
-    }, {maxMs: 10});
-  }
-  const mo = new MutationObserver(muts=>{
-    for(const m of muts){
-      if (m.type === 'childList'){
-        m.addedNodes?.forEach(n=>{
-          if (n.nodeType === 1){
-            const el = n.matches?.(sel) ? n : n.querySelector?.(sel);
-            if (el) { pending.add(el); if (rafId==null) flush(); }
-          }
-        });
-      }
-    }
-  });
-  window.__tmcPreviewMO = mo;
-  mo.observe(document,{subtree:true,childList:true});
-})();
 
 // Configure Crisp to mark our script as safe - enhanced version
 function configureCrispSafeMode() {
@@ -1375,271 +815,6 @@ setupBlockedScriptObserver();
     // Example: 'https://hooks.zapier.com/hooks/catch/XXXX/YYYY'
     const IMAGE_REPORT_WEBHOOK_URL = '';
     const IMAGE_REPORT_WEBHOOK_TOKEN = '';
-
-    // TM: Utility for batching DOM read/write operations to prevent forced reflow
-    function domBatch(readOperations, writeOperations) {
-      // Execute all read operations first
-      const readResults = readOperations.map(op => typeof op === 'function' ? op() : op);
-      
-      // Then execute all write operations
-      writeOperations.forEach(op => {
-        if (typeof op === 'function') op();
-      });
-      
-      return readResults;
-    }
-
-    // ===== TM Preview Performance Boost (panel_view + cache + prefetch) =====
-    const TM_PREVIEW = (() => {
-      const CACHE_TTL_MS = 5 * 60 * 1000; // 5 דקות
-      const memCache = new Map(); // fallback בזיכרון
-
-      // preconnect ל-CDN תמונות נפוצות (רץ פעם אחת)
-      (function preconnectOnce() {
-        try {
-          if (document.documentElement.dataset.tmPreconnect) return;
-          document.documentElement.dataset.tmPreconnect = '1';
-          const cdns = [
-            'https://cdn.modulus.co.il',
-          ];
-          for (const href of cdns) {
-            const link = document.createElement('link');
-            link.rel = 'preconnect';
-            link.href = href;
-            document.head.appendChild(link);
-          }
-        } catch {}
-      })();
-
-      function now() { return Date.now(); }
-
-      function ssGet(key) {
-        try { return JSON.parse(sessionStorage.getItem(key) || 'null'); } catch { return null; }
-      }
-      function ssSet(key, val) {
-        try { sessionStorage.setItem(key, JSON.stringify(val)); } catch {}
-      }
-
-      function cacheKey(taskId) { return `tm_preview_panel_view_${taskId}`; }
-
-      function setCached(taskId, html) {
-        const rec = { html, t: now() };
-        ssSet(cacheKey(taskId), rec);
-        memCache.set(taskId, rec);
-        return rec;
-      }
-
-      function getCached(taskId) {
-        const k = cacheKey(taskId);
-        let rec = ssGet(k);
-        if (!rec) rec = memCache.get(taskId) || null;
-        if (!rec) return null;
-        if ((now() - rec.t) > CACHE_TTL_MS) return null;
-        return rec;
-      }
-
-      async function fetchPanelView(taskId, { force = false } = {}) {
-        const cached = !force && getCached(taskId);
-        if (cached) return cached.html;
-
-        const res = await fetch(`/tasks/${taskId}/panel_view`, {
-          method: 'POST',
-          headers: { 'accept': '*/*', 'content-type': 'application/json' },
-          body: '{}' // שרת מתעלם/מכבד — שמרנו על POST מינימלי
-        });
-        if (!res.ok) throw new Error(`panel_view ${taskId} ${res.status}`);
-        const html = await res.text();
-        setCached(taskId, html);
-        return html;
-      }
-
-      // אופטימיזציית תמונות: lazy/async + רוחב שפוי; אם קיימת אצלך getOptimizedImageUrl — נשתמש בה.
-      function optimizeImages(container) {
-        const hasHelper = typeof window.getOptimizedImageUrl === 'function';
-        const imgs = container.querySelectorAll('img');
-        
-        // TM: Batch read operations first
-        const readOps = [
-          () => container.clientWidth || 420
-        ];
-        const [containerWidth] = domBatch(readOps, []);
-        
-        // TM: Batch write operations
-        const writeOps = [];
-        imgs.forEach((img, i) => {
-          writeOps.push(() => {
-            img.loading = 'lazy';
-            img.decoding = 'async';
-            // לתמונת המפתח בקונטיינר – תעדוף טעינה גבוה
-            if (i === 0 && !img.dataset.fetchPrioritySet) {
-              try {
-                img.fetchPriority = 'high';
-                img.dataset.fetchPrioritySet = '1';
-              } catch(_) {}
-            }
-            // רוחב יעד שיחסי לקונטיינר (עם קוונטיזציה כדי למקסם cache-hit)
-            const bucketSet = [320, 480, 640, 960];
-            let targetW = Math.min(960, Math.max(320, containerWidth));
-            for (let i = 0; i < bucketSet.length; i++) {
-              if (targetW <= bucketSet[i]) { targetW = bucketSet[i]; break; }
-              if (i === bucketSet.length - 1) targetW = bucketSet[i];
-            }
-            if (hasHelper) {
-              try {
-                const stable = window.getOptimizedImageUrl(img.dataset.srcStable || img.src, targetW);
-                img.src = stable;
-                img.dataset.srcStable = stable;
-              } catch {}
-            } else {
-              try {
-                const url = new URL(img.src, location.origin);
-                if (!url.searchParams.has('w')) url.searchParams.set('w', String(targetW));
-                if (!url.searchParams.has('fit')) url.searchParams.set('fit', 'crop');
-                const stable = url.toString();
-                img.src = stable;
-                img.dataset.srcStable = stable;
-              } catch {}
-            }
-          });
-        });
-        
-        domBatch([], writeOps);
-      }
-
-      // החדרת HTML יעילה ללא ג'אנק
-      async function renderPreviewHTML(targetEl, html) {
-        const frag = document.createDocumentFragment();
-        const wrap = document.createElement('div');
-        wrap.innerHTML = html;
-        frag.appendChild(wrap);
-
-        optimizeImages(wrap);
-
-        // TM: Insert HTML immediately, then decode images in background
-        targetEl.replaceChildren(); // מנקה את התא/הקונטיינר של ה-preview
-        targetEl.appendChild(frag);
-
-        // החלה מיידית של inline-flex !important על קלפי ה-PREVIEW שזה עתה מוזרקו
-        try { __forceInlineFlexOnPreviewCards(targetEl); } catch(_) {}
-
-        // Decode images in background using requestIdleCallback or setTimeout
-        const imgs = Array.from(wrap.querySelectorAll('img'));
-        if (imgs.length > 0) {
-          const decodeImages = () => {
-            Promise.allSettled(imgs.map(img => img.decode ? img.decode().catch(() => {}) : Promise.resolve()));
-          };
-          
-          if (window.requestIdleCallback) {
-            requestIdleCallback(decodeImages, { timeout: 1000 });
-          } else {
-            setTimeout(decodeImages, 0);
-          }
-        }
-
-        // >>> NEW: Split current single-line meta into 3 lines (SKU/Price/Qty)
-        try { splitPreviewMetaLines(targetEl); } catch(_) {}
-        // אין צורך יותר ב-fitPreviewCardsToContent: ה-inline כבר קובע
-
-      }
-
-      // Prefetch "אמיתי" — על hover/viewport
-      function prefetch(taskId) {
-        if (getCached(taskId)) return; // יש קאש תקף
-        fetchPanelView(taskId).catch(() => {});
-      }
-
-      // חיבור אוטומטי ל-mouseenter על כפתורי preview
-      function wireHoverPrefetch(root = document) {
-        root.addEventListener('mouseenter', ev => {
-          // TM: robust target for composed events & non-Element targets
-          const raw = ev.composedPath ? ev.composedPath()[0] : ev.target;
-          const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
-          const btn = targetEl ? targetEl.closest('.preview-button, .preview-cell button, .preview-cell .btn') : null;
-          if (!btn) return;
-          const row = btn.closest('tr[data-task-id]');
-          const taskId = row?.getAttribute('data-task-id');
-          if (!taskId) return;
-          prefetch(taskId);
-        }, { capture: true, passive: true });
-      }
-
-      // Prefetch לפי גלילה (IntersectionObserver)
-      function wireViewportPrefetch(root = document) {
-        if (!('IntersectionObserver' in window)) return;
-        const io = new IntersectionObserver(entries => {
-          for (const e of entries) {
-            if (!e.isIntersecting) continue;
-            // TM: robust target for composed events & non-Element targets
-            const raw = e.target;
-            const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
-            const row = targetEl ? targetEl.closest('tr[data-task-id]') : null;
-            const taskId = row?.getAttribute('data-task-id');
-            if (taskId) prefetch(taskId);
-          }
-        }, { rootMargin: '200px 0px' });
-
-        root.querySelectorAll('tr[data-task-id]').forEach(tr => io.observe(tr));
-      }
-
-      return {
-        fetchPanelView,
-        renderPreviewHTML,
-        prefetch,
-        wireHoverPrefetch,
-        wireViewportPrefetch,
-        getCached,
-      };
-    })();
-
-    // פונקציה חדשה לפתיחת preview עם אופטימיזציה
-    async function openPreviewForRow(row) {
-      const taskId = row?.getAttribute('data-task-id');
-      if (!taskId) return;
-
-      const container = row.querySelector('.preview-cell, .preview-target, .preview-container') || row;
-      // אם יש קאש — מציגים מיידית, ובמקביל ננסה לרענן
-      const cached = TM_PREVIEW.getCached(taskId);
-      if (cached) {
-        // מציג מיידית
-        await TM_PREVIEW.renderPreviewHTML(container, cached.html);
-        // מרענן בשקט (אם השתנה — המשתמש יקבל עדכון חלק)
-        TM_PREVIEW.fetchPanelView(taskId, { force: true })
-          .then(html => TM_PREVIEW.renderPreviewHTML(container, html))
-          .catch(() => {});
-        return;
-      }
-
-      // אין קאש — מציגים ספינר כרגיל בזמן fetch אמיתי
-      showPreviewSpinner(container);
-      try {
-        const html = await TM_PREVIEW.fetchPanelView(taskId);
-        await TM_PREVIEW.renderPreviewHTML(container, html);
-      } catch (e) {
-        showPreviewError(container, e);
-      } finally {
-        hidePreviewSpinner(container);
-      }
-    }
-
-    // פונקציות עזר לספינר
-    function showPreviewSpinner(container) {
-      // TM: Use setTimeout instead of requestAnimationFrame to avoid performance violations
-      setTimeout(() => {
-        container.classList.add('tm-preview-loading');
-        // ... הזרקת אייקון/HTML קל, בלי למדוד גדלים
-      }, 0);
-    }
-
-    function hidePreviewSpinner(container) {
-      container.classList.remove('tm-preview-loading');
-    }
-
-    function showPreviewError(container, error) {
-      console.error("Failed to fetch task preview:", error);
-      // במקרה של שגיאה, הצג הודעת שגיאה
-      container.innerHTML = '<div class="text-center text-danger p-2">שגיאה בטעינת התצוגה המקדימה</div>';
-    }
-
     // Easiest path: send directly to this email via FormSubmit without opening any mail app
     // The first submission will send you a confirmation email from FormSubmit — click Confirm once, ואז כל הדיווחים יישלחו אוטומטית
     const IMAGE_REPORT_DIRECT_EMAIL = 'adam.lee.9186@gmail.com';
@@ -1670,14 +845,20 @@ setupBlockedScriptObserver();
     window.barcodeDataLoading = false;
 
     // ---< Utility Functions >---
-    var debounce = window.debounce || function (func, wait) {
+    function debounce(func, wait) {
         let timeout;
-        return function(...args) {
-            const context = this;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func.apply(this, args);
+                
+                // Fix shipment wrapping after debounced function execution
+                // fixShipmentWrapping(); // Removed for performance - will be called by main logic
+            };
             clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(context, args), wait);
+            timeout = setTimeout(later, wait);
         };
-    };
+    }
 
     function safeExecute(func, fallback = null) {
         try {
@@ -1692,58 +873,6 @@ setupBlockedScriptObserver();
             return fallback;
         }
     }
-
-    // =========================================
-    // Tiny unit tests for quantity color logic
-    // Run manually from console: __tmcRunQtyColorTests()
-    // =========================================
-    function __tmcRunQtyColorTests(){
-      try{
-        const cases = [
-          ['0 / 1',    null],                    // neutral (kept plain)
-          ['0 / 2',    'tampermonkey-picked-none'],
-          ['1 / 2',    'tampermonkey-picked-partial'],
-          ['2 / 2',    'tampermonkey-picked-full'],
-          ['10 / 5',   null],                    // sanity guard -> unchanged
-          ['2 / 1001', null]                     // sanity guard -> unchanged
-        ];
-        cases.forEach(([inp, expected])=>{
-          const out = __tmcColorQtySpan(inp);
-          const got = out.includes('class="') ? out.match(/class="([^"]+)"/)?.[1] : null;
-          console.assert(got === expected, `qty color mismatch for "${inp}" → got: ${got}, expected: ${expected}`);
-        });
-        console.log('[Toolbox] __tmcRunQtyColorTests passed (asserts that did not throw are OK).');
-      }catch(e){
-        console.warn('[Toolbox] __tmcRunQtyColorTests failed', e);
-      }
-    }
-
-    // =========================================
-    // Click Optimizer (מצמצם "click handler took XXXms")
-    // =========================================
-    function __tmcInstallClickOptimizer(){
-      try{
-        if (window.__tmcClickOptInstalled) return;
-        window.__tmcClickOptInstalled = true;
-        const lastTs = new WeakMap();
-        // חוסם קליקים כפולים/מהירים על אותו כפתור (ב-capture) — מפחית הרצות כבדות חוזרות
-        document.addEventListener('click', (e)=>{
-          const btn = e.target && (e.target.closest('button, [role="button"], .btn, a.btn, .preview-toggle-all-button, td.preview-cell button'));
-          if (!btn) return;
-          const now = performance.now();
-          const prev = lastTs.get(btn) || 0;
-          if (now - prev < 300){
-            // בלימת double-click/ mash — לרוב גורם לאותה פעולה לרוץ פעמיים
-            e.stopImmediatePropagation();
-            e.preventDefault();
-            return;
-          }
-          lastTs.set(btn, now);
-          setTimeout(()=>{ if (lastTs.get(btn) === now) lastTs.delete(btn); }, 350);
-        }, true);
-      }catch(_){}
-    }
-    __tmcInstallClickOptimizer();
 
     function getElementPath(element) {
         try {
@@ -1789,7 +918,7 @@ setupBlockedScriptObserver();
 
         const handler = (e) => { e.preventDefault(); e.stopPropagation(); onClick?.(e); };
         wrap.addEventListener('click', handler);
-        wrap.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') handler(e); }, { passive: true });
+        wrap.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') handler(e); });
         
         // Fix shipment wrapping after building copy SVG icon
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
@@ -1811,7 +940,7 @@ setupBlockedScriptObserver();
         span.appendChild(i);
         const handler = (e) => { e.preventDefault(); e.stopPropagation(); onClick?.(e); };
         span.addEventListener('click', handler);
-        span.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ handler(e); }}, { passive: true });
+        span.addEventListener('keydown', (e)=>{ if(e.key==='Enter' || e.key===' '){ handler(e); }});
         return span;
     }
 
@@ -2459,12 +1588,6 @@ setupBlockedScriptObserver();
             // If no target width specified, use screen width
             if (!targetWidth) {
                 targetWidth = Math.min(window.innerWidth, 1200); // Max 1200px for performance
-            }
-            // Quantize to a small set of widths to maximize browser cache reuse
-            const __BUCKETS = [320, 480, 640, 960, 1200];
-            for (let i = 0; i < __BUCKETS.length; i++) {
-              if (targetWidth <= __BUCKETS[i]) { targetWidth = __BUCKETS[i]; break; }
-              if (i === __BUCKETS.length - 1) targetWidth = __BUCKETS[i];
             }
 
             // For different image providers, add size parameters
@@ -3361,9 +2484,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
     imageWrapper.ondblclick = resetZoom;
 
     // Drag/pan event listeners - use imageWrapper for better interaction
-    imageWrapper.addEventListener('mousedown', startDrag, { passive: false });
-    document.addEventListener('mousemove', doDrag, { passive: false });
-    document.addEventListener('mouseup', endDrag, { passive: true });
+    imageWrapper.addEventListener('mousedown', startDrag);
+    document.addEventListener('mousemove', doDrag);
+    document.addEventListener('mouseup', endDrag);
 
     // Double tap to reset zoom on touch devices
     let lastTap = 0;
@@ -3597,27 +2720,23 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 // Find the most specific container for the current order
                 let searchScope = null;
 
-                // TM: robust target for composed events & non-Element targets
-                const raw = e.composedPath ? e.composedPath()[0] : e.target;
-                const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
-                
                 // First, try to find if we're in a modal
-                const modal = targetEl ? targetEl.closest('.modal') : null;
+                const modal = e.target.closest('.modal');
                 if (modal) {
                     searchScope = modal;
                 } else {
                     // If not in a modal, try to find the specific table or container
-                    const table = targetEl ? targetEl.closest('table') : null;
+                    const table = e.target.closest('table');
                     if (table) {
                         searchScope = table;
                     } else {
                         // Fallback to the closest container with order data
-                        const orderContainer = targetEl ? targetEl.closest('.table-responsive, .modal-body, .nested-fields') : null;
+                        const orderContainer = e.target.closest('.table-responsive, .modal-body, .nested-fields');
                         if (orderContainer) {
                             searchScope = orderContainer;
                         } else {
                             // Last resort - use the row that contains the image
-                            const row = targetEl ? targetEl.closest('tr, .order-item-row, .pick-order-item-row') : null;
+                            const row = e.target.closest('tr, .order-item-row, .pick-order-item-row');
                             if (row) {
                                 searchScope = row.closest('table, .nested-fields') || row;
                             } else {
@@ -3813,14 +2932,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
         imgEl.style.cursor = 'pointer';
         imgEl.onclick = (e) => {
             e.stopPropagation();
-            // TM: robust target for composed events & non-Element targets
-            const raw = e.composedPath ? e.composedPath()[0] : e.target;
-            const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
             const searchScope =
-                (targetEl ? targetEl.closest('.modal') : null) ||
-                (targetEl ? targetEl.closest('table') : null) ||
-                (targetEl ? targetEl.closest('.table-responsive, .modal-body, .nested-fields') : null) ||
-                (targetEl ? targetEl.closest('tr, .order-item-row, .pick-order-item-row')?.closest('table, .nested-fields') : null) ||
+                e.target.closest('.modal') ||
+                e.target.closest('table') ||
+                e.target.closest('.table-responsive, .modal-body, .nested-fields') ||
+                e.target.closest('tr, .order-item-row, .pick-order-item-row')?.closest('table, .nested-fields') ||
                 fallbackScopeEl ||
                 document.body;
 
@@ -4547,8 +3663,8 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                 e.stopPropagation();
 
                 // קובע אם צריך לפתוח או לסגור לפי המצב הנוכחי
-                const isAnyOpen = mainTableBody.querySelector('.preview-cell button i.fa-chevron-left');
-                const targetIconClass = isAnyOpen ? 'fa-chevron-left' : 'fa-chevron-down';
+                const isAnyOpen = mainTableBody.querySelector('.preview-cell button i.fa-chevron-up');
+                const targetIconClass = isAnyOpen ? 'fa-chevron-up' : 'fa-chevron-down';
 
                 // מוצא את כל האייקונים הפוטנציאליים
                 const iconsToConsider = mainTableBody.querySelectorAll(`.preview-cell button i.${targetIconClass}`);
@@ -4644,13 +3760,12 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
 
                 // נקה את כל ה-classes הקודמים וקבע למצב טעינה
-                icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-chevron-left', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
+                icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
                 icon.classList.add('fa-refresh', 'fa-spin');
                 currentButton.disabled = true;
                 try {
-                    // השתמש ב-TM_PREVIEW לקאש וטעינה מהירה
-                    const html = await TM_PREVIEW.fetchPanelView(taskId);
-                    const doc = new DOMParser().parseFromString(html, 'text/html'); const allItems = [];
+                    const response = await fetch(`/tasks/${taskId}`); if (!response.ok) throw new Error(`Fetch error: ${response.status}`);
+                    const doc = new DOMParser().parseFromString(await response.text(), 'text/html'); const allItems = [];
 
                     // Extract notes from the fetched task page
                     let notesText = '';
@@ -4717,7 +3832,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
 
 
-                    // הכפתור "פתח הזמנה" הועבר למיקום עם הכפתורים האחרים
+                    newCell.innerHTML = `<a href="/tasks/${taskId}" target="_blank" class="btn btn-primary btn-sm mb-3"><i class="fa-light fa-arrow-up-right-from-square" style="margin-left: 5px;"></i> פתח הזמנה</a>`;
 
                     // Create expandable sections (initially hidden)
                     const calculatorSection = document.createElement('div');
@@ -4829,22 +3944,6 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                         const minimizedIconsContainer = document.createElement('div');
                         minimizedIconsContainer.className = 'preview-minimized-icons';
                         minimizedIconsContainer.style.cssText = 'display: flex; gap: 8px; margin-top: 15px;';
-
-                        // Create "פתח הזמנה" button as first icon
-                        const openOrderButton = document.createElement('button');
-                        openOrderButton.className = 'btn btn-sm btn-icon btn-light-primary preview-icon-btn open-order-btn';
-                        openOrderButton.innerHTML = '<i class="fa-light fa-arrow-up-right-from-square"></i>';
-                        openOrderButton.title = 'פתח הזמנה';
-                        openOrderButton.style.cssText = 'width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;';
-
-                        // Add click handler for open order button
-                        openOrderButton.addEventListener('click', (e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            window.open(`/tasks/${taskId}`, '_blank');
-                        });
-
-                        minimizedIconsContainer.appendChild(openOrderButton);
 
                         // Check if there are items with prices first
                         const itemsWithPrice = allItems.filter(item => {
@@ -4974,10 +4073,6 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting preview functionality:`, error);
         }
-        
-        // הפעלת Prefetch אוטומטי (hover + viewport)
-        TM_PREVIEW.wireHoverPrefetch(document);
-        TM_PREVIEW.wireViewportPrefetch(document);
         
         // Fix shipment wrapping after injecting preview functionality
         // fixShipmentWrapping(); // Removed for performance
@@ -6162,6 +5257,7 @@ table td[data-label="שם"] u{white-space:normal;word-wrap:break-word;word-break
             text-align: center !important;
         }
         .preview-cell button i { transition:transform .2s ease-in-out }
+        .preview-cell i.fa-chevron-up { transform:rotate(180deg) }
 
         .preview-toggle-all-button {
             transition: background-color 0.15s ease, color 0.15s ease;
@@ -6593,9 +5689,9 @@ tr[id^="preview-for-"] > td > div[style*="display: flex"] {
 
 /* Individual item cards inside the preview (keeps predictable wrapping) */
 tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
-  /* Allow cards to shrink and wrap properly */
-  flex: 0 1 auto !important;
-  max-width: 100% !important;
+  /* Allow cards to grow and fill available space efficiently */
+  flex: 1 1 300px !important;
+  max-width: none !important;
   min-width: 280px !important;
 }
 
@@ -7864,10 +6960,7 @@ function initCopyRipple(root = document) {
 
     // 1) pointerdown: הכי מוקדם ומכיל קואורדינטות מדויקות
     root.addEventListener('pointerdown', (e) => {
-      // TM: robust target for composed events & non-Element targets
-      const raw = e.composedPath ? e.composedPath()[0] : e.target;
-      const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
-      const target = targetEl ? targetEl.closest(COPY_SELECTOR) : null;
+      const target = e.target.closest(COPY_SELECTOR);
       if (!target) return;
       // שמור יעד וקואורדינטות ללוגיקת הטוסט
       window.__tmLastCopyTarget = target;
@@ -7877,10 +6970,7 @@ function initCopyRipple(root = document) {
 
     // 2) click: לכיסוי הפעלות מקלדת (Enter/Space) או קליק בלי pointerdown
     root.addEventListener('click', (e) => {
-      // TM: robust target for composed events & non-Element targets
-      const raw = e.composedPath ? e.composedPath()[0] : e.target;
-      const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
-      const target = targetEl ? targetEl.closest(COPY_SELECTOR) : null;
+      const target = e.target.closest(COPY_SELECTOR);
       if (!target) return;
       window.__tmLastCopyTarget = target;
       // ייתכן שכבר יצרנו ripple ב-pointerdown; ה-guard ימנע כפילות
@@ -8025,23 +7115,19 @@ function spawnRipple(container, evt) {
 }
 
 document.body.addEventListener('click', function (e) {
-    // TM: robust target for composed events & non-Element targets
-    const raw = e.composedPath ? e.composedPath()[0] : e.target;
-    const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
-    
     // Never trigger copy/ripple inside dropdown/select2 areas or their host cells
     if (
-        (targetEl ? targetEl.closest('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container') : null) ||
-        (targetEl ? targetEl.closest('td') && (
-            targetEl.closest('td').matches('[data-label="סטטוס"], [data-label="ליקוט"]') ||
-            targetEl.closest('td').querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container')
-        ) : null)
+        e.target.closest('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container') ||
+        (e.target.closest('td') && (
+            e.target.closest('td').matches('[data-label="סטטוס"], [data-label="ליקוט"]') ||
+            e.target.closest('td').querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container')
+        ))
     ) {
         return;
     }
     
     // Ignore clicks on buttons, links, inputs, or media
-    if (targetEl ? targetEl.closest('button, a, input, textarea, svg, img') : null) return;
+    if (e.target.closest('button, a, input, textarea, svg, img')) return;
 
     let target = e.target;
 
@@ -8814,7 +7900,7 @@ async function openPreviewForTask(taskId) {
 
 
     // נקה את כל ה-classes הקודמים וקבע למצב טעינה
-    icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-chevron-left', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
+    icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
     icon.classList.add('fa-refresh', 'fa-spin');
     currentButton.disabled = true;
     try {
@@ -8894,7 +7980,7 @@ async function openPreviewForTask(taskId) {
         const newCell = document.createElement('td'); newCell.colSpan = parentRow.cells.length; newCell.style.cssText = 'padding: 15px; background-color: #f9f9f9;';
 
 
-        // הכפתור "פתח הזמנה" הועבר למיקום עם הכפתורים האחרים
+        newCell.innerHTML = `<a href="/tasks/${taskId}" target="_blank" class="btn btn-primary btn-sm mb-3"><i class="fa-light fa-arrow-up-right-from-square" style="margin-left: 5px;"></i> פתח הזמנה</a>`;
 
         // Add notes to the preview if found
         if (notesText) {
@@ -8920,27 +8006,7 @@ async function openPreviewForTask(taskId) {
                 const textContainer = document.createElement('div'); textContainer.style.cssText = 'flex: 1; min-width: 0;';
                 const nameDiv = document.createElement('div'); nameDiv.textContent = item.name; nameDiv.style.cssText = 'font-weight: bold; font-size: 0.9em; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
                 const skuDiv = document.createElement('div'); skuDiv.textContent = `מק"ט: ${item.sku}`; skuDiv.style.cssText = 'font-size: 0.8em; color: #666; margin-bottom: 2px;';
-                
-                // Highlight pick quantities in preview (same logic as first location)
-                let highlightedQuantity = item.quantity;
-                const quantityMatch = item.quantity.match(/^(\d+)\s*\/\s*(\d+)$/);
-                if (quantityMatch) {
-                    const picked = parseInt(quantityMatch[1]);
-                    const total = parseInt(quantityMatch[2]);
-
-                    if (picked !== 0 || total !== 1) { // Skip 0/1
-                        const quantityClass =
-                            picked === total ? 'tampermonkey-picked-full' :
-                            picked === 0 && total > 1 ? 'tampermonkey-picked-none' :
-                            'tampermonkey-picked-partial';
-
-                        highlightedQuantity = `<span class="${quantityClass}">${item.quantity}</span>`;
-                    }
-                }
-                
-                const quantityDiv = document.createElement('div'); 
-                quantityDiv.innerHTML = `כמות: ${highlightedQuantity}`; 
-                quantityDiv.style.cssText = 'font-size: 0.8em; color: #666;';
+                const quantityDiv = document.createElement('div'); quantityDiv.textContent = `כמות: ${item.quantity}`; quantityDiv.style.cssText = 'font-size: 0.8em; color: #666;';
 
                 if (item.price) {
                     const priceDiv = document.createElement('div'); priceDiv.textContent = `מחיר: ₪${item.price}`; priceDiv.style.cssText = 'font-size: 0.8em; color: #666; margin-top: 2px;';
@@ -8991,10 +8057,10 @@ function updateButtonState(button, isOpen) {
   const icon = button.querySelector('i');
   if (icon) {
     // נקה את כל ה-classes הקשורים לאייקונים
-    icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-chevron-left', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
+    icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
 
     if (isOpen) {
-      icon.classList.add('fa-chevron-left');
+      icon.classList.add('fa-chevron-up');
       button.title = 'הסתר פריטים';
     } else {
       icon.classList.add('fa-chevron-down');
@@ -9311,13 +8377,10 @@ function enableNameCellCopy(root = document){
 
     // האזנה ב-delegation: קליק על תא "שם" -> העתקת שם המוצר
     root.addEventListener('click', (e) => {
-      // TM: robust target for composed events & non-Element targets
-      const raw = e.composedPath ? e.composedPath()[0] : e.target;
-      const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
-      const td = targetEl ? targetEl.closest('td[data-label="שם"]') : null;
+      const td = e.target.closest && e.target.closest('td[data-label="שם"]');
       if (!td) return;
       // אל תשכפל: אם הקליק הוא על אייקון/כפתור/קלט – תן להתנהגות המקורית
-      if (targetEl ? targetEl.closest('button, .copy-icon, .google-image-icon, input, textarea, select') : null) return;
+      if (e.target.closest('button, .copy-icon, .google-image-icon, input, textarea, select')) return;
       // אם זה קליק ישיר על לינק השם – אל תבטל ניווט; רק העתק בנוסף
       const wrap = td.querySelector('.tampermonkey-copy-wrap') || td;
       const nameText =
@@ -9545,435 +8608,3 @@ const _tablesMO = new MutationObserver(() => {
   oncePerAnimationFrame(() => enhanceTablesBarcodeCopyIcons(document))();
 });
 _tablesMO.observe(document.documentElement, { childList:true, subtree:true });
-
-// ---- PREVIEW reopen utilities ----
-function getOpenPreviewIds() {
-  try {
-    const raw = sessionStorage.getItem('openPreviewTaskIds');
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter(Boolean) : [];
-  } catch (e) {
-    return [];
-  }
-}
-
-function clickPreviewToggleFor(taskId) {
-  const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-  if (!row) return false;
-
-  const previewRow = document.getElementById(`preview-for-${taskId}`);
-  if (previewRow) return true; // כבר פתוח
-
-  const btn = row.querySelector('.preview-cell button[data-task-id], .preview-cell .btn');
-  if (!btn) return false;
-
-  // לא לעורר ripple או העתקות — רק לפתוח
-  btn.click();
-  return true;
-}
-
-let __reopenInFlight = false;
-function reopenPreviews({delay=350} = {}) {
-  if (__reopenInFlight) return;
-  __reopenInFlight = true;
-
-  setTimeout(() => {
-    const ids = getOpenPreviewIds();
-    if (!ids.length) { __reopenInFlight = false; return; }
-
-    let openedCount = 0;
-    for (const id of ids) {
-      const ok = clickPreviewToggleFor(id);
-      if (ok) openedCount++;
-    }
-
-    // נסה עוד פעם קצרה אם עוד לא נפתחו וה-DOM יתייצב בעוד רגע
-    if (openedCount === 0) {
-      setTimeout(() => {
-        for (const id of ids) clickPreviewToggleFor(id);
-        __reopenInFlight = false;
-      }, 300);
-    } else {
-      __reopenInFlight = false;
-    }
-  }, delay);
-}
-
-// ---- Intent-gated restore + sticky previews (no reopen on refresh) ----
-(function hookNetworkForPreviews() {
-
-  // Intent flag: set only when a task-changing request is fired
-  let __tmcRestoreIntentMem = false;
-  function markRestoreIntent() {
-    __tmcRestoreIntentMem = true;
-    try { sessionStorage.setItem('tmcRestoreIntent','1'); } catch(_){}
-  }
-  function consumeRestoreIntent() {
-    __tmcRestoreIntentMem = false;
-    try { sessionStorage.removeItem('tmcRestoreIntent'); } catch(_){}
-  }
-  function shouldRestore() {
-    try { return __tmcRestoreIntentMem || sessionStorage.getItem('tmcRestoreIntent') === '1'; }
-    catch(_) { return __tmcRestoreIntentMem; }
-  }
-  function markStickyOpenPreviews() {
-    try {
-      sessionStorage.setItem('tmcStickyPreviews','1');
-      document.querySelectorAll('tr[id^="preview-for-"]').forEach(tr => tr.setAttribute('data-tmc-sticky','1'));
-    } catch(_){}
-  }
-
-  // FETCH
-  const _origFetch = window.fetch;
-  window.fetch = async function hookedFetch(input, init) {
-    const url = (typeof input === 'string') ? input : (input && input.url) || '';
-    const method = ((init && init.method) || 'GET').toUpperCase();
-
-    // Mark intent ONLY for task-mutating calls (non-GET to /tasks/…)
-    if (url && url.includes('/tasks/') && method !== 'GET') {
-      markRestoreIntent();
-      markStickyOpenPreviews();
-    }
-
-    let res;
-    try {
-      res = await _origFetch.apply(this, arguments);
-      const ok = res && (res.ok || (res.status >= 200 && res.status < 300));
-      if (ok && url.includes('/tasks/') && shouldRestore()) {
-        // Give DOM time to settle, then restore once
-        setTimeout(() => { reopenPreviews({delay:150}); consumeRestoreIntent(); }, 300);
-      }
-    } catch (e) {
-      throw e;
-    }
-    return res;
-  };
-
-  // XHR
-  const _XHR = window.XMLHttpRequest;
-  function HookedXHR() {
-    const xhr = new _XHR();
-    let _url = '', _method = 'GET';
-
-    const _open = xhr.open;
-    xhr.open = function(method, url) {
-      _method = (method || 'GET').toUpperCase();
-      _url = url || '';
-      // Mark intent for task-mutating XHRs
-      if (_url && _url.includes('/tasks/') && _method !== 'GET') {
-        markRestoreIntent();
-        markStickyOpenPreviews();
-      }
-      return _open.apply(this, arguments);
-    };
-
-    xhr.addEventListener('load', function() {
-      try {
-        const ok = (xhr.status >= 200 && xhr.status < 300);
-        if (ok && _url.includes('/tasks/') && shouldRestore()) {
-          setTimeout(() => { reopenPreviews({delay:150}); consumeRestoreIntent(); }, 300);
-        }
-      } catch (_) {}
-    });
-    return xhr;
-  }
-  window.XMLHttpRequest = HookedXHR;
-})();
-
-// ---- Observe preview row removals (sticky mode: keep them visible) ----
-(function observePreviewRemovals() {
-
-  const stickyCache = new Map(); // taskId => <tr id="preview-for-…">
-  let lastKick = 0;
-
-  const obs = new MutationObserver((mutations) => {
-    let needReopen = false;
-    for (const m of mutations) {
-      // check removals
-      for (const n of m.removedNodes || []) {
-        if (!(n && n.nodeType === 1)) continue;
-        const id = n.id || '';
-        if (id.startsWith('preview-for-')) {
-          const taskId = id.replace('preview-for-','');
-          const stickyFlag = sessionStorage.getItem('tmcStickyPreviews') === '1';
-          const wasSticky  = n.getAttribute('data-tmc-sticky') === '1';
-          if (stickyFlag && wasSticky) {
-            // Keep the same node in memory and re-attach after the main row reappears
-            stickyCache.set(taskId, n);
-          } else {
-            needReopen = true;
-          }
-        }
-      }
-      // check additions (to reattach sticky previews next to their owner row)
-      for (const n of m.addedNodes || []) {
-        if (!(n && n.nodeType === 1)) continue;
-        if (n.matches && n.matches('tr[data-task-id]')) {
-          const tid = n.getAttribute('data-task-id');
-          if (tid && stickyCache.has(tid)) {
-            const previewNode = stickyCache.get(tid);
-            try {
-              safeInsertAfter(n, previewNode, n.parentNode);
-              // Normalize styles so the reattached node matches current layout
-              try { __tmcNormalizePreviewStyles(previewNode); } catch(_) {}
-              try { __tmcClampAllPreviewRows(previewNode); } catch(_) {}
-            } catch(_) {}
-            stickyCache.delete(tid);
-          }
-        }
-      }
-    }
-
-    // If not in sticky flow and there was a removal while an intent exists, do a normal reopen once
-    const now = Date.now();
-    if (needReopen && now - lastKick > 300) {
-      lastKick = now;
-      if (sessionStorage.getItem('tmcRestoreIntent') === '1') {
-        setTimeout(() => { reopenPreviews({delay:150}); sessionStorage.removeItem('tmcRestoreIntent'); }, 250);
-      }
-    }
-    // Clear sticky flag when cache drained
-    if (stickyCache.size === 0) {
-      try { sessionStorage.removeItem('tmcStickyPreviews'); } catch(_){}
-    }
-  });
-  obs.observe(document.documentElement, { childList: true, subtree: true });
-})();
-
-// ---- Observe orders table changes ----
-(function observeOrdersTable() {
-  const table = document.querySelector('#operator-store-visits-table, #operator-orders-table, .dataTables_wrapper table');
-  if (!table) return;
-
-  const tbody = table.tBodies && table.tBodies[0];
-  if (!tbody) return;
-
-  let scheduled = false;
-  const obs = new MutationObserver(() => {
-    if (scheduled) return;
-    scheduled = true;
-    // חכה שה-DataTables יסיימו לצייר
-    requestAnimationFrame(() => {
-      scheduled = false;
-      reopenPreviews({delay: 80});
-    });
-  });
-  obs.observe(tbody, { childList: true, subtree: false });
-})();
-
-// ---[ Preview-aware keyboard nav helpers ]---
-function tmIsPreviewRow(tr){
-  return !!(tr && tr.nodeType === 1 && tr.id && tr.id.indexOf('preview-for-') === 0);
-}
-function tmClosestDataRow(el){
-  return el && el.closest ? el.closest('tr[data-task-id], tr[id^="visit-row-"]') : null;
-}
-function tmClosestPreviewRow(el){
-  return el && el.closest ? el.closest('tr[id^="preview-for-"]') : null;
-}
-function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
-  if (!from || !from.parentElement) return null;
-  let n = from;
-  while (true){
-    n = (dir > 0) ? n.nextElementSibling : n.previousElementSibling;
-    if (!n) return null;
-    if (tmIsPreviewRow(n)) continue; // דלג על PREVIEW
-    if (n.matches && n.matches('tr[data-task-id], tr[id^="visit-row-"]')) return n;
-  }
-}
-
-// ---[ Skip PREVIEW rows in ArrowUp/ArrowDown navigation ]---
-(function tmSkipPreviewsInKeyNav(){
-  if (window.__tmSkipPreviewsInKeyNav) return;
-  window.__tmSkipPreviewsInKeyNav = true;
-
-  const ORDERS_SCOPE_SELECTOR = '#operator-store-visits-table, #operator-orders-table, .dataTables_wrapper table';
-
-  document.addEventListener('keydown', function(e){
-    const key = e.key;
-    if (key !== 'ArrowDown' && key !== 'ArrowUp') return;
-
-    const active = document.activeElement || document.body;
-    const inScope = active && (active.closest(ORDERS_SCOPE_SELECTOR) || document.querySelector(ORDERS_SCOPE_SELECTOR));
-    if (!inScope) return;
-
-    // העוגן שלנו לניווט: אם אנחנו בתוך PREVIEW—קח שורה שכנה שאינה PREVIEW בכיוון הלחיצה
-    let currentRow =
-      tmClosestDataRow(active) ||
-      tmClosestDataRow(document.querySelector(ORDERS_SCOPE_SELECTOR + ' tr:focus')) ||
-      null;
-
-    const dir = (key === 'ArrowDown') ? +1 : -1;
-
-    if (!currentRow) {
-      const previewRow = tmClosestPreviewRow(active);
-      if (previewRow) {
-        // אם בתוך PREVIEW: לעבור לשורת נתונים הקרובה בכיוון המתאים
-        const anchor = tmNextNonPreviewRow(previewRow, dir);
-        if (anchor) currentRow = anchor;
-      }
-    }
-
-    if (!currentRow) return;
-
-    const next = (dir > 0) ? currentRow.nextElementSibling : currentRow.previousElementSibling;
-    if (!next) return;
-
-    if (tmIsPreviewRow(next)) {
-      if (e.__tmInjected) return; // מניעת לולאה
-      const evt = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: false });
-      Object.defineProperty(evt, '__tmInjected', { value: true });
-      setTimeout(() => document.dispatchEvent(evt), 0);
-    }
-  }, true);
-
-})();
-
-// ---[ Post-fix when landed on PREVIEW (safety net) ]---
-(function tmPostFixWhenOnPreview(){
-  if (window.__tmPostFixOnPreview) return;
-  window.__tmPostFixOnPreview = true;
-
-  document.addEventListener('keydown', function(e){
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    if (e.__tmInjected) return; // אל תטפל באירוע שהוזרק ע"י הבלוק הקודם
-
-    requestAnimationFrame(() => {
-      const focused = document.activeElement;
-      const row = tmClosestDataRow(focused);
-      const previewRow = row ? null : tmClosestPreviewRow(focused);
-
-      // אם נחתנו על PREVIEW בפועל—דחוף עוד חץ לאותו כיוון
-      if (previewRow) {
-        const evt = new KeyboardEvent('keydown', { key: e.key, bubbles: true, cancelable: false });
-        Object.defineProperty(evt, '__tmInjected', { value: true });
-        document.dispatchEvent(evt);
-        return;
-      }
-
-      // אם row קיים אבל הוא בעצמו PREVIEW (הגנה כפולה)
-      if (row && tmIsPreviewRow(row)) {
-        const evt = new KeyboardEvent('keydown', { key: e.key, bubbles: true, cancelable: false });
-        Object.defineProperty(evt, '__tmInjected', { value: true });
-        document.dispatchEvent(evt);
-      }
-    });
-  }, true);
-})();
-
-// =========================
-// פתרון יציב למניעת חיתוך כרטיסים על ידי המפה:
-// מוסיף spacer שמפנה מקום למפה בשורה הראשונה
-// =========================
-(function(){
-  // CSS: קונטיינר הכרטיסים חייב להיות Flex עם wrap
-  if (!document.getElementById('tmc-spacer-css')) {
-    const s = document.createElement('style');
-    s.id = 'tmc-spacer-css';
-    s.textContent = `
-      /* ה-spacer לא נראה ולא תופס גובה, רק רוחב בשורה הראשונה */
-      #map-first-row-spacer { 
-        flex: 0 0 0; 
-        height: 1px; 
-        pointer-events: none; 
-        visibility: hidden;
-      }
-    `;
-    document.head.appendChild(s);
-  }
-
-  function keepCardsClearOfMap({
-    mapSelector = '#desktop-map-container',
-    list = null,     // קונטיינר הכרטיסים (אם לא מסופק, נחפש)
-    side = 'right',  // איפה המפה ביחס לכרטיסים: 'left' או 'right' (ב-RTL המפה בימין)
-    gap = 16         // רווח קטן בין המפה לכרטיס הראשון
-  } = {}) {
-    const map = document.querySelector(mapSelector);
-    if (!map) return;
-    
-    // אם לא סופק list, נחפש אותו
-    if (!list) {
-      list = document.querySelector('div[data-tmc-wrap-row="1"]');
-    }
-    if (!list) return;
-
-    let spacer = list.querySelector('#map-first-row-spacer');
-    if (!spacer) {
-      spacer = document.createElement('div');
-      spacer.id = 'map-first-row-spacer';
-
-      // לשים את ה-spacer בצד הנכון גם בסביבת RTL
-      const dir = getComputedStyle(list).direction; // 'rtl' / 'ltr'
-      const placeAtStart = (side === 'left' && dir === 'ltr') || (side === 'right' && dir === 'rtl');
-      placeAtStart ? list.prepend(spacer) : list.append(spacer);
-    }
-
-    const update = () => {
-      const mapRect  = map.getBoundingClientRect();
-      const listRect = list.getBoundingClientRect();
-
-      // אם המפה לא חופפת אנכית את תחילת הכרטיסים – אין צורך במרווח
-      const overlapsVertically = mapRect.bottom > listRect.top && mapRect.top < listRect.bottom;
-      if (!overlapsVertically) { 
-        spacer.style.flexBasis = '0px'; 
-        return; 
-      }
-
-      // רוחב השטח שצריך לפנות בשורה הראשונה
-      let overlapWidth;
-      if (side === 'left') {
-        overlapWidth = mapRect.right - listRect.left;           // מפנה מקום משמאל
-      } else {
-        overlapWidth = listRect.right - mapRect.left;           // מפנה מקום מימין
-      }
-      const width = Math.max(0, Math.min(overlapWidth + gap, listRect.width));
-      spacer.style.flexBasis = width ? `${width}px` : '0px';
-    };
-
-    update();
-
-    // להתעדכן בשינויים (ריסייז, זום דפדפן, שינוי פריסה)
-    const ro = new ResizeObserver(update);
-    ro.observe(map); 
-    ro.observe(list);
-    window.addEventListener('resize', update, { passive:true });
-    window.addEventListener('scroll', update, { passive:true });
-
-    // שמירה לניקוי עתידי
-    window.__tmcMapSpacerRO = ro;
-  }
-
-  // הפעלה על כל המכולות המסומנות
-  function initMapSpacers() {
-    document.querySelectorAll('div[data-tmc-wrap-row="1"]').forEach(list => {
-      keepCardsClearOfMap({
-        mapSelector: '#desktop-map-container',
-        list: list, // נשתמש ב-list שכבר מצאנו
-        side: 'right', // ב-RTL המפה בימין
-        gap: 16
-      });
-    });
-  }
-
-  // הפעלה ראשונית
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initMapSpacers, { once:true });
-  } else {
-    initMapSpacers();
-  }
-
-  // API להפעלה על מכולות חדשות: מהדק רוחב ל-viewport + מפנה מקום למפה
-  window.__tmcLayoutWrapBeforeClip = function(ctx=document){
-    __tmcClampAllPreviewRows(ctx); // ← חשוב: גורם ל-flex-wrap לעבוד לפי הקונטיינר הגליל
-    ctx.querySelectorAll?.('div[data-tmc-wrap-row="1"]').forEach(list => {
-      if (!list.querySelector('#map-first-row-spacer')) {
-        keepCardsClearOfMap({
-          mapSelector: '#desktop-map-container',
-          list,
-          side: 'right', // ב-RTL המפה בימין
-          gap: 16
-        });
-      }
-    });
-  };
-})();
