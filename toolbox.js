@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.6
+// @version      13.8.7
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -25,19 +25,6 @@
 /* global jQuery */
 /* global Papa */ // ENSURING PAPA IS GLOBAL
 
-// --- Passive listeners default for known scroll-blocking events ---
-(function installPassiveListenerDefault(){try{
-  const orig = EventTarget.prototype.addEventListener;
-  const PASSIVE_EVENTS = new Set(['touchstart','touchmove','wheel','mousewheel']);
-  EventTarget.prototype.addEventListener = function(type, listener, opts){
-    try{
-      if (PASSIVE_EVENTS.has(type) && (opts===undefined || opts===false)){
-        return orig.call(this, type, listener, { passive: true });
-      }
-    }catch(e){ /* no-op */ }
-    return orig.call(this, type, listener, opts);
-  };
-}catch(e){ /* ignore */ }}());
 
 // =========================
 // PREVIEW CSS (class-based)
@@ -187,11 +174,156 @@ function __tmcEnsurePreviewCSS(){
 })();
 
 // ==== TM: global flag to disable prototype wrapping of addEventListener ====
-const DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP = true;
+const DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP = false;
+
+// --- Unified, PS-safe passive defaults for scroll-blocking events ---
+(function installUnifiedPassiveWrapper(){
+  if (window.__tmUnifiedPassivePatched) return;
+  window.__tmUnifiedPassivePatched = true;
+
+  try {
+    const Orig = EventTarget.prototype.addEventListener;
+    const SCROLL_BLOCKING = new Set(['touchstart','touchmove','wheel','mousewheel','scroll']);
+
+    const SAFE_SELECTORS = [
+      'html','body',
+      '.dataTables_wrapper',
+      '.table-responsive',
+      '.simple-scroll',
+      '#operator-store-visits-table_wrapper',
+      '[data-scroll-root]',
+      'tr[id^="preview-for-"] td[colspan]'
+    ];
+
+    function isElement(n){ return n && n.nodeType === 1; }
+    function matchesAny(el, sels){
+      for (const sel of sels){
+        if (el.matches?.(sel) || el.closest?.(sel)) return true;
+      }
+      return false;
+    }
+    function withinPerfectScrollbar(el){
+      return isElement(el) && (el.classList.contains('ps') || el.classList.contains('ps-container') || el.closest?.('.ps, .ps-container'));
+    }
+    function isSafeRoot(t){
+      if (t === window || t === document || t === document.body) return true;
+      return isElement(t) && matchesAny(t, SAFE_SELECTORS);
+    }
+
+    EventTarget.prototype.addEventListener = function(type, listener, options){
+      // not a scroll-blocking event → don't touch
+      if (!SCROLL_BLOCKING.has(String(type))) {
+        return Orig.call(this, type, listener, options);
+      }
+
+      // Normalize options
+      let opts = options;
+      if (opts === undefined) opts = {};
+      else if (typeof opts === 'boolean') opts = { capture: !!opts };
+
+      // If caller explicitly set 'passive', honor it — except for PS where passive must be false
+      if (opts && typeof opts === 'object' && 'passive' in opts) {
+        if (opts.passive === true && withinPerfectScrollbar(this)) {
+          const fixed = Object.assign({}, opts, { passive: false });
+          return Orig.call(this, type, listener, fixed);
+        }
+        return Orig.call(this, type, listener, opts);
+      }
+
+      // No explicit passive: apply passive:true only on safe roots
+      if (!withinPerfectScrollbar(this) && isSafeRoot(this)) {
+        const auto = Object.assign({}, opts, { passive: true });
+        return Orig.call(this, type, listener, auto);
+      }
+
+      // Otherwise, leave as-is
+      return Orig.call(this, type, listener, options);
+    };
+  } catch(_) {}
+})();
+
+// ---- Utilities for throttling/chunking heavy work ----
+function rafThrottle(fn){
+  let scheduled = false, lastArgs;
+  return function(...args){
+    lastArgs = args;
+    if (!scheduled){
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        fn.apply(this, lastArgs);
+      });
+    }
+  };
+}
+
+function idleChunk(items, work, budgetMs = 16){
+  let i = 0;
+  function run(deadline){
+    const remaining = typeof deadline?.timeRemaining === 'function' ? deadline.timeRemaining() : 0;
+    const end = performance.now() + (remaining || budgetMs);
+    while (i < items.length && performance.now() < end){
+      try { work(items[i], i); } catch(_) {}
+      i++;
+    }
+    if (i < items.length){
+      (window.requestIdleCallback ? requestIdleCallback : setTimeout)(run, { timeout: 200 });
+    }
+  }
+  (window.requestIdleCallback ? requestIdleCallback : setTimeout)(run, { timeout: 200 });
+}
+
+// ---- Reduce offscreen rendering cost of large preview containers ----
+(function installPreviewRenderHints(){
+  try {
+    const id = 'tm-preview-cv-style';
+    if (!document.getElementById(id)){
+      const s = document.createElement('style');
+      s.id = id;
+      s.textContent = `
+        /* Skip layout/paint for offscreen previews until needed */
+        .tm-preview-root { 
+          content-visibility: auto; 
+          contain-intrinsic-size: 600px 300px; 
+          contain: layout paint style;
+        }
+      `;
+      document.head.appendChild(s);
+    }
+  } catch {}
+})();
+
+// Feature flag: control CSP meta injection; keep false to avoid messing with host CSP in production
+const ENABLE_CSP_INJECTION = true;
 
 // DEBUG flag for production logging control
 const DEBUG = window.DEBUG_TOOLBOX || false;
 window.DEBUG_TOOLBOX = DEBUG;
+
+// ---- DOM batching shim (define once, EARLY) ----
+// Provides BOTH call style: domBatch(readOps, writeOps)
+// and queue style: domBatch.read(fn), domBatch.write(fn)
+;(function(){
+  if (typeof window.domBatch !== 'undefined') return;
+  function callBatch(readOps=[], writeOps=[]){
+    const results = (readOps||[]).map(op => { try { return typeof op==='function' ? op() : op; } catch(_) { return null; } });
+    (writeOps||[]).forEach(fn => { try { if (typeof fn==='function') fn(results); } catch(_){} });
+    return results;
+  }
+  let rq = [], wq = [], scheduled = false;
+  function schedule(){
+    if (scheduled) return; scheduled = true;
+    requestAnimationFrame(()=>{ scheduled = false;
+      const reads = rq; rq = [];
+      const results = reads.map(fn => { try { return fn(); } catch(_) { return null; } });
+      const writes = wq; wq = [];
+      writes.forEach(fn => { try { fn(results); } catch(_){} });
+    });
+  }
+  callBatch.read  = fn => { rq.push(fn); schedule(); };
+  callBatch.write = fn => { wq.push(fn); schedule(); };
+  window.domBatch = callBatch;
+})();
 
 // Clear previews on reload detection via Performance API
 try {
@@ -212,7 +344,6 @@ try {
 // [PS PASSIVE FIX] -----------------------------------------------------------
 function installPassiveFixForPerfectScrollbar() {
   try { applyPsCssTouchAction(); } catch (e) {}
-  try { patchPassiveForPs(); } catch (e) {}
 }
 
 function applyPsCssTouchAction() {
@@ -233,50 +364,13 @@ function applyPsCssTouchAction() {
   });
 }
 
-function patchPassiveForPs() {
-  if (typeof DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP !== 'undefined' && DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP) {
-    // keep only CSS/touch-action fixes; skip wrapping addEventListener
-    try { applyPsCssTouchAction && applyPsCssTouchAction(); } catch {}
-    return;
-  }
-  // רוץ פעם אחת בלבד
-  if (window.__tmPsPassivePatched) return;
-  window.__tmPsPassivePatched = true;
-
-  const Orig = EventTarget.prototype.addEventListener;
-  EventTarget.prototype.addEventListener = function(type, listener, options){
-    try {
-      // נרמל options לבחינת passive
-      let opts = options;
-      if (typeof opts === 'boolean') opts = { capture: opts };
-
-      // נתקן passive רק לאירועי גלילה/מגע ובאזורי perfect-scrollbar
-      if ((type === 'wheel' || type === 'touchmove') && opts && opts.passive === true) {
-        const t = this;
-        const isElement = t && t.nodeType === 1;
-        const withinPs = isElement && (
-          t.classList.contains('ps') ||
-          t.classList.contains('ps-container') ||
-          (typeof t.closest === 'function' && t.closest('.ps, .ps-container'))
-        );
-        if (withinPs) {
-          // רק פה הופכים ל-passive:false. הכלליות האחרות נשארות כמו שהיו.
-          opts = Object.assign({}, opts, { passive: false });
-        }
-      }
-      return Orig.call(this, type, listener, opts);
-    } catch (e) {
-      // fallback זהיר — אם משהו נכשל, אל תשבור addEventListener
-      return Orig.call(this, type, listener, options);
-    }
-  };
-}
 // [END PS PASSIVE FIX] -------------------------------------------------------
 
 // ===== [Noise & Perf Quieting Pack] START =====
 // 1) Hard-block common trackers to reduce net::ERR_BLOCKED_BY_CLIENT spam
 (function hardBlockTrackers(){
   try {
+    if (!ENABLE_CSP_INJECTION) return;
     // Guarded CSP: manage ONLY our own tag; never add duplicates; never override host CSP.
     const HEAD = document.head || document.getElementsByTagName('head')[0];
     if (!HEAD) return;
@@ -325,49 +419,8 @@ function patchPassiveForPs() {
   } catch(_) {}
 })();
 
-// 2) Quiet "Added non-passive event listener …" for scroll/touch/wheel safely
-(function defaultPassiveForScrollEvents(){
-  if (typeof DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP !== 'undefined' && DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP) {
-    return; // TM: do not wrap EventTarget.prototype.addEventListener globally
-  }
-  try {
-    const passiveEvents = new Set(['touchstart','touchmove','wheel','mousewheel','scroll']);
-    const _add = EventTarget.prototype.addEventListener;
-    EventTarget.prototype.addEventListener = function(type, listener, options){
-      try{
-        let opts = options;
-        if (passiveEvents.has(String(type))) {
-          if (opts === undefined) opts = { passive: true };
-          else if (typeof opts === 'boolean') opts = { capture: !!opts, passive: true };
-          else if (typeof opts === 'object' && !('passive' in opts)) opts = Object.assign({}, opts, { passive: true });
-        }
-        return _add.call(this, type, listener, opts);
-      } catch(e){
-        return _add.call(this, type, listener, options);
-      }
-    };
-  } catch(_) {}
-})();
 
-// 3) DOM batching (read → write) to reduce "Forced reflow while executing JS"
-const domBatch = (() => {
-  let readQ = [], writeQ = [], scheduled = false;
-  function schedule(){
-    if (scheduled) return;
-    scheduled = true;
-    requestAnimationFrame(() => {
-      scheduled = false;
-      const reads = readQ; readQ = [];
-      const readResults = reads.map(fn => { try{return fn();}catch(_){return null;} });
-      const writes = writeQ; writeQ = [];
-      writes.forEach(fn => { try{ fn(readResults); }catch(_){ } });
-    });
-  }
-  return {
-    read(fn){ readQ.push(fn); schedule(); },
-    write(fn){ writeQ.push(fn); schedule(); }
-  };
-})();
+/* removed duplicate domBatch (rAF queue) to avoid name conflict; function-style domBatch(readOps, writeOps) remains */
 
 // 4) Lightweight gating helpers to avoid hot-loop work & noisy timers
 function createDistinctByKey(fn, keyFn){
@@ -486,7 +539,7 @@ window.LionwheelUtils = {
   warnOnce: warnOnce,
   scheduleIdleWork: scheduleIdleWork,
   // Added utilities:
-  domBatch: domBatch,
+  domBatch: window.domBatch,
   createDistinctByKey: createDistinctByKey,
   oncePerAnimationFrame: oncePerAnimationFrame,
   safeInsertAfter: safeInsertAfter,
@@ -732,7 +785,7 @@ function __tmcNormalizePreviewStyles(root){
     }
     // 2) cards — process in smaller chunks to avoid long tasks
     const cards = row ? Array.from(row.children) : [];
-    const perFrame = 10; // היה 25 — הקטנו כדי לקצר rAF handlers
+    const perFrame = 6; // היה 25 — הקטנו כדי לקצר rAF handlers
     let i = 0;
     function _batch(){
       const end = Math.min(i + perFrame, cards.length);
@@ -839,7 +892,7 @@ function splitPreviewMetaLines(rootEl){
     const items = Array.from(pending);
     pending.clear();
     let idx = 0;
-    const CHUNK = 6; // קטן כדי להקטין סיכוי ל־rAF "long"
+    const CHUNK = 4; // קטן כדי להקטין סיכוי ל־rAF "long"
     __tmcFrameSlicer(()=>{
       const end = Math.min(idx + CHUNK, items.length);
       for (; idx < end; idx++){
@@ -862,7 +915,18 @@ function splitPreviewMetaLines(rootEl){
         m.addedNodes?.forEach(n=>{
           if (n.nodeType === 1){
             const el = n.matches?.(sel) ? n : n.querySelector?.(sel);
-            if (el) { pending.add(el); if (rafId==null) flush(); }
+            if (el) {
+              pending.add(el);
+              if (rafId==null) {
+                // Temporarily disconnect to avoid feedback loops while we mutate DOM in flush
+                mo.disconnect();
+                try {
+                  flush();
+                } finally {
+                  mo.observe(document,{subtree:true,childList:true});
+                }
+              }
+            }
           }
         });
       }
@@ -1069,13 +1133,14 @@ function fixShipmentWrappingImpl() {
 
 // Override fetch to handle blocked requests gracefully
 const originalFetch = window.fetch;
-window.fetch = function(...args) {
-  return originalFetch.apply(this, args).catch(error => {
-    // Check if it's a blocked request
-    if (error.message && error.message.includes('ERR_BLOCKED_BY_CLIENT')) {
-      // Suppress blocked request errors
-      console.debug('Request blocked by client (likely ad blocker):', args[0]);
-      return Promise.resolve(new Response('', { status: 200, statusText: 'OK' }));
+window.fetch = function(input, init) {
+  const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+  const SUPPRESSED = /google-analytics\.com|connect\.facebook\.net|clarity\.ms/;
+  return originalFetch.apply(this, [input, init]).catch(error => {
+    const blocked = String(error && error.message || '').includes('ERR_BLOCKED_BY_CLIENT');
+    if (blocked && url && SUPPRESSED.test(url)) {
+      console.debug('Suppressed blocked tracker request:', url);
+      return new Response('', { status: 204, statusText: 'No Content' });
     }
     throw error;
   });
@@ -1377,6 +1442,8 @@ setupBlockedScriptObserver();
     const IMAGE_REPORT_WEBHOOK_TOKEN = '';
 
     // TM: Utility for batching DOM read/write operations to prevent forced reflow
+    // Guard: only define here if not already defined by early shim
+    if (typeof domBatch === 'undefined') {
     function domBatch(readOperations, writeOperations) {
       // Execute all read operations first
       const readResults = readOperations.map(op => typeof op === 'function' ? op() : op);
@@ -1387,6 +1454,7 @@ setupBlockedScriptObserver();
       });
       
       return readResults;
+    }
     }
 
     // ===== TM Preview Performance Boost (panel_view + cache + prefetch) =====
@@ -1519,26 +1587,33 @@ setupBlockedScriptObserver();
         targetEl.replaceChildren(); // מנקה את התא/הקונטיינר של ה-preview
         targetEl.appendChild(frag);
 
-        // החלה מיידית של inline-flex !important על קלפי ה-PREVIEW שזה עתה מוזרקו
-        try { __forceInlineFlexOnPreviewCards(targetEl); } catch(_) {}
+        // Mark as preview root to enable content-visibility optimizations
+        try { targetEl.classList.add('tm-preview-root'); } catch(_) {}
+
+        // Defer heavy post styling to idle + batch to reduce forced reflow
+        const doPostStyle = () => {
+          try {
+            domBatch([], [
+              () => __forceInlineFlexOnPreviewCards(targetEl),
+              () => splitPreviewMetaLines(targetEl)
+            ]);
+          } catch(_) {}
+        };
+        (window.requestIdleCallback ? requestIdleCallback : setTimeout)(doPostStyle, { timeout: 300 });
 
         // Decode images in background using requestIdleCallback or setTimeout
         const imgs = Array.from(wrap.querySelectorAll('img'));
         if (imgs.length > 0) {
-          const decodeImages = () => {
-            Promise.allSettled(imgs.map(img => img.decode ? img.decode().catch(() => {}) : Promise.resolve()));
-          };
-          
-          if (window.requestIdleCallback) {
-            requestIdleCallback(decodeImages, { timeout: 1000 });
-          } else {
-            setTimeout(decodeImages, 0);
-          }
+          idleChunk(imgs, (img) => {
+            try {
+              img.loading = 'lazy';
+              img.decoding = 'async';
+            } catch {}
+            if (img.decode) img.decode().catch(() => {});
+          }, 12);
         }
 
-        // >>> NEW: Split current single-line meta into 3 lines (SKU/Price/Qty)
-        try { splitPreviewMetaLines(targetEl); } catch(_) {}
-        // אין צורך יותר ב-fitPreviewCardsToContent: ה-inline כבר קובע
+        /* splitPreviewMetaLines moved into doPostStyle (batched) */
 
       }
 
@@ -6894,6 +6969,18 @@ function prepareCopyElements() {
                 totalRows++;
                 let shouldHighlight = false;
 
+                // Get task ID for caching
+                const taskId = row.getAttribute('data-task-id');
+
+                // Check cache first for red highlighting
+                const cached = taskId ? cacheGet(taskId) : null;
+                if (cached && cached.color === 'red') {
+                    // Highlight immediately if cached as red
+                    row.classList.add('merlog-row-highlight');
+                    highlightedCount++;
+                    return; // Skip DOM scanning
+                }
+
                 // Clear previous highlighting from this row
                 row.classList.remove('merlog-row-highlight');
                 Array.from(row.cells).forEach(cell => {
@@ -6932,12 +7019,11 @@ function prepareCopyElements() {
                     if (cell.classList.contains('preview-cell')) return;
 
                     const dataLabel = cell.getAttribute('data-label');
-                    if (dataLabel === 'איזור חלוקה') {
-                        const cellText = cell.textContent.trim();
-                        // Look for specific Merlog area patterns
+                    if (dataLabel === 'איזור חלוקה' || dataLabel === 'איזור') {
+                        const cellText = (cell.textContent || '').trim();
+                        // Require Merlog context + target areas to avoid false positives
                         if (cellText.includes('מרלוג') &&
-                            (cellText.includes('צור יגאל') ||
-                             cellText.includes('צ\'יטה'))) {
+                           (cellText.includes('צור יגאל') || cellText.includes("צ'יטה"))) {
                             shouldHighlight = true;
                             cell.classList.add('merlog-highlight');
                         }
@@ -6948,6 +7034,13 @@ function prepareCopyElements() {
                 if (shouldHighlight) {
                     row.classList.add('merlog-row-highlight');
                     highlightedCount++;
+                    // Cache the red result with DOM source
+                    if (taskId) {
+                        cacheSet(taskId, 'red', 'dom');
+                    }
+                } else if (taskId) {
+                    // Cache negative result for brief period
+                    cacheSet(taskId, null, 'dom');
                 }
             });
         } catch (error) {
@@ -6962,23 +7055,186 @@ function prepareCopyElements() {
     let readyHighlightRunning = false;
     let readyHighlightTimeout = null;
 
-    // Debounced version that always runs but with smart timing
+    // Debounced trigger — keep tiny delay to coalesce bursts from DataTables
     const debouncedHighlightReadyRows = debounce(async () => {
         if (readyHighlightRunning) {
-            // Removed excessive logging to reduce console noise
-            // Schedule another attempt in 1 second
-            setTimeout(() => debouncedHighlightReadyRows(), 1000);
+            // Try again shortly if a pass is already in progress
+            setTimeout(() => debouncedHighlightReadyRows(), 150);
             return;
         }
-
         await highlightReadyRows();
-    }, 500); // Wait 500ms after last call
+    }, 80); // ~one frame after draw
+
+    // Small worker-pool for parallel panel_view fetches
+    const READY_FETCH_CONCURRENCY = 6;
+    let readyFetchAbort = null;
+    let readyFetchQueue = [];
+    let readyFetchInFlight = 0;
+
+    // Advanced ephemeral cache system
+    const rowColorCache = new Map(); // taskId -> { color: 'green'|'red'|null, source: 'dom'|'panel', ts: number }
+    const TTL = { green: 20*60e3, red: 20*60e3, none: 3*60e3 }; // 20min green/red, 3min none
+    const MAX_CACHE_SIZE = 500;
+
+    function cacheGet(taskId) {
+        const e = rowColorCache.get(taskId);
+        if (!e) return null;
+        const age = Date.now() - e.ts;
+        const max = e.color === 'green' ? TTL.green : e.color === 'red' ? TTL.red : TTL.none;
+        if (age > max) { 
+            rowColorCache.delete(taskId); 
+            return null; 
+        }
+        return e;
+    }
+
+    function cacheSet(taskId, color, source) {
+        // Enforce size limit with LRU eviction
+        if (rowColorCache.size >= MAX_CACHE_SIZE) {
+            const firstKey = rowColorCache.keys().next().value;
+            rowColorCache.delete(firstKey);
+        }
+        rowColorCache.set(taskId, { color, source, ts: Date.now() });
+    }
+
+    function cacheInvalidate(taskId) {
+        rowColorCache.delete(taskId);
+    }
+
+    function cacheInvalidateAll() {
+        rowColorCache.clear();
+    }
+
+    // Cache invalidation on user interactions
+    function setupCacheInvalidation() {
+        // Invalidate cache on status/pick/area dropdown changes
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.task-set-status, .task-set-pick-status, .visit-drivers-select2, .route-select2')) {
+                const tr = e.target.closest('tr[data-task-id]');
+                if (tr) {
+                    const taskId = tr.getAttribute('data-task-id');
+                    if (taskId) cacheInvalidate(taskId);
+                }
+            }
+        }, {capture: true, passive: true});
+
+        // Invalidate cache on select2 changes (only if jQuery is available)
+        if (typeof $ !== 'undefined') {
+            $(document).on('select2:select', '.visit-drivers-select2, .route-select2', function(e) {
+                const tr = $(this).closest('tr[data-task-id]');
+                if (tr.length) {
+                    const taskId = tr.attr('data-task-id');
+                    if (taskId) cacheInvalidate(taskId);
+                }
+            });
+        }
+
+        // MutationObserver for row content changes
+        const tableObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                const tr = mutation.target.closest && mutation.target.closest('tr[data-task-id]');
+                if (tr) {
+                    const taskId = tr.getAttribute('data-task-id');
+                    if (taskId) {
+                        cacheInvalidate(taskId);
+                        // Re-highlight this specific row
+                        setTimeout(() => {
+                            if (typeof highlightMerlogRows === 'function') {
+                                highlightMerlogRows();
+                            }
+                            if (typeof debouncedHighlightReadyRows === 'function') {
+                                debouncedHighlightReadyRows();
+                            }
+                        }, 100);
+                    }
+                }
+            }
+        });
+
+        // Observe table body for changes
+        const table = document.querySelector('#operator-store-visits-table') || 
+                     document.querySelector('#tasks-table') || 
+                     document.querySelector('table');
+        if (table) {
+            const tbody = table.querySelector('tbody');
+            if (tbody) {
+                tableObserver.observe(tbody, {
+                    subtree: true,
+                    childList: true,
+                    attributes: true,
+                    characterData: false
+                });
+            }
+        }
+    }
+
+    function cancelReadyFetches() {
+        try { readyFetchAbort?.abort(); } catch {}
+        readyFetchAbort = null;
+        readyFetchQueue = [];
+        readyFetchInFlight = 0;
+    }
+
+    async function fetchPanelAndMarkReady(taskId, row, signal) {
+        // Fast exits
+        if (!taskId || !row || signal?.aborted) return false;
+        try {
+            const response = await fetch(`/tasks/${taskId}/panel_view`, {
+                method: 'POST',
+                headers: { 'accept': '*/*', 'content-type': 'application/json' },
+                body: '{}',
+                signal
+            });
+            if (!response.ok) return false;
+            const panelViewHtml = await response.text();
+            const doc = new DOMParser().parseFromString(panelViewHtml, 'text/html');
+
+            // Look for "מוכן" in likely notes containers (same logic as before)
+            const notesElements = doc.querySelectorAll('.notes, [class*="note"], [class*="comment"], .hover-copy, [data-tm-notes], .panel_view');
+            let foundReady = false;
+            for (const el of notesElements) {
+                if (el && el.textContent && el.textContent.includes('מוכן')) {
+                    foundReady = true;
+                    break;
+                }
+            }
+
+            // Update cache and highlight
+            if (foundReady) {
+                row.classList.add('ready-row-highlight');
+                cacheSet(taskId, 'green', 'panel');
+                return true;
+            } else {
+                cacheSet(taskId, null, 'panel');
+                return false;
+            }
+        } catch {
+            return false;
+        }
+    }
+
+    function drainReadyQueue() {
+        while (readyFetchInFlight < READY_FETCH_CONCURRENCY && readyFetchQueue.length) {
+            const { taskId, row } = readyFetchQueue.shift();
+            if (!taskId || !row) continue;
+            readyFetchInFlight++;
+            fetchPanelAndMarkReady(taskId, row, readyFetchAbort?.signal)
+                .finally(() => {
+                    readyFetchInFlight--;
+                    // continue pumping
+                    if (readyFetchAbort?.signal?.aborted) return;
+                    drainReadyQueue();
+                });
+        }
+    }
 
     async function highlightReadyRows() {
         try {
             if (!settings || !settings.highlightMerlog) return;
 
             readyHighlightRunning = true;
+            // cancel any stale in-flight lookups when a new pass begins
+            cancelReadyFetches();
 
             // Try to find the correct table
             let table = document.querySelector('#operator-store-visits-table');
@@ -7001,138 +7257,67 @@ function prepareCopyElements() {
             const rows = table.querySelectorAll('tbody tr');
             const rowArray = Array.from(rows);
 
-            // Create alternating order: first, last, second, second-to-last, etc.
-            const alternatingRows = [];
-            let start = 0;
-            let end = rowArray.length - 1;
-
-            while (start <= end) {
-                if (start === end) {
-                    alternatingRows.push(rowArray[start]);
-                } else {
-                    alternatingRows.push(rowArray[start]);
-                    alternatingRows.push(rowArray[end]);
-                }
-                start++;
-                end--;
-            }
-
-            // Removed excessive logging to reduce console noise
-
-            for (let i = 0; i < alternatingRows.length; i++) {
-                const row = alternatingRows[i];
-                const originalIndex = rowArray.indexOf(row);
+            // Phase A: DOM-only instant detection with cache preference
+            const toFetch = [];
+            for (const row of rowArray) {
                 totalRows++;
 
-                // Clear previous highlighting from this row
-                row.classList.remove('ready-row-highlight');
-                Array.from(row.cells).forEach(cell => {
-                    if (!cell.classList.contains('preview-cell')) {
-                        cell.classList.remove('ready-highlight');
-                        // Remove any inline styles
-                        cell.style.backgroundColor = '';
-                        cell.style.borderRadius = '';
-                        cell.style.padding = '';
-                    }
-                });
-
-                // Skip preview rows - we only want to highlight the original table rows
-                if (row.id && row.id.startsWith('preview-for-')) {
-                    continue;
+                // Skip rows that already have highlighting
+                if (row.classList.contains('ready-row-highlight')) {
+                    continue; // Skip to next row since we already highlighted it
                 }
 
                 // Get task ID from the row
                 const taskId = row.getAttribute('data-task-id');
                 if (!taskId) continue;
 
-                // Check if we already know this task's status (caching)
-                if (window.readyTaskCache && window.readyTaskCache[taskId] !== undefined) {
-                    if (window.readyTaskCache[taskId]) {
+                // Check cache first (prefer DOM over cached panel results)
+                const cached = cacheGet(taskId);
+                if (cached && cached.color === 'green') {
                         // Highlight immediately if cached as ready
                         row.classList.add('ready-row-highlight');
                         highlightedCount++;
-                        // Removed excessive logging to reduce console noise
-                    }
-                    continue; // Skip to next row since we already know the result
+                    continue;
                 }
 
-                // Removed excessive logging to reduce console noise
-
-                // First, check for tooltips with "הערות משלוח" and "מוכן"
+                // First, check for any tooltip/title in the row that includes "מוכן" (DOM source)
                 let foundInTooltip = false;
-                const tooltipCells = row.querySelectorAll('[title*="הערות משלוח"], [data-original-title*="הערות משלוח"]');
+                const tooltipCells = row.querySelectorAll('[title], [data-original-title]');
 
                 for (const cell of tooltipCells) {
                     const title = cell.getAttribute('title') || cell.getAttribute('data-original-title') || '';
-                    if (title.includes('הערות משלוח') && title.includes('מוכן')) {
-                        // Removed excessive logging to reduce console noise
-
+                    if (title && title.includes('מוכן')) {
                         // Highlight immediately when found
                         row.classList.add('ready-row-highlight');
                         highlightedCount++;
                         foundInTooltip = true;
-
-                        // Cache the result
-                        if (!window.readyTaskCache) window.readyTaskCache = {};
-                        window.readyTaskCache[taskId] = true;
-                        // Removed excessive logging to reduce console noise
+                        // Cache with DOM source (preferred over panel)
+                        cacheSet(taskId, 'green', 'dom');
                         break; // Stop searching once found
                     }
                 }
 
-                // If found in tooltip, skip the fetch and continue to next row
                 if (foundInTooltip) {
-                    continue; // Skip to next row since we already highlighted it
+                    continue;
                 }
 
-                // If not found in tooltip, fetch the panel view
-                try {
-                    // Fetch the panel view like the example shows
-                    const response = await fetch(`/tasks/${taskId}/panel_view`, {
-                        method: 'POST',
-                        headers: {
-                            'accept': '*/*',
-                            'content-type': 'application/json'
-                        }
-                    });
-
-                    if (!response.ok) {
-                        // Removed excessive logging to reduce console noise
-                        continue;
-                    }
-
-                    const panelViewHtml = await response.text();
-                    const doc = new DOMParser().parseFromString(panelViewHtml, 'text/html');
-
-                    // Look for "מוכן" in the panel view - same logic as panel highlighting
-                    const notesElements = doc.querySelectorAll('.bg-yellow .hover-copy, .notes, [class*="note"], [class*="comment"]');
-                    let foundInPanel = false;
-                    for (const notesEl of notesElements) {
-                        if (notesEl && notesEl.textContent.includes('מוכן')) {
-                            // Removed excessive logging to reduce console noise
-
-                            // Highlight immediately when found
-                            row.classList.add('ready-row-highlight');
-                            highlightedCount++;
-                            foundInPanel = true;
-                            // Removed excessive logging to reduce console noise
-                            break; // Stop searching once found
-                        }
-                    }
-
-                    // Cache the result
-                    if (!window.readyTaskCache) window.readyTaskCache = {};
-                    window.readyTaskCache[taskId] = foundInPanel;
-                } catch (fetchError) {
-                    console.error(`[Ready Highlight] Error fetching panel view for task ${taskId}:`, fetchError);
-
-                    // Cache as false on error
-                    if (!window.readyTaskCache) window.readyTaskCache = {};
-                    window.readyTaskCache[taskId] = false;
+                // If we have a cached negative result from panel, respect it briefly
+                if (cached && cached.color === null && cached.source === 'panel') {
+                    continue; // Skip fetching again for a short time
                 }
+
+                // Phase B: Queue for background fetch (parallel)
+                toFetch.push({ taskId, row });
             }
 
-            // Removed excessive logging to reduce console noise
+            // Prioritize visible/top rows first
+            // (simple heuristic by DOM order; avoids forcing layout reads)
+            readyFetchAbort = new AbortController();
+            readyFetchQueue = toFetch;
+            drainReadyQueue();
+
+                            // Removed excessive logging to reduce console noise
+
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error highlighting ready rows:`, error);
         } finally {
@@ -7536,6 +7721,9 @@ function hookDataTablesDraw() {
           injectPreviewFunctionality(tb);
 
           // NEW: Re-apply row highlighting after every redraw/filter/search
+          // Invalidate cache on table changes to ensure fresh data
+          cacheInvalidateAll();
+          
           // Red (Merlog) rows
           if (typeof highlightMerlogRows === 'function') {
             highlightMerlogRows();
@@ -7582,6 +7770,30 @@ async function initialize() {
     createStatusNotifier();
 
     await loadSettings();
+
+    // Setup cache invalidation system
+    setupCacheInvalidation();
+    
+    // Setup jQuery-dependent cache invalidation after jQuery loads
+    if (typeof $ === 'undefined') {
+        // Wait for jQuery to load
+        const checkJQuery = setInterval(() => {
+            if (typeof $ !== 'undefined') {
+                clearInterval(checkJQuery);
+                // Setup select2 event handlers
+                $(document).on('select2:select', '.visit-drivers-select2, .route-select2', function(e) {
+                    const tr = $(this).closest('tr[data-task-id]');
+                    if (tr.length) {
+                        const taskId = tr.attr('data-task-id');
+                        if (taskId) cacheInvalidate(taskId);
+                    }
+                });
+            }
+        }, 100);
+        
+        // Stop checking after 10 seconds
+        setTimeout(() => clearInterval(checkJQuery), 10000);
+    }
 
     // --- DataTables draw hook (אופציונלי, פועל רק אם יש jQuery+DataTables) ---
     hookDataTablesDraw();
@@ -8674,6 +8886,13 @@ window.processBarcodeElement = processBarcodeElement;
 // Expose ready highlighting functions for manual use
 window.highlightReadyRows = highlightReadyRows;
 window.debouncedHighlightReadyRows = debouncedHighlightReadyRows;
+
+// Expose cache functions for debugging
+window.cacheGet = cacheGet;
+window.cacheSet = cacheSet;
+window.cacheInvalidate = cacheInvalidate;
+window.cacheInvalidateAll = cacheInvalidateAll;
+window.rowColorCache = rowColorCache;
 
 // פתרון: מאזין לפתיחה של modal ואז מוסיף תמונות לאחר שה-Enhanced סיים
 const enhancedSafeObserver = new MutationObserver((mutations) => {
