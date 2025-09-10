@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.7
+// @version      13.8.8
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -1795,26 +1795,28 @@ setupBlockedScriptObserver();
 
     // =========================================
     // Click Optimizer (מצמצם "click handler took XXXms")
+    // פועל רק בעמוד משלוחים (/operator/store_visits) ורק על הסלקטורים שלנו
     // =========================================
     function __tmcInstallClickOptimizer(){
       try{
+        // טעינה רק בעמוד "משלוחים"
+        const isStoreVisits = location.pathname.includes('/operator/store_visits');
+        if (!isStoreVisits) return;
+
         if (window.__tmcClickOptInstalled) return;
         window.__tmcClickOptInstalled = true;
-        const lastTs = new WeakMap();
-        // חוסם קליקים כפולים/מהירים על אותו כפתור (ב-capture) — מפחית הרצות כבדות חוזרות
+
+        // תופס אך ורק את הרכיבים שלנו (אפשר להוסיף data-tmc-click-optimized להרחבה עתידית)
         document.addEventListener('click', (e)=>{
-          const btn = e.target && (e.target.closest('button, [role="button"], .btn, a.btn, .preview-toggle-all-button, td.preview-cell button'));
+          const btn = e.target && e.target.closest('.preview-toggle-all-button, td.preview-cell button, [data-tmc-click-optimized]');
           if (!btn) return;
-          const now = performance.now();
-          const prev = lastTs.get(btn) || 0;
-          if (now - prev < 300){
-            // בלימת double-click/ mash — לרוב גורם לאותה פעולה לרוץ פעמיים
+
+          // בלימת דאבל־קליק אמיתי בלבד — לא עוצר single-click מהיר של ספריות UI
+          if (e.detail > 1){
             e.stopImmediatePropagation();
             e.preventDefault();
             return;
           }
-          lastTs.set(btn, now);
-          setTimeout(()=>{ if (lastTs.get(btn) === now) lastTs.delete(btn); }, 350);
         }, true);
       }catch(_){}
     }
