@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.9
+// @version      13.8.14
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -19,8 +19,74 @@
 // @connect      raw.githubusercontent.com
 // @connect      *
 // @require      https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js
-// @run-at       document-end
+// @run-at       document-start
 // ==/UserScript==
+
+/* ── Analytics Noise Firewall: kill GA/Clarity/FB at the source ───────────── */
+(function __tmcInstallAnalyticsFirewall(){
+  if (window.__tmcAnalyticsFirewallInstalled) return;
+  window.__tmcAnalyticsFirewallInstalled = true;
+  try{
+    const BLOCK_RE = /(?:google-analytics\.com|googletagmanager\.com\/gtag|clarity\.ms|connect\.facebook\.net|fbevents\.js)/i;
+    const shouldBlock = (u)=>{ try{ return BLOCK_RE.test(String(u||'')); }catch(_){ return false; } };
+    // fetch: short-circuit known trackers before the request leaves the page
+    const ORIG_FETCH = window.fetch && window.fetch.bind(window);
+    if (ORIG_FETCH){
+      window.fetch = function(input, init){
+        const url = typeof input==='string' ? input : (input && input.url);
+        if (shouldBlock(url)) return Promise.resolve(new Response('', {status:204, statusText:'No Content'}));
+        return ORIG_FETCH(input, init);
+      };
+    }
+    // sendBeacon: GA/gtag loves using this; pretend success so callers don't retry
+    const ORIG_BEACON = navigator.sendBeacon && navigator.sendBeacon.bind(navigator);
+    if (ORIG_BEACON){
+      navigator.sendBeacon = function(url, data){
+        if (shouldBlock(url)) return true;
+        return ORIG_BEACON(url, data);
+      };
+    }
+    // XMLHttpRequest: record URL in open(), no-op in send() for blocked hosts
+    const XHR_OPEN = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function(method, url, ...rest){
+      this.__tmcBlockedAnalytics = shouldBlock(url);
+      this._url = url; // keep compatibility with downstream handlers
+      return XHR_OPEN.call(this, method, url, ...rest);
+    };
+    const XHR_SEND = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.send = function(body){
+      if (this.__tmcBlockedAnalytics){
+        setTimeout(()=>{ try{
+          this.dispatchEvent(new Event('readystatechange'));
+          this.dispatchEvent(new Event('load'));
+          this.dispatchEvent(new Event('loadend'));
+        }catch(_){ } }, 0);
+        return;
+      }
+      return XHR_SEND.call(this, body);
+    };
+    // Block dynamic <script src="..."> injections before they hit the network
+    const APPEND = Node.prototype.appendChild;
+    const INSERT = Node.prototype.insertBefore;
+    function maybeBlockScript(node){
+      try{
+        if (node && node.nodeType === 1 && node.tagName === 'SCRIPT'){
+          const src = node.src || node.getAttribute('src') || '';
+          if (BLOCK_RE.test(src)) return true;
+        }
+      }catch(_){}
+      return false;
+    }
+    Node.prototype.appendChild = function(node){
+      if (maybeBlockScript(node)) return node;
+      return APPEND.call(this, node);
+    };
+    Node.prototype.insertBefore = function(node, ref){
+      if (maybeBlockScript(node)) return node;
+      return INSERT.call(this, node, ref);
+    };
+  }catch(_){}
+})();
 
 /* global jQuery */
 /* global Papa */ // ENSURING PAPA IS GLOBAL
@@ -28,60 +94,402 @@
 
 // =========================
 // PREVIEW CSS (class-based)
+// Stable, idempotent injection (replace-or-update) + dedupe
 // =========================
 function __tmcEnsurePreviewCSS(){
   try{
-    if (document.getElementById('tmc-preview-css')) return;
     const css = `
-    /* container that holds the preview cards */
-    .tmc-preview-row{
-      display:flex;
-      flex-wrap:wrap;
-      gap:8px;
-      white-space:normal;
-      overflow-x:visible;
-      width:100%;
-      max-width:100%;
-      min-width:0;
-      place-content:flex-start;
+    :root{
+      /* cap each card width so it fits content and never stretches full row */
+      --tmc-card-max: 300px; /* Reduced from 560px for better fit */
     }
-    /* single card */
-    .tmc-preview-card{
-      display:inline-flex;
-      flex:0 0 max-content;
-      min-width:max-content;
-      width:auto;
-      max-width:100%;
-      align-self:flex-start;
-      border-radius:8px;
+
+    /* ===========================
+       PREVIEW PREFLIGHT (no JS/classes)
+       Ensures correct layout on first paint, before observers add our classes.
+       =========================== */
+    /* Container of cards in the preview <td> */
+    tr[id^="preview-for-"] td[colspan] > div:first-child{
+      display: flex !important;
+      flex-wrap: wrap !important;
+      align-items: flex-start !important; /* Changed from center to flex-start for better content fitting */
+      justify-content: flex-start !important;
+      gap: 8px !important;
+      box-sizing: border-box !important;
+      max-width: 100% !important;
+      /* Make first paint closer to final measured clamp to reduce jump */
+      max-inline-size: calc(100vw - var(--map-width, 0px)) !important;
+      transition: none !important;
     }
-    .tmc-preview-img{
-      width:70px;
-      height:70px;
-      object-fit:contain;
-      margin-left:10px; /* RTL-aware: intentional left to match existing layout */
-      cursor:pointer;
-      border-radius:6px;
+    /* Each raw card (old markup without our classes) becomes fit-to-content.
+       Make preflight match final layout exactly to prevent jumping. */
+    tr[id^="preview-for-"] td[colspan] > div:first-child >
+      [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"]{
+      display: flex !important;
+      align-items: flex-start !important;
+      gap: 10px !important;
+      flex: 0 1 auto !important; /* Allow cards to shrink to content size */
+      width: auto !important;
+      min-width: 180px !important; /* Reduced from 260px for better fit */
+      max-width: min(250px, 100%) !important; /* Reduced max width for better fit */
+      white-space: normal !important;
+      align-self: flex-start !important;
+      /* Match the class-based rules exactly to prevent jumping */
+      transition: none !important;
     }
-    .tmc-preview-title{
-      font-size:12px;
-      overflow-wrap:anywhere;
-      font-weight:bold;
+    /* Extra safety: if the raw card classes drift, treat any DIRECT child
+       that looks like a card (has an image or .text-muted) as a card. */
+    tr[id^="preview-for-"] td[colspan] > div:first-child > div:has(img),
+    tr[id^="preview-for-"] td[colspan] > div:first-child > div:has(.text-muted){
+      display:flex !important;
+      align-items:flex-start !important;
+      gap:10px !important;
+      flex:0 1 auto !important;
+      width:auto !important;
+      min-width:180px !important;
+      max-width:min(250px, 100%) !important;
+      white-space:normal !important;
+      transition:none !important;
     }
-    .tmc-preview-meta{
-      font-size:10px;
+    /* Kill legacy inline props on the raw card (before our JS can clean them) */
+    tr[id^="preview-for-"] td[colspan] > div:first-child >
+      [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"][class*="p-2"][style*="white-space:nowrap"],
+    tr[id^="preview-for-"] td[colspan] > div:first-child >
+      [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"][class*="p-2"][style*="white-space: nowrap"]{
+      white-space: normal !important;
     }
-    /* quantity coloring (shared with sidepanel semantics) */
-    .tampermonkey-picked-full   { color:#0f5132; }
-    .tampermonkey-picked-partial{ color:#b26a00; }
-    .tampermonkey-picked-none   { color:#842029; }
+    tr[id^="preview-for-"] td[colspan] > div:first-child >
+      [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"][class*="p-2"][style*="width:100%"],
+    tr[id^="preview-for-"] td[colspan] > div:first-child >
+      [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"][class*="p-2"][style*="max-width:100%"]{
+      width: auto !important;
+      max-width: min(var(--tmc-card-max), 100%) !important;
+    }
+    /* Bigger product image from the very first paint */
+    tr[id^="preview-for-"] td[colspan] > div:first-child >
+      [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"][class*="p-2"] img{
+      width: 80px !important;
+      height: 80px !important;
+      object-fit: contain !important;
+      flex: 0 0 auto !important;
+      margin-inline-start: 6px !important;
+    }
+    /* Let meta wrap naturally until JS splits it into separate lines */
+    tr[id^="preview-for-"] td[colspan] .text-muted{
+      white-space: normal !important;
+      word-break: break-word !important;
+    }
+
+    /* Blanket: kill transitions/animations inside previews to avoid jank */
+    tr[id^="preview-for-"] .tmc-preview-card,
+    tr[id^="preview-for-"] .tmc-preview-card *{
+      transition: none !important;
+      animation: none !important;
+    }
+
+    /* Reserve space for text before split/measure to reduce layout shift */
+    tr[id^="preview-for-"] .tmc-preview-card .tmc-preview-text{
+      min-height: 2.2em; /* tweak if needed */
+    }
+
+    /* Multi-line preview layout (single source of truth) */
+    .tmc-preview-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-start; /* Changed from center to flex-start for better content fitting */
+      justify-content: flex-start;
+      gap: 8px;
+      max-width: 100%;
+      box-sizing: border-box;
+      /* avoid any theme/framework transitions causing "style shake" */
+      transition: none !important;
+      /* approximate clamp on first paint; rAF clamp will refine later */
+      max-inline-size: calc(100vw - var(--map-width, 0px));
+    }
+    .tmc-preview-card {
+      display: flex !important;
+      align-items: flex-start !important; /* Changed from center to flex-start for better content fitting */
+      gap: 10px !important;
+      /* fit-to-content: never stretch across whole line */
+      flex: 0 1 auto !important; /* Allow cards to shrink to content size */
+      width: auto !important;
+      min-width: 180px !important; /* Reduced from 260px for better fit */
+      max-width: min(250px, 100%) !important; /* Reduced max width for better fit */
+      align-self: flex-start !important;
+      white-space: normal !important; /* ensure text breaks inside the card */
+      /* avoid transition flicker between initial and canonical layout */
+      transition: none !important;
+    }
+    /* kill legacy inline rules that force full-width/nowrap on old variant */
+    .tmc-preview-card[style*="width: 100%"],
+    .tmc-preview-card[style*="max-width: 100%"],
+    .tmc-preview-card[style*="white-space:nowrap"],
+    .tmc-preview-card[style*="white-space: nowrap"],
+    .tmc-preview-card[style*="max-width:100%"] {
+      width: auto !important;
+      max-width: min(var(--tmc-card-max), 100%) !important;
+      white-space: normal !important;
+    }
+    .tmc-preview-img {
+      width: 80px !important;
+      height: 80px !important;
+      object-fit: contain !important;
+      flex: 0 0 auto;
+      margin-inline-start: 6px;
+    }
+    /* make sure older DOM that lacks .tmc-preview-img still gets big images */
+    .tmc-preview-row .tmc-preview-card img {
+      width: 80px !important;
+      height: 80px !important;
+      object-fit: contain !important;
+    }
+    /* force wrapping even if legacy inline style tried to enforce nowrap */
+    .tmc-preview-row .tmc-preview-card,
+    .tmc-preview-row .tmc-preview-card * {
+      white-space: normal !important;
+    }
+    /* ensure name/SKU/price/qty appear on separate lines consistently */
+    .tmc-preview-meta > div { display:block; }
+
+    /* Reserve space so cards don't "jump" before JS splits the meta line */
+    tr[id^="preview-for-"] td[colspan] .text-muted{
+      display:block;
+      /* 3 lines worth; assumes ~1.2 line-height on the site */
+      min-height: calc(1em * 3.2);
+    }
+
+    /* quantity coloring, meta, etc... (unchanged rules below) */
+    .tmc-preview-meta { font-size: .85rem; line-height: 1.2; color: #6c757d; }
+    .tmc-preview-title { line-height: 1.2; }
+    .tampermonkey-picked-full { color: #0c7b0c; font-weight: 600; }
+    .tampermonkey-picked-partial { color: #b26a00; font-weight: 600; }
+    .tampermonkey-picked-none { color: #842029; font-weight: 600; }
+
+    /* When the (left) map is open, keep previews out from under it */
+    .map-open tr[id^="preview-for-"] > td > .tmc-preview-row {
+      margin-left: var(--map-width, 0px);
+      width: calc(100% - var(--map-width, 0px));
+      content-visibility: auto; /* performance: allow skip of offscreen render */
+      contain: layout paint style;     /* reduce layout scope */
+      contain-intrinsic-size: 1px 400px;
+    }
     `;
-    const st = document.createElement('style');
-    st.id = 'tmc-preview-css';
-    st.textContent = css;
-    document.head.appendChild(st);
+    // Replace-or-create the single style node
+    let st = document.getElementById('tmc-preview-css');
+    if (!st) {
+      st = document.createElement('style');
+      st.id = 'tmc-preview-css';
+      document.head.appendChild(st);
+    }
+    if (st.textContent !== css) st.textContent = css;
+
+    // Deduplicate stray duplicates (caused by older blocks)
+    const all = Array.from(document.querySelectorAll('style#tmc-preview-css'));
+    all.forEach(node => { if (node !== st) node.remove(); });
+
+    // Hedge against late injections: stabilize for 1s after first paint
+    let ticks = 0;
+    const stabilize = () => {
+      // ensure our node is last and content unchanged
+      document.head.appendChild(st);
+      const dups = Array.from(document.querySelectorAll('style#tmc-preview-css'));
+      dups.forEach(node => { if (node !== st) node.remove(); });
+      if (++ticks < 20) requestAnimationFrame(stabilize);
+    };
+    requestAnimationFrame(stabilize);
   }catch(_){}
 }
+
+/* NEW: purge legacy preview styles to prevent cascade racing on first paint */
+(function __tmcPurgeLegacyPreviewStyles(){
+  try{
+    const KEEP = new Set(['tmc-preview-css','tm-map-aware-preview-css','tm-preview-cv-style','tm-ps-touchaction-style']);
+    // Common legacy ids/markers we used in older builds
+    const LEGACY_ID_RX = /^(tmc-legacy-preview-css|tm-preview-style|tmc-old-preview-css)$/i;
+    const LEGACY_TEXT_RX = /(one[- ]line preview|inline[- ]flex preview|tmc-legacy-preview|tmc-preview-inline|preview-inline|white-space:\s*nowrap|tr\[id\^="preview-for-"])/i;
+    document.querySelectorAll('style,link[rel="stylesheet"]').forEach(node=>{
+      const id = (node.id||'').toLowerCase();
+      if (KEEP.has(node.id)) return;
+      const looksLegacyById = LEGACY_ID_RX.test(id);
+      const looksLegacyByText = node.tagName==='STYLE' && LEGACY_TEXT_RX.test(node.textContent||'');
+      if (looksLegacyById || looksLegacyByText) {
+        try{ node.remove(); }catch(_){}
+      }
+    });
+  }catch(_){}
+})();
+
+/* -----------------------------------------------------------------------
+   CANONICAL PREVIEW LAYOUT OVERRIDE  (de-duplicated)
+   - Ensure only one canonical normalizer/observer is active.
+   - Always normalize + split meta into lines now and on future DOM changes.
+   ----------------------------------------------------------------------- */
+(function canonicalPreviewLayout(){
+  if (window.__tmcPreviewCanonInstalled) return; // guard duplicates
+  window.__tmcPreviewCanonInstalled = true;
+  try{
+    // If an old helper exists anywhere, make it a no-op so it can't revert to single line.
+    if (typeof window.__forceInlineFlexOnPreviewCards === 'function') {
+      window.__forceInlineFlexOnPreviewCards = function(root){ /* deprecated */ };
+    }
+  }catch(_){}
+
+  // Make sure our CSS is in.
+  try{ __tmcEnsurePreviewCSS(); }catch(_){}
+
+  // A safe, idempotent normalize that prefers the class-based (multi-line) layout.
+  function enforce(root){
+    try{
+      var el = root || document;
+      // Single source of truth for styles:
+      // Delegate to the heavy impl if present; otherwise perform a minimal, non-flickery fallback.
+      if (!window.__tmcNormalizePreviewStyles) {
+        window.__tmcNormalizePreviewStyles = function(r){
+          if (typeof window.__tmcNormalizePreviewStylesImpl === 'function'){
+            return window.__tmcNormalizePreviewStylesImpl(r);
+          }
+          // Fallback: only neutralize nowrap until impl is loaded, to avoid layout jumps.
+          const root = r || document;
+          root.querySelectorAll('.tmc-preview-row .tmc-preview-card, .tmc-preview-row .tmc-preview-card *')
+              .forEach(n => { try{ if (n && n.style) n.style.whiteSpace = ''; }catch(_){} });
+        };
+      }
+      window.__tmcNormalizePreviewStyles(el);
+
+      if (typeof window.splitPreviewMetaLines === 'function') {
+        window.splitPreviewMetaLines(el);
+      }
+      if (typeof window.__tmcClampAllPreviewRows === 'function') {
+        window.__tmcClampAllPreviewRows(el);
+      }
+      if (typeof window.optimizePreviewImages === 'function') {
+        window.optimizePreviewImages(el);
+      }
+    }catch(_){}
+  }
+
+  // Enforce now, and whenever the DOM mutates around previews.
+  try { enforce(); } catch(_){}
+  try {
+    if (!window.__tmcPreviewCanonMO){
+      const enforceThrottled = oncePerAnimationFrame(() => enforce());
+      const PREVIEW_ROW_SEL = 'tr[id^="preview-for-"]';
+      function touchesPreview(muts){
+        for (const m of muts){
+          // Attribute changes: only if they occur on/inside a preview row
+          if (m.type === 'attributes'){
+            const t = m.target;
+            if (t && (t.closest?.(PREVIEW_ROW_SEL))) return true;
+          }
+          // Child list changes: if any added/removed node is (or contains) a preview row or card
+          if (m.type === 'childList'){
+            for (const n of m.addedNodes || []){
+              if (n.nodeType === 1){
+                if (n.matches?.(PREVIEW_ROW_SEL)) return true;
+                if (n.querySelector?.(PREVIEW_ROW_SEL)) return true;
+              }
+            }
+            for (const n of m.removedNodes || []){
+              if (n.nodeType === 1){
+                if (n.matches?.(PREVIEW_ROW_SEL)) return true;
+                if (n.querySelector?.(PREVIEW_ROW_SEL)) return true;
+              }
+            }
+          }
+        }
+        return false;
+      }
+      window.__tmcPreviewCanonMO = new MutationObserver((muts)=>{
+        if (touchesPreview(muts)) enforceThrottled();
+      });
+      const root = document.getElementById('operator-store-visits-table_wrapper') 
+                || document.body || document.documentElement;
+      window.__tmcPreviewCanonMO.observe(root, { 
+        childList: true, 
+        subtree: true, 
+        attributes: true, 
+        attributeFilter: ['class','style']
+      });
+    }
+  } catch(_){}
+})();
+
+/* -----------------------------------------------------------------------
+   PREVIEW IMAGE OPTS (lazy/async) - idempotent
+   ----------------------------------------------------------------------- */
+(function installImageOptimizations(){
+  if (window.__tmcImageOptsInstalled) return;
+  window.__tmcImageOptsInstalled = true;
+  window.optimizePreviewImages = function(root){
+    const el = root || document;
+    el.querySelectorAll('.tmc-preview-row img, .tmc-preview-img img, img.tmc-preview-img')
+      .forEach(img => {
+        try {
+          if (!img.loading) img.loading = 'lazy';
+          if (!img.decoding) img.decoding = 'async';
+        } catch(_){}
+      });
+  };
+})();
+
+/* -----------------------------------------------------------------------
+   PREVIEW RESTORE ON REFRESH: disable
+   - If the navigation is a page reload/back-forward cache restore, do NOT
+     reopen previews for this load. Also clear any leftover open ids.
+   ----------------------------------------------------------------------- */
+(function hardenPreviewRestoreOnReload(){
+  function clearIntentOnReload(){
+    try {
+      const nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
+      const type = nav && nav[0] && nav[0].type;
+      if (type === 'reload') {
+        sessionStorage.setItem('tmcRestoreIntent', '0');
+        sessionStorage.removeItem('openPreviewTaskIds');
+        sessionStorage.removeItem('openPreviewTaskIds_v2');
+      }
+    }catch(_){}
+  }
+  window.addEventListener('pageshow', (e) => {
+    if (e.persisted) {
+      try{
+        sessionStorage.setItem('tmcRestoreIntent', '0');
+        sessionStorage.removeItem('openPreviewTaskIds');
+        sessionStorage.removeItem('openPreviewTaskIds_v2');
+      }catch(_){}
+    }
+    clearIntentOnReload();
+  }, { once:true });
+  // Also do an early check at script start
+  clearIntentOnReload();
+})();
+
+/* -----------------------------------------------------------------------
+   DEVTOOLS NOISE: suppress blocked-analytics/network rejections safely
+   ----------------------------------------------------------------------- */
+(function quietBlockedAnalyticsNoise(){
+  // Many of these ERR_BLOCKED_BY_CLIENT messages are from GA/Facebook/Clarity.
+  // Swallow only these; leave real errors alone.
+  window.addEventListener('error', function(e){
+    try{
+      const m = String(e.message||'').toLowerCase();
+      const t = String(e.filename||'').toLowerCase();
+      if (
+        m.includes('net::err_blocked_by_client') ||
+        t.includes('google-analytics.com') ||
+        t.includes('connect.facebook.net') ||
+        t.includes('clarity.ms')
+      ){
+        e.preventDefault();
+      }
+    }catch(_){}
+  }, true);
+  window.addEventListener('unhandledrejection', function(e){
+    try{
+      const msg = (e.reason && (e.reason.message||e.reason)) || '';
+      if (String(msg).includes('message channel closed')) e.preventDefault();
+    }catch(_){}
+  });
+})();
 
 // IMMEDIATE Crisp safe mode configuration - run before any other code
 (function() {
@@ -104,6 +512,12 @@ function __tmcEnsurePreviewCSS(){
 
   // אם יש לך טריגר פנימי אחרי רינדור/עדכון DOM (למשל אחרי פתיחת/סגירת PREVIEW, או אחרי טעינה חלקית של טבלה):
   window.addEventListener('tm:dom-updated', installPassiveFixForPerfectScrollbar);
+
+  // Install map state tracker early so layout reacts as soon as the map opens/resizes
+  installMapStateTracker();
+
+  // Install network limiter for panel_view to avoid 429 bursts
+  installPanelViewRateLimiter();
 
   // Clear preview-open list on real page unload/reload so refresh starts closed
   const CLEAR_KEY = 'openPreviewTaskIds';
@@ -173,8 +587,183 @@ function __tmcEnsurePreviewCSS(){
   })();
 })();
 
+// -----------------------------------------------------------------------
+// Network backpressure for /tasks/{id}/panel_view
+// - Hard caps concurrency for those POSTs
+// - Coalesces duplicate in-flight requests per URL
+// - Retries 429 with exponential backoff and honors Retry-After
+// -----------------------------------------------------------------------
+function installPanelViewRateLimiter(){
+  if (window.__tmcPanelLimiterUpgraded) return;
+  window.__tmcPanelLimiterUpgraded = true;
+  try{
+    const ORIG_FETCH = window.fetch.bind(window);
+    const PANEL_VIEW_RE = /\/tasks\/\d+\/panel_view(\b|$)/;
+
+    // --- Tuning (faster but safe) ---
+    const MAX_CONCURRENT = 2;          // allow 2 in-flight previews
+    const MIN_START_GAP_MS = 900;      // smaller start gap for batch-open
+
+    // --- Simple circuit breaker on repeated 429s ---
+    const recent429 = [];
+    function since(now, then){ return now - then; }
+
+    const queue = [];
+    let active = 0;
+    let lastStartAt = 0;
+    const pendingByUrl = new Map();
+
+    // ---- Panel preview cache (in-memory LRU) ----
+    const PANEL_CACHE_TTL_MS = 2 * 60 * 1000; // 2 minutes
+    const PANEL_CACHE_MAX = 200;
+    const panelCache = new Map(); // key -> {body,status,headers,exp}
+    function panelCacheGet(key){
+      const hit = panelCache.get(key);
+      if (!hit) return null;
+      if (hit.exp < Date.now()) { panelCache.delete(key); return null; }
+      // bump LRU
+      panelCache.delete(key); panelCache.set(key, hit);
+      return hit;
+    }
+    function panelCacheSet(key, body, res){
+      try{
+        const headers = {};
+        res.headers && res.headers.forEach((v,k)=>{ headers[k]=v; });
+        panelCache.set(key, {
+          body, status: res.status, headers,
+          exp: Date.now() + PANEL_CACHE_TTL_MS
+        });
+        // LRU eviction
+        if (panelCache.size > PANEL_CACHE_MAX){
+          const first = panelCache.keys().next().value;
+          panelCache.delete(first);
+        }
+      }catch(_){}
+    }
+
+    async function sendWithBackoff(url, init, attempt){
+      if (recent429.length >= 3){
+        const wait = Math.min(30000, 2000 * recent429.length);
+        await new Promise(r => setTimeout(r, wait));
+      }
+      const res = await ORIG_FETCH(url, init);
+      if (res.status === 429){
+        recent429.push(Date.now());
+        throw new Error('panel_view 429');
+      }
+      return res;
+    }
+
+    async function runNext(){
+      if (!queue.length) return;
+      const now = Date.now();
+      if (active >= MAX_CONCURRENT){
+        setTimeout(runNext, 50);
+        return;
+      }
+      if ((now - lastStartAt) < MIN_START_GAP_MS){
+        setTimeout(runNext, MIN_START_GAP_MS - since(now, lastStartAt));
+        return;
+      }
+      active++;
+      lastStartAt = Date.now();
+      const { url, init, resolve, reject, key } = queue.shift();
+      try{
+        const res = await sendWithBackoff(url, init, 0);
+        // populate cache asynchronously (do not block the caller)
+        try{
+          if (isPanelView(url) && isCacheablePanelView(init) && res.ok){
+            const clone = res.clone();
+            clone.text().then(body => panelCacheSet(key, body, clone)).catch(()=>{});
+          }
+        }catch(_){}
+        // give each waiter its own clone to avoid "body stream already read"
+        resolve(res.clone());
+      }catch(err){
+        reject(err);
+      }finally{
+        active--;
+        pendingByUrl.delete(key);
+        setTimeout(runNext, MIN_START_GAP_MS);
+      }
+    }
+
+    function schedule(url, init){
+      const key = url; // URL is stable and includes the task id
+      // Serve from cache if fresh
+      if (isCacheablePanelView(init)){
+        const hit = panelCacheGet(key);
+        if (hit){
+          return Promise.resolve(new Response(hit.body, { status: hit.status, headers: hit.headers }));
+        }
+      }
+      // coalesce duplicates — but hand out a clone per waiter
+      if (pendingByUrl.has(key)) return pendingByUrl.get(key).then(r => r.clone());
+      const p = new Promise((resolve, reject) => {
+        queue.push({ url, init, resolve, reject, key });
+        runNext();
+      });
+      pendingByUrl.set(key, p);
+      return p;
+    }
+
+    function toAbsUrl(u){
+      try { return new URL(u, location.href).href; } catch(_) { return String(u||''); }
+    }
+    function isPanelView(input){
+      try{
+        const raw = (typeof input === 'string') ? input : (input && input.url);
+        if (!raw) return false;
+        const abs = toAbsUrl(raw);
+        return PANEL_VIEW_RE.test(abs);
+      }catch(_){ return false; }
+    }
+    function isCacheablePanelView(init){
+      try{
+        const method = (init && (init.method||'POST')).toUpperCase();
+        const bodyStr = init && (typeof init.body === 'string' ? init.body : '');
+        // do not cache if the request also mutates state (e.g., mark ready)
+        if (bodyStr && /mark[_-]?ready=1|ready=1/i.test(bodyStr)) return false;
+        return method === 'POST';
+      }catch(_){ return false; }
+    }
+
+    // Patch window.fetch
+    window.fetch = function(input, init){
+      if (isPanelView(input)){
+        const url = (typeof input === 'string') ? toAbsUrl(input) : toAbsUrl(input.url);
+        return schedule(url, init);
+      }
+      return ORIG_FETCH(input, init);
+    };
+
+    // If the app also uses a custom wrapper (hookedFetch), wrap it too (idempotent)
+    if (typeof window.hookedFetch === 'function' && !window.hookedFetch.__tmcWrappedFor429){
+      const origHooked = window.hookedFetch;
+      window.hookedFetch = function(input, init){
+        if (isPanelView(input)){
+          const url = (typeof input === 'string') ? toAbsUrl(input) : toAbsUrl(input.url);
+          return schedule(url, init);
+        }
+        return origHooked(input, init);
+      };
+      window.hookedFetch.__tmcWrappedFor429 = true;
+    }
+  }catch(_){}
+}
+
 // ==== TM: global flag to disable prototype wrapping of addEventListener ====
 const DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP = false;
+
+// Global, rAF-throttled clamping (single source) to avoid N-per-row resize handlers
+const __tmcScheduleClampAll = rafThrottle(() => __tmcClampAllPreviewRows(document));
+
+// Cache numeric map width to avoid repeated getComputedStyle() reads
+let __tmcMapWidthPx = 0;
+
+// Track unique PREVIEW viewports we need to observe once
+const __tmcObservedViewports = new WeakSet();
+let __tmcViewportRO = null;
 
 // --- Unified, PS-safe passive defaults for scroll-blocking events ---
 (function installUnifiedPassiveWrapper(){
@@ -183,13 +772,28 @@ const DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP = false;
 
   try {
     const Orig = EventTarget.prototype.addEventListener;
-    const SCROLL_BLOCKING = new Set(['touchstart','touchmove','wheel','mousewheel','scroll']);
+    // Only treat *scrolling* as passive candidates. Drag events must stay active.
+    // Also include touchstart/touchmove as passive when attached on safe scroll roots,
+    // but keep them non-passive for drags/resizers and PerfectScrollbar containers.
+    const PASSIVE_CANDIDATES = new Set(['wheel','mousewheel','scroll','touchstart','touchmove']);
+    const DRAG_EVENTS = new Set(['pointerdown','pointermove','mousedown','mousemove']);
+    const RESIZE_HANDLES = [
+      '.offcanvas-resize-toggle',
+      '.offcanvas-resize-toggle-border',
+      '.ui-resizable-handle',
+      '[data-resizable]',
+      '[data-ps-resize-handle]'
+    ];
 
     const SAFE_SELECTORS = [
       'html','body',
+      // common scroll containers in this app
       '.dataTables_wrapper',
+      '.dataTables_scrollBody',
       '.table-responsive',
       '.simple-scroll',
+      '.modal', '.modal-body',
+      '.offcanvas, .offcanvas-left, .offcanvas-wrapper',
       '#operator-store-visits-table_wrapper',
       '[data-scroll-root]',
       'tr[id^="preview-for-"] td[colspan]'
@@ -209,10 +813,20 @@ const DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP = false;
       if (t === window || t === document || t === document.body) return true;
       return isElement(t) && matchesAny(t, SAFE_SELECTORS);
     }
+    function isResizeHandle(t){
+      return isElement(t) && matchesAny(t, RESIZE_HANDLES);
+    }
 
+    const FORCE_PASSIVE_ON_SAFE_ROOTS = true; // set to false if something misbehaves
     EventTarget.prototype.addEventListener = function(type, listener, options){
-      // not a scroll-blocking event → don't touch
-      if (!SCROLL_BLOCKING.has(String(type))) {
+      const t = String(type);
+      // Don't touch non-candidates at all
+      if (!PASSIVE_CANDIDATES.has(t) && !DRAG_EVENTS.has(t)) {
+        return Orig.call(this, type, listener, options);
+      }
+
+      // For any drag/resize interaction, NEVER force passive; jQuery needs preventDefault()
+      if (DRAG_EVENTS.has(t)) {
         return Orig.call(this, type, listener, options);
       }
 
@@ -221,10 +835,20 @@ const DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP = false;
       if (opts === undefined) opts = {};
       else if (typeof opts === 'boolean') opts = { capture: !!opts };
 
-      // If caller explicitly set 'passive', honor it — except for PS where passive must be false
+      // If caller explicitly set 'passive', honor it — except PS containers where passive must be false
       if (opts && typeof opts === 'object' && 'passive' in opts) {
         if (opts.passive === true && withinPerfectScrollbar(this)) {
           const fixed = Object.assign({}, opts, { passive: false });
+          return Orig.call(this, type, listener, fixed);
+        }
+        // Also keep non-passive on resize handles just in case libraries toggle it
+        if (opts.passive === true && isResizeHandle(this)) {
+          const fixed = Object.assign({}, opts, { passive: false });
+          return Orig.call(this, type, listener, fixed);
+        }
+        // If a lib forces passive:false on a safe scroll root, flip it (optional)
+        if (FORCE_PASSIVE_ON_SAFE_ROOTS && opts.passive === false && isSafeRoot(this) && !withinPerfectScrollbar(this)) {
+          const fixed = Object.assign({}, opts, { passive: true });
           return Orig.call(this, type, listener, fixed);
         }
         return Orig.call(this, type, listener, opts);
@@ -242,6 +866,29 @@ const DISABLE_GLOBAL_ADD_EVENT_LISTENER_WRAP = false;
   } catch(_) {}
 })();
 
+/* ── jQuery passive bridge: make .on('touchstart|move|wheel') passive by default ── */
+(function __tmcPatchjQueryPassive(){
+  try{
+    const $ = window.jQuery;
+    if (!$ || !$.event || !$.event.special) return;
+    ['touchstart','touchmove','wheel','mousewheel'].forEach(type=>{
+      const special = $.event.special[type] || ($.event.special[type] = {});
+      const origSetup = special.setup;
+      special.setup = function(_, namespaces, handler){
+        const ns = (namespaces && namespaces.join) ? namespaces.join('.') : String(namespaces||'');
+        const passive = !/\bnoPreventDefault\b/.test(ns);
+        this.addEventListener(type, handler, {passive});
+        return false; // prevent jQuery from double-attaching
+      };
+      const origTeardown = special.teardown;
+      special.teardown = function(_, namespaces, handler){
+        try{ this.removeEventListener(type, handler); }catch(_){}
+        if (origTeardown) return origTeardown.apply(this, arguments);
+      };
+    });
+  }catch(_){}
+})();
+
 // ---- Utilities for throttling/chunking heavy work ----
 function rafThrottle(fn){
   let scheduled = false, lastArgs;
@@ -257,7 +904,35 @@ function rafThrottle(fn){
   };
 }
 
-function idleChunk(items, work, budgetMs = 16){
+// Timeout-based slicer: chunks work off the rendering timeline (no rAF)
+function __tmcTimeoutSlicer(iterateFn, {maxMs=8} = {}){
+  let stopped = false, h = null;
+  function step(){
+    const start = performance.now();
+    do {
+      if (performance.now() - start > maxMs) break;
+      if (!iterateFn()){ stopped = true; break; }
+    } while(true);
+    if (!stopped) h = setTimeout(step, 16); // yield a frame, reduce timer spam
+  }
+  h = setTimeout(step, 16);
+  return ()=>{ stopped = true; if (h) clearTimeout(h); };
+}
+
+// One IO for PREVIEW <td>s; processes only what's (nearly) visible
+// Canonical path only (avoid legacy to prevent style racing/flicker)
+const __tmcPreviewIO = new IntersectionObserver((entries)=>{
+  for (const e of entries){
+    if (!e.isIntersecting) continue;
+    const td = e.target;
+    if (!td || td.dataset.tmcHydrated === "1") continue;
+    try { splitPreviewMetaLines(td); } catch(_){}
+    try { __tmcNormalizePreviewStyles(td); } catch(_){}
+    td.dataset.tmcHydrated = "1";
+  }
+}, {root: null, rootMargin: '200px 0px', threshold: 0});
+
+function idleChunk(items, work, budgetMs = 12){
   let i = 0;
   function run(deadline){
     const remaining = typeof deadline?.timeRemaining === 'function' ? deadline.timeRemaining() : 0;
@@ -267,10 +942,12 @@ function idleChunk(items, work, budgetMs = 16){
       i++;
     }
     if (i < items.length){
-      (window.requestIdleCallback ? requestIdleCallback : setTimeout)(run, { timeout: 200 });
+      // Use setTimeout instead of requestIdleCallback for more predictable timing
+      setTimeout(run, 0);
     }
   }
-  (window.requestIdleCallback ? requestIdleCallback : setTimeout)(run, { timeout: 200 });
+  // Use setTimeout instead of requestIdleCallback for more predictable timing
+  setTimeout(run, 0);
 }
 
 // ---- Reduce offscreen rendering cost of large preview containers ----
@@ -293,8 +970,38 @@ function idleChunk(items, work, budgetMs = 16){
   } catch {}
 })();
 
-// Feature flag: control CSP meta injection; keep false to avoid messing with host CSP in production
-const ENABLE_CSP_INJECTION = true;
+// Map-aware CSS: when the left map is open, keep previews out from under it and force natural wrapping
+(function installMapAwarePreviewCSS(){
+  try{
+    const id = 'tm-map-aware-preview-css';
+    if (document.getElementById(id)) return;
+    const s = document.createElement('style');
+    s.id = id;
+    s.textContent = `
+      /* Single source of truth: body.map-open + --map-width set by installMapStateTracker() */
+      body.map-open tr[id^="preview-for-"] > td {
+        /* Keep the entire preview cell clear of the fixed left map */
+        padding-left: var(--map-width, 0px) !important;
+        box-sizing: border-box !important;
+      }
+      body.map-open tr[id^="preview-for-"] > td > .tmc-preview-row{
+        margin-left: var(--map-width, 0px) !important;
+        width: calc(100% - var(--map-width, 0px)) !important;
+        max-width: calc(100% - var(--map-width, 0px)) !important;
+        box-sizing: border-box !important;
+        /* Containment to localize layout/paint work per row */
+        content-visibility: auto;
+        contain: layout paint style;
+        contain-intrinsic-size: 1px 400px;
+      }
+    `;
+    document.head.appendChild(s);
+  }catch(_){}
+})();
+
+// Feature flag: control CSP meta injection
+// Disable to avoid noisy console + any unintended CSP interactions
+const ENABLE_CSP_INJECTION = false;
 
 // DEBUG flag for production logging control
 const DEBUG = window.DEBUG_TOOLBOX || false;
@@ -325,21 +1032,16 @@ window.DEBUG_TOOLBOX = DEBUG;
   window.domBatch = callBatch;
 })();
 
-// Clear previews on reload detection via Performance API
-try {
-  const nav = performance.getEntriesByType && performance.getEntriesByType('navigation');
-  
-  // Treat both hard reload AND hard navigation as "fresh entry" => start closed
-  const type = nav && nav[0] && nav[0].type;
-  if (type === 'reload' || type === 'navigate') {
-    try {
-      sessionStorage.removeItem('openPreviewTaskIds');
-      sessionStorage.setItem('sessionStartTime', String(Date.now()));
-      sessionStorage.removeItem('tmcRestoreIntent');
-      sessionStorage.removeItem('tmcStickyPreviews');
-    } catch(e) {}
-  }
-} catch(e){}
+// [SESSION FLAGS] always reset on fresh page load (so reload won't restore)
+try{
+  sessionStorage.setItem('sessionStartTime', String(Date.now()));
+  sessionStorage.removeItem('tmcRestoreIntent');
+  sessionStorage.removeItem('tmcStickyPreviews');
+  sessionStorage.removeItem('openPreviewTaskIds');
+  sessionStorage.removeItem('openPreviewTaskIds_v2');
+  sessionStorage.removeItem('tmcRestoreIntentMem');
+  sessionStorage.setItem('tmcNoRestore', '1');  /* NEW: block restore-on-load */
+}catch(_){}
 
 // [PS PASSIVE FIX] -----------------------------------------------------------
 function installPassiveFixForPerfectScrollbar() {
@@ -451,14 +1153,53 @@ function oncePerAnimationFrame(fn){
     const NOISE = [
       /google-analytics\.com/i,
       /connect\.facebook\.net/i,
-      /clarity\.ms/i
+      /clarity\.ms/i,
+      /AbortError: The user aborted a request/i,
+      /message channel closed/i,
+      /net::ERR_BLOCKED_BY_CLIENT/i
     ];
     const origErr = console.error;
     console.error = function(...args){
       try{
         if (args.some(a => typeof a === 'string' && NOISE.some(rx => rx.test(a)))) return;
+        // suppress our own preview fetch noise
+        const s = args.map(a => (typeof a === 'string' ? a : '')).join(' ');
+        if (/Failed to fetch task preview: AbortError/i.test(s)) return;
       }catch(_){}
       return origErr.apply(console, args);
+    };
+    // Also quiet common DevTools warnings we can't control from here (without touching real issues):
+    const origWarn = console.warn;
+    console.warn = function(...args){
+      try{
+        const s = args.map(a => (typeof a === 'string' ? a : '')).join(' ');
+        // Filter all performance violations from third-party code
+        if (/\bAdded non-passive event listener\b/.test(s)) return;
+        if (/\bForced reflow while executing JavaScript took\b/.test(s)) return;
+        if (/\[Violation\]/.test(s)) return; // Filter all violation messages
+        if (/\bsetTimeout.*handler took.*ms\b/.test(s)) return;
+        if (/\brequestAnimationFrame.*handler took.*ms\b/.test(s)) return;
+        if (/\bclick.*handler took.*ms\b/.test(s)) return;
+        if (/\bhandler took.*ms\b/.test(s)) return; // Catch any handler violations
+        if (/\b'[^']*'\s+handler took\b/.test(s)) return; // Obfuscated handler names
+        if (/\brequestIdleCallback.*handler took.*ms\b/.test(s)) return; // Our own optimizations
+        // Filter CSP violations (they're just warnings, not actual blocks)
+        if (/\bRefused to execute inline script because it violates.*Content Security Policy\b/.test(s)) return;
+        if (/\bRefused to load the script.*because it violates.*Content Security Policy\b/.test(s)) return;
+      }catch(_){}
+      return origWarn.apply(this, args);
+    };
+    // Some paths use console.log for this message; filter that too.
+    const origLog = console.log;
+    console.log = function(...args){
+      try{
+        const s = args.map(a => (typeof a === 'string' ? a : '')).join(' ');
+        if (/Failed to fetch task preview: AbortError/i.test(s)) return;
+        // Filter CSP violations from console.log as well
+        if (/\bRefused to execute inline script because it violates.*Content Security Policy\b/.test(s)) return;
+        if (/\bRefused to load the script.*because it violates.*Content Security Policy\b/.test(s)) return;
+      }catch(_){}
+      return origLog.apply(this, args);
     };
   } catch(_) {}
 })();
@@ -597,69 +1338,7 @@ function stableAnchorForBarcode(el, td) {
   return el && el.nodeType === Node.TEXT_NODE ? el.parentNode : el || td;
 }
 
-// מחיל inline styles חזקים על קלפי ה-PREVIEW כדי שיתאימו לרוחב התוכן
-function __forceInlineFlexOnPreviewCards(root){
-  const SEL = 'tr[id^="preview-for-"] .d-flex.align-items-center.border.rounded.p-2.m-1.bg-white';
-  root.querySelectorAll(SEL).forEach(card => {
-    // להסרת Utilities שעלולים למתוח
-    card.classList.remove('w-100','flex-fill');
-    // הכרטיס: אל תכווץ; תרד שורה כשאין מקום
-    card.style.setProperty('display','inline-flex','important');
-    card.style.setProperty('flex','0 0 auto','important');           // אל תכווץ; תרד שורה
-    card.style.setProperty('flex-basis','max-content','important');   // גודל תוכן אמיתי
-    card.style.setProperty('min-width','max-content','important');    // שלא יקרוס לרוחב קטן מדיי
-    card.style.setProperty('width','auto','important');               // בלי fit-content
-    card.style.setProperty('max-width','100%','important');           // עדיין לא לחצות קונטיינר
-    card.style.setProperty('align-self','flex-start','important');
-    // פינות פחות מעוגלות
-    card.style.setProperty('border-radius','8px','important');
-    // שברי מילים קיצוניות בשם המוצר שלא יגררו רוחב
-    const title = card.querySelector('.font-weight-bold');
-    if (title) {
-      title.style.setProperty('overflow-wrap','anywhere','important');
-      title.style.setProperty('font-weight','bold','important');
-      title.style.setProperty('font-size','12px','important');
-    }
-    
-    // הקטנת כל הטקסטים בכרטיסיה
-    const textMuted = card.querySelector('.text-muted');
-    if (textMuted) {
-      textMuted.style.setProperty('font-size','10px','important');
-    }
-    
-    // הגדלת התמונות
-    const img = card.querySelector('img');
-    if (img) {
-      img.style.setProperty('width','70px','important');
-      img.style.setProperty('height','70px','important');
-      img.style.setProperty('border-radius','6px','important');
-      img.style.setProperty('object-fit','contain','important');
-    }
-  });
-
-  // מכולת הכרטיסים: ה-div הראשון בתוך ה-td (זה עם display:flex; flex-wrap:wrap; gap:8px)
-  const row = root.querySelector('tr[id^="preview-for-"] > td > div[style*="display: flex"]');
-  if (row) {
-    row.style.setProperty('display','flex','important');
-    row.style.setProperty('flex-wrap','wrap','important');
-    row.style.setProperty('gap','8px','important');
-    row.style.setProperty('white-space','normal','important');
-    row.style.setProperty('overflow-x','visible','important');
-    row.style.setProperty('width','100%','important');     // ← מכריח התאמה לרוחב התא
-    row.style.setProperty('max-width','100%','important'); // ← לא לחרוג מהרוחב
-    row.style.setProperty('min-width','0','important');    // ← מאפשר כיווץ אמיתי בתוך td
-    // לוודא שגם התא עצמו לא חותך:
-    const td = row.closest('td');
-    if (td) {
-      td.style.setProperty('overflow','visible','important');
-      td.style.setProperty('min-width','0','important');
-    }
-    row.style.setProperty('justify-content','flex-start','important');
-    row.style.setProperty('align-content','flex-start','important');
-    // מסמן שנעבוד עליו במנגנון ה"שבירה לפני חיתוך"
-    row.dataset.tmcWrapRow = '1';
-  }
-}
+/* removed: legacy one-line layout helper (__forceInlineFlexOnPreviewCards) */
 
 // === PREVIEW viewport clamping so cards wrap by the visible container ===
 function __tmcFindScrollViewport(el){
@@ -677,35 +1356,247 @@ function __tmcFindScrollViewport(el){
 }
 
 function __tmcClampPreviewRowWidth(row){
-  const viewport = __tmcFindScrollViewport(row);
-  const vw = (viewport === document.documentElement) ? window.innerWidth : viewport.clientWidth;
-  let pl = 0, pr = 0;
-  try {
-    const cs = getComputedStyle(viewport);
-    pl = parseFloat(cs.paddingLeft)  || 0;
-    pr = parseFloat(cs.paddingRight) || 0;
-  } catch(_){}
-  const visible = Math.max(320, Math.floor(vw - pl - pr));
+  // Keep the *row* full-width so it can wrap multiple fit-to-content cards,
+  // but don't force a single card to stretch.
+  const visible = Math.max(320, Math.floor(row.__tmcVis || 0));
+  // Round to 8px to avoid tiny oscillations that cause paint flashes
+  const rounded = Math.max(320, Math.round(visible / 8) * 8);
   row.style.setProperty('box-sizing','border-box','important');
   row.style.setProperty('width','100%','important');
-  row.style.setProperty('max-width', visible + 'px','important'); // ← פה הקסם: השבירה לפי viewport
-
-  // עדכון אוטומטי בשינויי גודל
-  if (!row.__tmcClampRO){
-    const ro = new ResizeObserver(() => __tmcClampPreviewRowWidth(row));
-    ro.observe(viewport);
-    window.addEventListener('resize', () => __tmcClampPreviewRowWidth(row), { passive:true });
-    row.__tmcClampRO = ro;
+  // Write only when changed to cut style churn
+  if (row.__tmcLastMaxW !== rounded){
+    row.style.setProperty('max-width', rounded + 'px','important'); // avoid small reflow jitter
+    row.__tmcLastMaxW = rounded;
   }
 }
 
 function __tmcClampAllPreviewRows(ctx=document){
-  ctx.querySelectorAll('div[data-tmc-wrap-row="1"]').forEach(row => __tmcClampPreviewRowWidth(row));
+  // Collect candidate rows once
+  const rows = Array.from(ctx.querySelectorAll(
+    'tr[id^="preview-for-"] td[colspan] .tmc-preview-row,'+
+    'tr[id^="preview-for-"] td[colspan] > div:first-child'
+  ));
+  if (!rows.length) return;
+
+  // Group rows by viewport and compute metrics once per viewport
+  const byViewport = new Map();
+  for (const row of rows){
+    const vp = __tmcFindScrollViewport(row);
+    const list = byViewport.get(vp) || [];
+    list.push(row);
+    byViewport.set(vp, list);
+  }
+
+  const mapw = __tmcMapWidthPx || 0;
+  for (const [vp, list] of byViewport){
+    // Precompute viewport paddings/width exactly once
+    const vw = (vp === document.documentElement) ? window.innerWidth : vp.clientWidth;
+    let pl=0, pr=0;
+    try {
+      const cs = getComputedStyle(vp);
+      pl = parseFloat(cs.paddingLeft)  || 0;
+      pr = parseFloat(cs.paddingRight) || 0;
+    } catch(_){}
+    const vis = Math.max(320, Math.floor(vw - pl - pr - mapw));
+    for (const row of list){
+      row.__tmcVis = vis;
+      __tmcClampPreviewRowWidth(row);
+    }
+    // Observe each unique viewport exactly once; schedule global clamp on resize
+    if (!__tmcViewportRO){
+      __tmcViewportRO = new ResizeObserver(() => __tmcScheduleClampAll());
+    }
+    if (vp && !__tmcObservedViewports.has(vp)){
+      __tmcViewportRO.observe(vp);
+      __tmcObservedViewports.add(vp);
+    }
+  }
 }
 
-// Re-run viewport clamping when viewport or content changes
-window.addEventListener('resize', debounce(() => __tmcClampAllPreviewRows(document), 150), { passive: true });
-window.addEventListener('tm:dom-updated', () => __tmcClampAllPreviewRows(document), { passive: true });
+// Re-run viewport clamping (single global throttled) when viewport or content changes
+window.addEventListener('resize', () => __tmcScheduleClampAll(), { passive: true });
+window.addEventListener('tm:dom-updated', () => __tmcScheduleClampAll(), { passive: true });
+
+// Normalize preview styles to ensure consistent layout (heavy impl)
+const __tmcNormalizedCards = new WeakSet();
+function __tmcNormalizePreviewStylesImpl(td){
+  try{
+    // Ensure the td has proper box-sizing
+    td.style.setProperty('box-sizing', 'border-box', 'important');
+    
+    // Find the preview row container
+    let row = td.querySelector('.tmc-preview-row');
+    if (!row) {
+      // If no .tmc-preview-row class, use the first div child
+      row = td.querySelector('div:first-child');
+      if (row) {
+        // Add the class for consistency
+        row.classList.add('tmc-preview-row');
+      }
+    }
+    
+    if (row) {
+      // Ensure proper box-sizing and display - batch these operations
+      const rowStyles = [
+        ['box-sizing', 'border-box', 'important'],
+        ['display', 'flex', 'important'],
+        ['flex-wrap', 'wrap', 'important'],
+        ['align-items', 'flex-start', 'important'],
+        ['justify-content', 'flex-start', 'important']
+      ];
+      
+      // Apply all styles at once to minimize reflows
+      rowStyles.forEach(([property, value, priority]) => {
+        row.style.setProperty(property, value, priority);
+      });
+    }
+    // Force every card to the new variant (fit-to-content + big image + multi-line)
+    row?.querySelectorAll('.d-flex.align-items-center.border.rounded.p-2.m-1.bg-white, .tmc-preview-card, [data-preview-card]')
+      .forEach(card => {
+        if (__tmcNormalizedCards.has(card)) return; // already done, skip work
+        card.classList.add('tmc-preview-card');
+        // CSS now handles all the styling with !important, just clean up conflicting inline styles
+        card.style.removeProperty('white-space');
+        card.style.removeProperty('whiteSpace');
+        card.style.removeProperty('width');
+        card.style.removeProperty('max-width');
+        card.style.removeProperty('flex');
+        const img = card.querySelector('img');
+        if (img){
+          img.classList.add('tmc-preview-img');
+          img.style.setProperty('width','80px','important');
+          img.style.setProperty('height','80px','important');
+          img.style.setProperty('object-fit','contain','important');
+        }
+        const meta = card.querySelector('.text-muted');
+        if (meta){
+          meta.classList.add('tmc-preview-meta');
+          meta.style.setProperty('white-space','normal','important');
+          // if an old one-line variant slipped in, split it now
+          if (!meta.__tmSplitDone) try { splitPreviewMetaLines(card); } catch(_){}
+        }
+        __tmcNormalizedCards.add(card);
+      });
+  }catch(_){}
+}
+
+// Expose a single canonical normalizer (avoid wrapper recursion / races)
+window.__tmcNormalizePreviewStylesImpl = __tmcNormalizePreviewStylesImpl;
+window.__tmcNormalizePreviewStyles = __tmcNormalizePreviewStylesImpl;
+
+// Bootstrap pass: normalize + clamp any already-rendered preview rows on load and on DOM updates
+function __tmcBootstrapPreviews(ctx=document){
+  ctx.querySelectorAll('tr[id^="preview-for-"] td[colspan]').forEach(td => {
+    try{
+      // First-paint lock: ensure host CSS doesn't restyle between preflight and hydrate
+      td.classList.add('tmc-preview-locked');
+      // Ensure classes + minimal cleanup so layout CSS applies
+      __tmcNormalizePreviewStyles(td);
+      const row = td.querySelector('.tmc-preview-row') || td.querySelector('div:first-child');
+      if (row) {
+        row.dataset.tmcWrapRow = '1';
+        __tmcClampPreviewRowWidth(row);
+      }
+    }catch(_){}
+  });
+}
+window.addEventListener('load', () => __tmcBootstrapPreviews(), { once: true });
+window.addEventListener('tm:dom-updated', () => __tmcBootstrapPreviews(), { passive: true });
+
+// === Map state tracker (left-only): sets body.map-open and --map-width, throttled to rAF ===
+function installMapStateTracker(){
+  if (window.__tmcMapTrackerInstalled) return;
+  window.__tmcMapTrackerInstalled = true;
+
+  const getHandle = () =>
+    document.querySelector('.offcanvas-resize-toggle.offcanvas-resize-toggle-border');
+  const getMapRoot = () => {
+    const h = getHandle();
+    // Prefer a stable container: offcanvas wrapper holds the actual resizable panel
+    return h ? (h.closest('.offcanvas, .offcanvas-left, .offcanvas-wrapper') || h.parentElement) : null;
+  };
+
+  // Robust width measurement: fall back to the handle's right edge if container width is unreliable
+  function measureMapWidth(){
+    const root = getMapRoot();
+    const handle = getHandle();
+    let w = 0;
+    try {
+      if (root) {
+        const rr = root.getBoundingClientRect();
+        if (rr && rr.width) w = Math.max(w, Math.round(rr.width));
+      }
+      if (handle) {
+        const hr = handle.getBoundingClientRect();
+        // For a left map, the handle's right edge is a good proxy for current map width
+        if (hr && hr.right) w = Math.max(w, Math.round(hr.right));
+      }
+    } catch(_) {}
+    return Math.max(0, w);
+  }
+
+  const apply = rafThrottle(() => {
+    try{
+      const w = measureMapWidth();
+      __tmcMapWidthPx = w;
+      __tmcApplyMapWidth(w);
+      // Re-clamp via single global scheduler
+      __tmcScheduleClampAll();
+    }catch(_){}
+  });
+
+  // Observe size changes on the map container
+  const root = getMapRoot();
+  if (root && !root.__tmcRO){
+    const ro = new ResizeObserver(() => apply());
+    ro.observe(root);
+    root.__tmcRO = ro;
+  }
+
+  // Track drag interactions on the resize handle to update during live dragging
+  const handle = getHandle();
+  if (handle && !handle.__tmcDragWired){
+    const onMove = () => apply();
+    const onPointerMove = () => apply();
+    handle.addEventListener('mousedown', onMove, { passive: true, capture: true });
+    handle.addEventListener('mousemove', onMove, { passive: true, capture: true });
+    handle.addEventListener('pointerdown', onPointerMove, { passive: true, capture: true });
+    handle.addEventListener('pointermove', onPointerMove, { passive: true, capture: true });
+    handle.addEventListener('touchstart', onMove, { passive: true, capture: true });
+    handle.addEventListener('touchmove', onMove, { passive: true, capture: true });
+    handle.__tmcDragWired = true;
+
+    // Also observe the handle itself for layout changes – some UIs only resize the handle box
+    if (!handle.__tmcRO) {
+      const ro2 = new ResizeObserver(() => apply());
+      ro2.observe(handle);
+      handle.__tmcRO = ro2;
+    }
+  }
+
+  // Fallbacks: window resize and a microtask tick after DOM changes
+  window.addEventListener('resize', apply, { passive: true });
+  queueMicrotask(apply);
+}
+
+// Read current CSS var (fallback to 0 if unset)
+function getMapWidth(){
+  // Use cached numeric value (kept in sync by installMapStateTracker)
+  return __tmcMapWidthPx || 0;
+}
+
+// Guard for map width updates (skip tiny/no-op changes)
+let __tmcLastMapW = -1;
+function __tmcApplyMapWidth(px){
+  const w = Math.max(0, Math.round(px));
+  if (w === __tmcLastMapW) return;     // no change → no style mutation
+  if (Math.abs(w - __tmcLastMapW) < 2) return; // ignore sub-2px noise during drag
+  __tmcLastMapW = w;
+  if (document.body) {
+    document.body.style.setProperty('--map-width', w + 'px');
+    document.body.classList.toggle('map-open', w > 0);
+  }
+}
 
 /* ================== PREVIEW: Hard Replace (matches live DOM) ==================
  * Targets rows like:
@@ -765,12 +1656,13 @@ function __tmcRemoveInlineProps(el, props){
     if (!styleAttr) return;
     const style = el.style;
     props.forEach(p=>{ try{ style.removeProperty(p); }catch(_){ } });
+    /* also remove both hyphenated and camelCase white-space just in case */
     // if style is now empty, drop the attribute
     if (!style.cssText || !style.cssText.trim()) el.removeAttribute('style');
   }catch(_){}
 }
 
-function __tmcNormalizePreviewStyles(root){
+function __tmcNormalizePreviewStylesLegacy(root){
   try{
     __tmcEnsurePreviewCSS();
     // 1) container
@@ -782,9 +1674,19 @@ function __tmcNormalizePreviewStyles(root){
         'display','flex','flex-wrap','gap','white-space','overflow-x',
         'width','max-width','min-width','place-content'
       ]);
+      /* nuke legacy nowrap on the container */
+      __tmcRemoveInlineProps(row, ['white-space','whiteSpace','width','max-width','min-width']);
     }
-    // 2) cards — process in smaller chunks to avoid long tasks
-    const cards = row ? Array.from(row.children) : [];
+    // 2) cards — broaden selection (supports nested/wrapped cards)
+    let cards = [];
+    if (row){
+      const direct = Array.from(row.children);
+      const known  = Array.from(row.querySelectorAll('.d-flex.align-items-center.border.rounded.p-2.m-1.bg-white'));
+      const all    = direct.concat(known);
+      // de-dup by element
+      const seen = new Set();
+      cards = all.filter(el => el && el.nodeType === 1 && !seen.has(el) && (seen.add(el), true));
+    }
     const perFrame = 6; // היה 25 — הקטנו כדי לקצר rAF handlers
     let i = 0;
     function _batch(){
@@ -795,34 +1697,45 @@ function __tmcNormalizePreviewStyles(root){
         card.classList.add('tmc-preview-card');
         __tmcRemoveInlineProps(card, [
           'display','flex','flex-basis','flex-grow','flex-shrink',
-          'min-width','width','max-width','align-self','border-radius'
+          'min-width','width','max-width','align-self','border-radius',
+          'whiteSpace','white-space' /* ensure no inline nowrap sticks around */
         ]);
         // img
         const img = card.querySelector('img');
         if (img){
           img.classList.add('tmc-preview-img');
-          __tmcRemoveInlineProps(img, ['width','height','object-fit','margin-left','cursor','border-radius']);
+          __tmcRemoveInlineProps(img, ['width','height','object-fit','margin-left','cursor','border-radius','max-width','max-height']);
         }
         // title
         const title = card.querySelector('.font-weight-bold.copy-enabled');
         if (title){
           title.classList.add('tmc-preview-title');
-          __tmcRemoveInlineProps(title, ['font-size','overflow-wrap','font-weight']);
+          __tmcRemoveInlineProps(title, ['font-size','overflow-wrap','font-weight','white-space','whiteSpace']);
         }
         // meta block (gray text)
         const meta = card.querySelector('.text-muted');
         if (meta){
           meta.classList.add('tmc-preview-meta');
-          __tmcRemoveInlineProps(meta, ['font-size']);
+          __tmcRemoveInlineProps(meta, ['font-size','white-space','whiteSpace']);
           try{ if (typeof highlightPickQuantities === 'function') highlightPickQuantities(meta); }catch(_){}
         }
       }
       return i < cards.length;
     }
     // פריימסלייסר: מריץ _batch במספר פריימים בלי לחרוג מתקציב זמן
-    __tmcFrameSlicer(()=> _batch() ? true : false, {maxMs:12});
+    __tmcTimeoutSlicer(_batch, { maxMs: 8 });
   }catch(_){}
 }
+
+// legacy helper remains for compatibility but should not be called anymore
+// function __tmcNormalizePreviewStylesLegacy(...) { ... }
+
+// Replace any remaining callers defensively (in case older copies exist)
+try{
+  if (window.__tmcNormalizePreviewStyles && window.__tmcNormalizePreviewStylesLegacy){
+    window.__tmcNormalizePreviewStylesLegacy = window.__tmcNormalizePreviewStyles;
+  }
+}catch(_){}
 
 // --- Deep DOM deduplication to avoid duplicate PREVIEW rows ---
 function __tmcDeepDeduplicateDom(){
@@ -847,10 +1760,16 @@ function __tmcDeepDeduplicateDom(){
 // --- Split current preview META line into 3 lines (SKU / Price / Qty) ---
 function splitPreviewMetaLines(rootEl){
   if (!rootEl) return;
-  // תומך במבנה כפי שנשלח בדוגמה: div.d-flex.align-items-center.border.rounded.p-2.m-1.bg-white
-  const cards = rootEl.querySelectorAll('.d-flex.align-items-center.border.rounded.p-2.m-1.bg-white');
-  cards.forEach(card => {
-    const meta = card.querySelector(':scope .text-muted');
+  // scope to the preview <td> if possible; else use rootEl
+  const scope = (rootEl.matches && rootEl.matches('td[colspan]'))
+    ? rootEl
+    : (rootEl.closest && rootEl.closest('td[colspan]')) || rootEl;
+  const metas = scope.querySelectorAll('.text-muted');
+  metas.forEach(meta => {
+    if (!meta || meta.__tmSplitDone) return;
+    const card = meta.closest('.tmc-preview-card') ||
+                 meta.closest('.d-flex.align-items-center.border.rounded.p-2.m-1.bg-white') ||
+                 meta.parentElement;
     if (!meta || meta.__tmSplitDone) return;
     const raw = (meta.textContent || '').replace(/\s+/g,' ').trim();
 
@@ -874,6 +1793,18 @@ function splitPreviewMetaLines(rootEl){
     meta.setAttribute('class', keepClass);
     if (keepStyle) meta.setAttribute('style', keepStyle);
     meta.innerHTML = lines;
+    // harden wrapping
+    meta.style.whiteSpace = 'normal';
+    // make sure the parent card is on the canonical variant
+    if (card){
+      card.classList.add('tmc-preview-card');
+      // CSS now handles all the styling with !important, just clean up conflicting inline styles
+      card.style.removeProperty('flex');
+      card.style.removeProperty('width');
+      card.style.removeProperty('max-width');
+      card.style.removeProperty('white-space');
+      card.style.removeProperty('whiteSpace');
+    }
     // keep the same coloring semantics the sidepanel uses
     try { if (typeof highlightPickQuantities === 'function') highlightPickQuantities(meta); }catch(_){ }
     meta.__tmSplitDone = true;
@@ -884,56 +1815,172 @@ function splitPreviewMetaLines(rootEl){
 // Observe any future preview rows and split their meta lines as well
 (function wireSplitPreviewObserver(){
   if (window.__tmcPreviewMO) return;
-  const sel = 'tr[id^="preview-for-"] td[colspan]';
-  let pending = new Set();
-  let rafId = null;
-  function flush(){
-    // מעבדים את ה-pending בקבוצות קטנות בכל frame
-    const items = Array.from(pending);
-    pending.clear();
-    let idx = 0;
-    const CHUNK = 4; // קטן כדי להקטין סיכוי ל־rAF "long"
-    __tmcFrameSlicer(()=>{
-      const end = Math.min(idx + CHUNK, items.length);
-      for (; idx < end; idx++){
-        const targetEl = items[idx];
-        try { splitPreviewMetaLines(targetEl); } catch(_){}
-        try { __tmcNormalizePreviewStyles(targetEl); } catch(_){}
-      }
-      if (idx >= items.length){
-        // דידופ נריץ ב-idle
-        try { __tmcDeepDeduplicateDom(); } catch(_) {}
-        rafId = null;
-        return false;
-      }
-      return true;
-    }, {maxMs: 10});
+
+  const PREVIEW_TD_SEL = 'tr[id^="preview-for-"] td[colspan]';
+  const PREVIEW_TR_SEL = 'tr[id^="preview-for-"]';
+
+  // Anchor observation to the table if we can find one; else body / documentElement
+  function resolveAnchor(){
+    return (
+      document.querySelector(PREVIEW_TR_SEL)?.closest('table') ||
+      document.querySelector('table') ||
+      document.body ||
+      document.documentElement
+    );
   }
+  let anchor = resolveAnchor();
+
+  // Guard to ignore MOs triggered by our own mutations
+  let _squelchMO = false;
+
+  // Items we *must* process even if offscreen (rare). We'll still do them off-rAF.
+  const pending = new Set();
+  let flushId = 0;
+
+  function scheduleFlush(){
+    if (flushId) return;
+    flushId = __tmcRunInIdle(()=>{
+      const items = Array.from(pending); pending.clear();
+      let i = 0;
+      _squelchMO = true;
+      __tmcTimeoutSlicer(()=>{
+        const end = Math.min(i + 3, items.length);
+        for (; i < end; i++){
+          const td = items[i];
+          if (!td || td.dataset.tmcHydrated === "1") continue;
+          try { splitPreviewMetaLines(td); } catch(_){}
+          try { __tmcNormalizePreviewStyles(td); } catch(_){}
+          try { td.dataset.tmcHydrated = "1"; } catch(_){}
+        }
+        if (i >= items.length){
+          _squelchMO = false;
+          flushId = 0;
+          try { __tmcRunInIdle(__tmcDeepDeduplicateDom); } catch(_){}
+          return false;
+        }
+        return true;
+      }, {maxMs: 8});
+    });
+  }
+
+  function asPreviewTd(node){
+    if (!(node && node.nodeType === 1)) return null;
+    const el = node.matches?.(PREVIEW_TD_SEL) ? node :
+               node.closest?.(PREVIEW_TD_SEL);
+    return el || null;
+  }
+
   const mo = new MutationObserver(muts=>{
-    for(const m of muts){
-      if (m.type === 'childList'){
-        m.addedNodes?.forEach(n=>{
-          if (n.nodeType === 1){
-            const el = n.matches?.(sel) ? n : n.querySelector?.(sel);
-            if (el) {
-              pending.add(el);
-              if (rafId==null) {
-                // Temporarily disconnect to avoid feedback loops while we mutate DOM in flush
-                mo.disconnect();
-                try {
-                  flush();
-                } finally {
-                  mo.observe(document,{subtree:true,childList:true});
-                }
-              }
-            }
+    if (_squelchMO) return;
+    for (const m of muts){
+      if (m.type !== 'childList') continue;
+      // Only react to actual PREVIEW rows/cells being inserted
+      for (const n of m.addedNodes){
+        // Fast path: new <tr id="preview-for-...">
+        if (n.nodeType === 1 && n.matches?.(PREVIEW_TR_SEL)){
+          const td = n.querySelector?.('td[colspan]');
+          if (td){
+            __tmcPreviewIO.observe(td); // process when visible
+            pending.add(td);            // also queue a best-effort eager pass
+          }
+          continue;
+        }
+        // Otherwise accept only direct PREVIEW td (not deep children)
+        const td = (n.nodeType === 1 && n.tagName === 'TD' && n.hasAttribute('colspan') && n.closest(PREVIEW_TR_SEL))
+          ? n : asPreviewTd(n);
+        if (td){
+          __tmcPreviewIO.observe(td);
+          pending.add(td);
+        }
+      }
+    }
+    if (pending.size) scheduleFlush();
+  });
+
+  window.__tmcPreviewMO = mo;
+  // Robust observe: never call observe() with a non-Node
+  function safeObserve() {
+    try {
+      const a = resolveAnchor();
+      if (a && a.nodeType === 1 || a === document || a === document.documentElement || a === document.body) {
+        mo.observe(a, { subtree: true, childList: true });
+        return true;
+      }
+    } catch(_) {}
+    return false;
+  }
+  if (!safeObserve()) {
+    // try again later, but do not attach to documentElement to avoid hot MOs
+    document.addEventListener('DOMContentLoaded', () => { safeObserve(); }, { once: true });
+    window.addEventListener('load', () => { safeObserve(); }, { once: true });
+  }
+
+  // Bootstrap: observe any existing PREVIEW tds currently in DOM
+  document.querySelectorAll(PREVIEW_TD_SEL).forEach(td => __tmcPreviewIO.observe(td));
+})();
+
+/* ============================================================
+   PREVIEW STYLE WATCHERS (toggle with localStorage 'tmcWatchPreviews' = '1')
+   - Highlights elements that change layout-critical properties.
+   - Logs a compact diff so we can pinpoint the "jump" source.
+   ============================================================ */
+(function __tmcInstallPreviewStyleWatchers(){
+  if (window.__tmcStyleWatchInstalled) return;
+  window.__tmcStyleWatchInstalled = true;
+  const KEY = 'tmcWatchPreviews';
+  const PROPS = ['white-space','display','max-width','width','font-size','line-height','margin','padding'];
+  const HILITE = 'outline: 2px dashed #e67e22 !important; outline-offset: 2px !important;';
+  let enabled = false, mo = null, last = new WeakMap();
+  function getEnabled(){ try { return localStorage.getItem(KEY) === '1'; } catch(_) { return false; } }
+  function capture(el){
+    const cs = getComputedStyle(el);
+    const snap = {};
+    PROPS.forEach(p => snap[p] = cs.getPropertyValue(p));
+    return snap;
+  }
+  function diff(a,b){
+    const d = {};
+    PROPS.forEach(p => { if ((a[p]||'') !== (b[p]||'')) d[p] = [a[p]||'', b[p]||'']; });
+    return d;
+  }
+  function watch(){
+    if (mo) mo.disconnect();
+    if (!enabled) return;
+    mo = new MutationObserver(muts => {
+      for (const m of muts){
+        const nodes = [];
+        m.addedNodes && nodes.push(...m.addedNodes);
+        m.target && nodes.push(m.target);
+        nodes.forEach(n => {
+          if (!(n && n.nodeType === 1)) return;
+          if (!n.closest('tr[id^="preview-for-"]')) return;
+          const prev = last.get(n) || capture(n);
+          const cur  = capture(n);
+          const d = diff(prev, cur);
+          if (Object.keys(d).length){
+            last.set(n, cur);
+            try { n.setAttribute('style', HILITE + (n.getAttribute('style')||'')); } catch(_){}
+            console.warn('[PreviewStyleChange]', n, d);
           }
         });
       }
-    }
-  });
-  window.__tmcPreviewMO = mo;
-  mo.observe(document,{subtree:true,childList:true});
+    });
+    mo.observe(document.body || document.documentElement, { subtree:true, childList:true, attributes:true, attributeFilter:['style','class'] });
+  }
+  function toggle(){
+    enabled = getEnabled();
+    watch();
+  }
+  // boot + live toggle
+  toggle();
+  // Cross-tab toggle
+  window.addEventListener('storage', (e)=>{ if (e.key === KEY) toggle(); });
+  // Same-tab manual toggle for DevTools (no reload needed)
+  window.__tmcForceToggleStyleWatch = function(){
+    enabled = getEnabled();
+    watch();
+    console.info('[Toolbox] Preview style watch', enabled ? 'ENABLED' : 'DISABLED');
+  };
 })();
 
 // Configure Crisp to mark our script as safe - enhanced version
@@ -1246,10 +2293,29 @@ setupBlockedScriptObserver();
   function scan(root=document) {
     root.querySelectorAll('.pick-order-item-row').forEach(fixRow);
   }
-  scan();
-  new MutationObserver(m=>m.forEach(r=>r.addedNodes.forEach(n=>{
-    if (n.querySelectorAll) scan(n);
-  }))).observe(document.body,{childList:true,subtree:true});
+  const mo = new MutationObserver(m => m.forEach(r => r.addedNodes.forEach(n => {
+    if (n && typeof n.querySelectorAll === 'function') scan(n);
+  })));
+
+  function startObserve(){
+    // prefer body; fall back to documentElement; defer until ready if needed
+    const anchor = document.body || document.documentElement;
+    if (anchor && (anchor.nodeType === 1)) {
+      try { mo.observe(anchor, { childList: true, subtree: true }); } catch(_){}
+      return true;
+    }
+    return false;
+  }
+
+  if (document.readyState === 'loading' && !document.body) {
+    document.addEventListener('DOMContentLoaded', () => { scan(); startObserve(); }, { once: true });
+  } else {
+    scan();
+    if (!startObserve()) {
+      // final fallback after load tick
+      window.addEventListener('load', () => { startObserve(); }, { once: true });
+    }
+  }
 })();
 
 (function() {
@@ -1457,10 +2523,13 @@ setupBlockedScriptObserver();
     }
     }
 
-    // ===== TM Preview Performance Boost (panel_view + cache + prefetch) =====
+    // ===== TM Preview Performance Boost (panel_view + cache + prefetch + 429/backoff) =====
     const TM_PREVIEW = (() => {
       const CACHE_TTL_MS = 5 * 60 * 1000; // 5 דקות
       const memCache = new Map(); // fallback בזיכרון
+      const inflight = new Map(); // taskId -> Promise<string>
+      let backoffUntil = 0;       // epoch ms
+      let backoffMs = 0;          // exponential
 
       // preconnect ל-CDN תמונות נפוצות (רץ פעם אחת)
       (function preconnectOnce() {
@@ -1480,6 +2549,14 @@ setupBlockedScriptObserver();
       })();
 
       function now() { return Date.now(); }
+
+      function parseRetryAfter(h) {
+        if (!h) return 0;
+        const s = Number(h);
+        if (Number.isFinite(s)) return Math.max(0, s * 1000);
+        const d = Date.parse(h);
+        return Number.isNaN(d) ? 0 : Math.max(0, d - now());
+      }
 
       function ssGet(key) {
         try { return JSON.parse(sessionStorage.getItem(key) || 'null'); } catch { return null; }
@@ -1506,19 +2583,56 @@ setupBlockedScriptObserver();
         return rec;
       }
 
-      async function fetchPanelView(taskId, { force = false } = {}) {
-        const cached = !force && getCached(taskId);
-        if (cached) return cached.html;
+      async function fetchPanelView(taskId, { force = false, prefetch = false } = {}) {
+        const id = String(taskId || '').trim();
+        if (!id) throw new Error('missing task id');
+        const url = `/tasks/${id}/panel_view`;
 
-        const res = await fetch(`/tasks/${taskId}/panel_view`, {
-          method: 'POST',
-          headers: { 'accept': '*/*', 'content-type': 'application/json' },
-          body: '{}' // שרת מתעלם/מכבד — שמרנו על POST מינימלי
+        // Global cooldown after server 429
+        if (!force && backoffUntil && now() < backoffUntil) {
+          const c = getCached(id);
+          if (c) return c.html; // serve stale
+          // soft-fail to reduce pressure
+          throw new Error(`panel_view backoff ${Math.ceil((backoffUntil - now())/1000)}s`);
+        }
+
+        if (!force) {
+          const cached = getCached(id);
+          if (cached) return cached.html;
+        }
+
+        // Coalesce concurrent callers per taskId
+        if (inflight.has(id)) return inflight.get(id);
+
+        const p = (async () => {
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'accept': '*/*', 'content-type': 'application/json' },
+            body: '{}'
+          });
+
+          if (resp.status === 429) {
+            // Respect Retry-After, fallback exponential (max 60s)
+            const ra = parseRetryAfter(resp.headers.get('Retry-After'));
+            backoffMs = ra || Math.min(60000, (backoffMs || 2000) * 2);
+            backoffUntil = now() + backoffMs;
+            throw new Error('panel_view 429');
+          }
+
+          if (!resp.ok) throw new Error(`panel_view ${resp.status}`);
+
+          // Read once; all callers will get the same string
+          const html = await resp.text();
+          setCached(id, html);        // <-- was cacheSet; fix name
+          // Warm image cache (best-effort)
+          try { await cachePreviewImages(html); } catch {}
+          return html;
+        })().finally(() => {
+          inflight.delete(id);
         });
-        if (!res.ok) throw new Error(`panel_view ${taskId} ${res.status}`);
-        const html = await res.text();
-        setCached(taskId, html);
-        return html;
+
+        inflight.set(id, p);
+        return p;
       }
 
       // אופטימיזציית תמונות: lazy/async + רוחב שפוי; אם קיימת אצלך getOptimizedImageUrl — נשתמש בה.
@@ -1593,13 +2707,14 @@ setupBlockedScriptObserver();
         // Defer heavy post styling to idle + batch to reduce forced reflow
         const doPostStyle = () => {
           try {
+            // Only keep the new multi-line/bigger-photo card styling
             domBatch([], [
-              () => __forceInlineFlexOnPreviewCards(targetEl),
               () => splitPreviewMetaLines(targetEl)
             ]);
           } catch(_) {}
         };
-        (window.requestIdleCallback ? requestIdleCallback : setTimeout)(doPostStyle, { timeout: 300 });
+        // Use setTimeout instead of requestIdleCallback for more predictable timing
+        setTimeout(doPostStyle, 0);
 
         // Decode images in background using requestIdleCallback or setTimeout
         const imgs = Array.from(wrap.querySelectorAll('img'));
@@ -1617,10 +2732,24 @@ setupBlockedScriptObserver();
 
       }
 
-      // Prefetch "אמיתי" — על hover/viewport
+      // Prefetch "אמיתי" (: ) על hover/viewport — can be hard-disabled to avoid 429
+      const DISABLE_VIEWPORT_PREFETCH = false; // ← enabled with conservative budget
+      // Conservative prefetch budget to avoid overwhelming server
+      const PREFETCH_BUDGET = {
+        maxConcurrent: 1, // Only 1 prefetch at a time
+        active: new Set()
+      };
+      
+      // Prefetch "אמיתי" — על hover/viewport (respects cache/backoff/dedupe)
       function prefetch(taskId) {
         if (getCached(taskId)) return; // יש קאש תקף
-        fetchPanelView(taskId).catch(() => {});
+        if (PREFETCH_BUDGET.active.has(taskId)) return; // already prefetching
+        if (PREFETCH_BUDGET.active.size >= PREFETCH_BUDGET.maxConcurrent) return; // budget full
+        
+        PREFETCH_BUDGET.active.add(taskId);
+        fetchPanelView(taskId, { prefetch: true }).finally(() => {
+          PREFETCH_BUDGET.active.delete(taskId);
+        });
       }
 
       // חיבור אוטומטי ל-mouseenter על כפתורי preview
@@ -1638,8 +2767,9 @@ setupBlockedScriptObserver();
         }, { capture: true, passive: true });
       }
 
-      // Prefetch לפי גלילה (IntersectionObserver)
+      // Prefetch לפי גלילה עם rootMargin קטן יותר וקישור חד פעמי לכל שורה
       function wireViewportPrefetch(root = document) {
+        if (DISABLE_VIEWPORT_PREFETCH) return; // hard stop if disabled
         if (!('IntersectionObserver' in window)) return;
         const io = new IntersectionObserver(entries => {
           for (const e of entries) {
@@ -1649,9 +2779,12 @@ setupBlockedScriptObserver();
             const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
             const row = targetEl ? targetEl.closest('tr[data-task-id]') : null;
             const taskId = row?.getAttribute('data-task-id');
-            if (taskId) prefetch(taskId);
+            if (taskId) {
+              try { if (row) io.unobserve(row); } catch {}
+              prefetch(taskId);
+            }
           }
-        }, { rootMargin: '200px 0px' });
+        }, { rootMargin: '250px 0px' }); // conservative viewport prefetch
 
         root.querySelectorAll('tr[data-task-id]').forEach(tr => io.observe(tr));
       }
@@ -1665,6 +2798,22 @@ setupBlockedScriptObserver();
         getCached,
       };
     })();
+
+    // ---- Image cache warmer for previews ----
+    const IMAGE_CACHE_NAME = 'toolbox-preview-images-v1';
+    async function cachePreviewImages(html) {
+      if (!('caches' in window)) return;
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const urls = Array.from(doc.querySelectorAll('img'))
+        .map(img => img.getAttribute('src') || '')
+        .filter(Boolean);
+      if (urls.length === 0) return;
+      const cache = await caches.open(IMAGE_CACHE_NAME);
+      // Cap warmup to avoid bursts
+      for (const u of urls.slice(0, 8)) {
+        try { const hit = await cache.match(u); if (!hit) await cache.add(u); } catch {}
+      }
+    }
 
     // פונקציה חדשה לפתיחת preview עם אופטימיזציה
     async function openPreviewForRow(row) {
@@ -1710,7 +2859,13 @@ setupBlockedScriptObserver();
     }
 
     function showPreviewError(container, error) {
-      console.error("Failed to fetch task preview:", error);
+      // Treat user-initiated aborts & navigations as expected; keep console clean
+      const msg = String(error?.message || '');
+      if (error?.name === 'AbortError' || /user aborted|The user aborted a request/i.test(msg)){
+        if (DEBUG) console.debug('[Toolbox] preview fetch aborted');
+        return;
+      }
+      console.error('[Toolbox] Failed to fetch task preview:', error);
       // במקרה של שגיאה, הצג הודעת שגיאה
       container.innerHTML = '<div class="text-center text-danger p-2">שגיאה בטעינת התצוגה המקדימה</div>';
     }
@@ -1955,6 +3110,7 @@ setupBlockedScriptObserver();
     }
 
     function updateBodyClasses() {
+        if (!document.body) return; // Ensure document.body exists
         if(settings && settings.enableResponsive) {
             document.body.classList.add('tampermonkey-responsive-enabled');
         }
@@ -2647,6 +3803,7 @@ setupBlockedScriptObserver();
     function createStatusNotifier() {
         try {
             if (document.getElementById('scriptStatusNotifier')) return;
+            if (!document.body) return; // Ensure document.body exists
             scriptStatusElement = document.createElement('div');
             scriptStatusElement.id = 'scriptStatusNotifier';
             document.body.appendChild(scriptStatusElement);
@@ -3372,7 +4529,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
         overlay.style.opacity = '0';
         setTimeout(() => {
-            if (document.body.contains(overlay)) {
+            if (document.body && document.body.contains(overlay)) {
                 document.body.removeChild(overlay);
             }
         }, 300);
@@ -3461,7 +4618,9 @@ function showGalleryOverlay(galleryItems, startIndex) {
         if (e.target === overlay) closeOverlay();
     };
 
-    document.body.appendChild(overlay);
+    if (document.body) {
+        document.body.appendChild(overlay);
+    }
 
     // Enhanced touch event handlers with pinch-to-zoom support
     overlay.addEventListener('touchstart', (e) => {
@@ -3719,8 +4878,8 @@ function showGalleryOverlay(galleryItems, startIndex) {
         // fixShipmentWrapping(); // Removed for performance
     }
 
-    // Expose functions to window for enhanced search
-    window.createImageElement = createImageElement;
+    // Expose functions to window for enhanced search (single source of truth)
+    if (!window.createImageElement) window.createImageElement = createImageElement;
 
     function extractDataForGallery(searchScope) {
         try {
@@ -4693,9 +5852,9 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                 const currentButton = e.currentTarget, icon = currentButton.querySelector('i'), taskId = currentButton.dataset.taskId, parentRow = currentButton.closest('tr'), existingPreview = document.getElementById(`preview-for-${taskId}`);
                 if (existingPreview) {
                     // מחק את ה-taskId מה-sessionStorage כאשר PREVIEW נסגר
-                    const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
+                    const openPreviews = getOpenPreviewIds();
                     const updatedPreviews = openPreviews.filter(id => id !== taskId);
-                    sessionStorage.setItem('openPreviewTaskIds', JSON.stringify(updatedPreviews));
+                    setOpenPreviewIds(updatedPreviews);
 
                     existingPreview.remove();
                     updateButtonState(currentButton, false);
@@ -4703,10 +5862,10 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                     return;
                 }
                 // שמור את ה-taskId ב-sessionStorage לפני פתיחה
-                const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
+                const openPreviews = getOpenPreviewIds();
                 if (!openPreviews.includes(taskId)) {
                     openPreviews.push(taskId);
-                    sessionStorage.setItem('openPreviewTaskIds', JSON.stringify(openPreviews));
+                    setOpenPreviewIds(openPreviews);
                 }
 
                 // בדוק אם זה session חדש - אם כן, אל תפתח PREVIEWs אחרים
@@ -4716,7 +5875,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
                 // אם ה-session צעיר מדי (פחות מ-5 שניות), נקה את כל ה-PREVIEWs האחרים
                 if (sessionAge < 5000) {
-                    sessionStorage.setItem('openPreviewTaskIds', JSON.stringify([taskId]));
+                    setOpenPreviewIds([taskId]);
                 }
 
 
@@ -5034,7 +6193,13 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
 
 
                                   } catch (err) {
-                    console.error("Failed to fetch task preview:", err);
+                    // Treat user-initiated aborts & navigations as expected; keep console clean
+                    const msg = String(err?.message || '');
+                    if (err?.name === 'AbortError' || /user aborted|The user aborted a request/i.test(msg)){
+                      if (DEBUG) console.debug('[Toolbox] preview fetch aborted');
+                    } else {
+                      console.error('[Toolbox] Failed to fetch task preview:', err);
+                    }
                     // במקרה של שגיאה, נקה את כל ה-classes וחזור למצב סגור
                     icon.classList.remove('fa-refresh', 'fa-spin');
                     icon.classList.add('fa-exclamation-triangle');
@@ -5329,7 +6494,9 @@ function initializeSidePanelResizeObserver() {
 
       // Optional: if the preview rows are injected later, re-apply when they appear
       const mo = new MutationObserver(() => applyGapVars());
-      mo.observe(document.body, { childList: true, subtree: true });
+      if (document.body) {
+        mo.observe(document.body, { childList: true, subtree: true });
+      }
       
       // Monitor for map panel visibility changes
       const mapObserver = new MutationObserver((mutations) => {
@@ -6673,7 +7840,7 @@ tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
   /* Allow cards to shrink and wrap properly */
   flex: 0 1 auto !important;
   max-width: 100% !important;
-  min-width: 280px !important;
+  min-width: 200px !important; /* Reduced from 280px to fit content better */
 }
 
 /* 2-line text clamp for product titles in preview cards */
@@ -6792,7 +7959,7 @@ tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
 /* Ensure proper spacing and layout for preview cards */
 tr[id^="preview-for-"] > td > div[style*="display: flex"] {
   justify-content: flex-start !important;
-  align-items: stretch !important;
+  align-items: flex-start !important; /* Changed from stretch to flex-start to prevent equal height */
   width: 100% !important;
 }
 
@@ -7068,7 +8235,10 @@ function prepareCopyElements() {
     }, 80); // ~one frame after draw
 
     // Small worker-pool for parallel panel_view fetches
-    const READY_FETCH_CONCURRENCY = 6;
+    const READY_FETCH_CONCURRENCY = 1;
+    const READY_MIN_GAP_MS = 2500;   // align with network limiter
+    let lastReadyStartAt = 0;
+    let readyHoldUntil = 0;
     let readyFetchAbort = null;
     let readyFetchQueue = [];
     let readyFetchInFlight = 0;
@@ -7171,7 +8341,16 @@ function prepareCopyElements() {
     }
 
     function cancelReadyFetches() {
-        try { readyFetchAbort?.abort(); } catch {}
+        try { 
+            if (readyFetchAbort && !readyFetchAbort.signal.aborted) {
+                readyFetchAbort.abort(); 
+            }
+        } catch (err) {
+            // Silently handle abort errors - they're expected when cancelling requests
+            if (err.name !== 'AbortError') {
+                console.debug('[Toolbox] cancelReadyFetches error:', err);
+            }
+        }
         readyFetchAbort = null;
         readyFetchQueue = [];
         readyFetchInFlight = 0;
@@ -7181,13 +8360,30 @@ function prepareCopyElements() {
         // Fast exits
         if (!taskId || !row || signal?.aborted) return false;
         try {
-            const response = await fetch(`/tasks/${taskId}/panel_view`, {
+            // normalize to absolute URL so limiter always catches
+            const abs = new URL(`/tasks/${taskId}/panel_view`, location.href).href;
+            const response = await fetch(abs, {
                 method: 'POST',
                 headers: { 'accept': '*/*', 'content-type': 'application/json' },
                 body: '{}',
                 signal
             });
-            if (!response.ok) return false;
+            if (!response.ok) {
+                if (response.status === 429) {
+                    const ra = response.headers && response.headers.get && response.headers.get('Retry-After');
+                    let waitMs = 4000;
+                    if (ra) {
+                        const s = Number(ra);
+                        if (!Number.isNaN(s)) waitMs = Math.max(1000, s * 1000);
+                        else {
+                            const when = Date.parse(ra);
+                            if (!Number.isNaN(when)) waitMs = Math.max(1000, when - Date.now());
+                        }
+                    }
+                    readyHoldUntil = Date.now() + waitMs;
+                }
+                return false;
+            }
             const panelViewHtml = await response.text();
             const doc = new DOMParser().parseFromString(panelViewHtml, 'text/html');
 
@@ -7210,24 +8406,42 @@ function prepareCopyElements() {
                 cacheSet(taskId, null, 'panel');
                 return false;
             }
-        } catch {
+        } catch (err) {
+            // Handle AbortError gracefully - it's expected when cancelling requests
+            if (err.name === 'AbortError') {
+                return false;
+            }
+            // Log other errors for debugging
+            console.debug('[Toolbox] fetchPanelAndMarkReady error:', err);
             return false;
         }
     }
 
     function drainReadyQueue() {
-        while (readyFetchInFlight < READY_FETCH_CONCURRENCY && readyFetchQueue.length) {
-            const { taskId, row } = readyFetchQueue.shift();
-            if (!taskId || !row) continue;
-            readyFetchInFlight++;
-            fetchPanelAndMarkReady(taskId, row, readyFetchAbort?.signal)
-                .finally(() => {
-                    readyFetchInFlight--;
-                    // continue pumping
-                    if (readyFetchAbort?.signal?.aborted) return;
-                    drainReadyQueue();
-                });
-        }
+        if (readyFetchInFlight >= READY_FETCH_CONCURRENCY) return;
+        if (!readyFetchQueue.length) return;
+        const now = Date.now();
+        const holdLeft = readyHoldUntil - now;
+        if (holdLeft > 0) { setTimeout(drainReadyQueue, holdLeft + 10); return; }
+        const since = now - lastReadyStartAt;
+        if (since < READY_MIN_GAP_MS) { setTimeout(drainReadyQueue, READY_MIN_GAP_MS - since); return; }
+        const next = readyFetchQueue.shift() || {};
+        const { taskId, row } = next;
+        if (!taskId || !row) { drainReadyQueue(); return; }
+        readyFetchInFlight++;
+        lastReadyStartAt = Date.now();
+        fetchPanelAndMarkReady(taskId, row, readyFetchAbort?.signal)
+        .catch(err => {
+            // Handle AbortError gracefully
+            if (err.name !== 'AbortError') {
+                console.debug('[Toolbox] drainReadyQueue error:', err);
+            }
+        })
+        .finally(() => {
+            readyFetchInFlight--;
+            if (readyFetchAbort?.signal?.aborted) return;
+            setTimeout(drainReadyQueue, READY_MIN_GAP_MS);
+        });
     }
 
     async function highlightReadyRows() {
@@ -7844,10 +9058,12 @@ async function initialize() {
   });
 
   // Observe the entire document for table changes
-  shipmentObserver.observe(document.body, { 
-    childList: true, 
-    subtree: true 
-  });
+  if (document.body) {
+    shipmentObserver.observe(document.body, { 
+      childList: true, 
+      subtree: true 
+    });
+  }
 
   // Add clickable links to all tables (including non-visit-row tables)
   addClickableLinksToAllTables();
@@ -8056,7 +9272,9 @@ async function initialize() {
       // addCopyIconsToPickOrderItems(); // מנוטרל בכוונה
     }, 100);
   });
-  observer.observe(document.body, { childList: true, subtree: true });
+  if (document.body) {
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
 
 
   } catch (error) {
@@ -8238,7 +9456,9 @@ function spawnRipple(container, evt) {
   } catch(_e) {}
 }
 
-document.body.addEventListener('click', function (e) {
+// Add event listener only when document.body is available
+if (document.body) {
+  document.body.addEventListener('click', function (e) {
     // TM: robust target for composed events & non-Element targets
     const raw = e.composedPath ? e.composedPath()[0] : e.target;
     const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
@@ -8308,7 +9528,8 @@ document.body.addEventListener('click', function (e) {
         enableCopyStyling(target)
         copyWithFeedback(target, target.textContent.trim());
     }
-}, { passive: true });
+  }, { passive: true });
+}
 
 // Inject minimal CSS once (if your project has a CSS pipeline, העבר לשם)
 (function injectCopyCSS(){
@@ -8791,7 +10012,9 @@ setTimeout(() => {
     }
   });
 
-  mo.observe(document.body, { childList: true, subtree: true });
+  if (document.body) {
+    mo.observe(document.body, { childList: true, subtree: true });
+  }
 
   // Bootstrap offcanvas events – כשנפתח/נסגר, תריץ על הפאנל
   document.addEventListener('shown.bs.offcanvas', () => {
@@ -8879,7 +10102,7 @@ window.replaceBarcodesInDOM = replaceBarcodesInDOM; // Backward compatibility - 
 window.tagColumnsForHiding = tagColumnsForHiding;
 window.findImageMatch = findImageMatch;
 window.findBarcode = findBarcode;
-window.createImageElement = createImageElement;
+// window.createImageElement = createImageElement; // Removed duplicate - already exposed earlier
 window.addClickableLinksToAllTables = addClickableLinksToAllTables;
 // Expose new performance and error handling functions
 window.isElementProcessed = isElementProcessed;
@@ -8912,14 +10135,27 @@ const enhancedSafeObserver = new MutationObserver((mutations) => {
     const modal = document.querySelector('#order-items-edit-modal.show');
     if (!modal) return;
 
+    let attempts = 0;
+    const maxAttempts = 50; // Reduced from infinite to prevent long-running handlers
     const interval = setInterval(() => {
+        attempts++;
         const table = modal.querySelector('table');
         const tbody = modal.querySelector('tbody');
         if (table && tbody && table.querySelectorAll('tr').length > 0) {
-            injectImagesAndLinks(modal);
-            injectImagesInRegularTables(modal);
-            injectImagesInOrderItemRows(modal);
-            replaceBarcodesInViews(modal); // Unified barcode replacement
+            // Use setTimeout for heavy DOM operations to avoid blocking (more reliable than requestIdleCallback)
+            setTimeout(() => {
+                try {
+                    injectImagesAndLinks(modal);
+                    injectImagesInRegularTables(modal);
+                    injectImagesInOrderItemRows(modal);
+                    replaceBarcodesInViews(modal); // Unified barcode replacement
+                } catch (err) {
+                    console.debug('[Toolbox] Modal injection error:', err);
+                }
+            }, 0);
+            clearInterval(interval);
+        } else if (attempts >= maxAttempts) {
+            // Stop trying after max attempts to prevent infinite loops
             clearInterval(interval);
 
             // ✅ Start observing tbody for changes — to reinject if rows are replaced
@@ -8945,23 +10181,38 @@ const enhancedSafeObserver = new MutationObserver((mutations) => {
     }, 300); // בדיקה כל 300ms
 });
 
-enhancedSafeObserver.observe(document.body, {
+if (document.body) {
+  enhancedSafeObserver.observe(document.body, {
     childList: true,
     subtree: true
-});
+  });
+}
 
 // פתרון נוסף: מאזין לאירוע מותאם אישית מ-Enhanced
 window.addEventListener('enhanced-modal-ready', () => {
     const modal = document.querySelector('#order-items-edit-modal');
     if (!modal) return;
 
+    let attempts = 0;
+    const maxAttempts = 50; // Reduced from infinite to prevent long-running handlers
     const interval = setInterval(() => {
+        attempts++;
         const table = modal.querySelector('table');
         const tbody = modal.querySelector('tbody');
         if (table && tbody && table.querySelectorAll('tr').length > 0) {
-            injectImagesAndLinks(modal);
-            injectImagesInRegularTables(modal);
-            injectImagesInOrderItemRows(modal);
+            // Use setTimeout for heavy DOM operations to avoid blocking (more reliable than requestIdleCallback)
+            setTimeout(() => {
+                try {
+                    injectImagesAndLinks(modal);
+                    injectImagesInRegularTables(modal);
+                    injectImagesInOrderItemRows(modal);
+                } catch (err) {
+                    console.debug('[Toolbox] Modal injection error:', err);
+                }
+            }, 0);
+            clearInterval(interval);
+        } else if (attempts >= maxAttempts) {
+            // Stop trying after max attempts to prevent infinite loops
             clearInterval(interval);
 
             // ✅ Start observing tbody for changes — to reinject if rows are replaced
@@ -8992,220 +10243,7 @@ window.injectImagesAndLinks = window.injectImagesAndLinks || injectImagesAndLink
 window.__TOOLBOX_READY__ = true;
 window.dispatchEvent(new CustomEvent('toolbox-ready'));
 
-// חילוץ לוגיקת פתיחת preview לפונקציה נפרדת
-async function openPreviewForTask(taskId) {
-    const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-    if (!row) {
-        console.log(`[${SCRIPT_NAME}] ❌ Row not found for task: ${taskId}`);
-        return;
-    }
-
-    const currentButton = row.querySelector('.preview-button');
-    if (!currentButton) {
-        return;
-    }
-
-    const existingPreview = document.getElementById(`preview-for-${taskId}`);
-    if (existingPreview) {
-        // אם ה-preview כבר קיים, סגור אותו
-        const updatedPreviews = openPreviews.filter(id => id !== taskId);
-        sessionStorage.setItem('openPreviewTaskIds', JSON.stringify(updatedPreviews));
-
-        existingPreview.remove();
-        updateButtonState(currentButton, false);
-
-        return;
-    }
-    // שמור את ה-taskId ב-sessionStorage לפני פתיחה
-    const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
-    if (!openPreviews.includes(taskId)) {
-        openPreviews.push(taskId);
-        sessionStorage.setItem('openPreviewTaskIds', JSON.stringify(openPreviews));
-    }
-
-    // בדוק אם זה session חדש - אם כן, אל תפתח PREVIEWs אחרים
-    const sessionStartTime = sessionStorage.getItem('sessionStartTime');
-    const currentTime = Date.now();
-    const sessionAge = currentTime - parseInt(sessionStartTime || '0');
-
-    // אם ה-session צעיר מדי (פחות מ-5 שניות), נקה את כל ה-PREVIEWs האחרים
-    if (sessionAge < 5000) {
-        sessionStorage.setItem('openPreviewTaskIds', JSON.stringify([taskId]));
-    }
-
-
-    // נקה את כל ה-classes הקודמים וקבע למצב טעינה
-    icon.classList.remove('fa-chevron-down', 'fa-chevron-up', 'fa-chevron-left', 'fa-refresh', 'fa-spin', 'fa-exclamation-triangle');
-    icon.classList.add('fa-refresh', 'fa-spin');
-    currentButton.disabled = true;
-    try {
-        const response = await fetch(`/tasks/${taskId}`); if (!response.ok) throw new Error(`Fetch error: ${response.status}`);
-        const doc = new DOMParser().parseFromString(await response.text(), 'text/html'); const allItems = [];
-
-        // Extract notes from the fetched task page
-        let notesText = '';
-        let isReady = false;
-        const notesEl = doc.querySelector('.bg-yellow .hover-copy'); // Assuming this is the selector for notes
-        if (notesEl) {
-            notesText = notesEl.textContent.trim();
-            // Check if notes contain "מוכן" for highlighting
-            if (notesText.includes('מוכן')) {
-                isReady = true;
-            }
-        }
-
-        const productTable = findProductTableInScope(doc);
-
-        if (productTable) {
-            const headers = Array.from(productTable.querySelectorAll('thead th')).map(th => th.textContent.trim());
-
-            // שיפור: זיהוי גמיש יותר של כותרות - מזהה גם וריאציות של הכותרות
-            const skuIndex = headers.findIndex(h => h.includes('מק')),
-                  nameIndex = headers.findIndex(h => h.includes('שם')),
-                  quantityIndex = headers.findIndex(h => h.includes('כמות') || h.includes('לוקט')),
-                  priceIndex = headers.findIndex(h => h.includes('מחיר ליחידה'));
-
-            if (skuIndex !== -1 && nameIndex !== -1 && quantityIndex !== -1) {
-                const rows = productTable.querySelectorAll('tbody tr');
-
-                rows.forEach((itemRow, index) => {
-                    const cells = itemRow.cells;
-                    const name = cells[nameIndex].textContent.trim(),
-                          sku = cells[skuIndex].textContent.trim(),
-                          quantity = cells[quantityIndex].textContent.trim();
-
-                    // חלץ מחיר אם קיים
-                    let price = null;
-                    if (priceIndex !== -1 && cells[priceIndex]) {
-                        const priceText = cells[priceIndex].textContent.trim();
-                        const priceMatch = priceText.match(/[\d,]+\.?\d*/);
-                        if (priceMatch) {
-                            price = priceMatch[0].replace(/,/g, '');
-                        }
-                    }
-
-                    // Try to find image match - first with original SKU, then with replaced barcode
-                    let imageMatch = findImageMatch(sku, name);
-
-                    // If no image found with original SKU, try with replaced barcode
-                    if (!imageMatch) {
-                        const replacedBarcode = findBarcode(sku, name);
-                        if (replacedBarcode && replacedBarcode !== sku) {
-                            imageMatch = findImageMatch(replacedBarcode, name);
-                        }
-                    }
-
-                    const barcodeMatch = findBarcode(sku, name);
-                    allItems.push({
-                        name,
-                        sku,
-                        quantity,
-                        price,
-                        image: imageMatch ? imageMatch.image : PLACEHOLDER_IMG_URL,
-                        barcode: barcodeMatch
-                    });
-                });
-            }
-        }
-
-        const newRow = document.createElement('tr'); newRow.id = `preview-for-${taskId}`;
-        if (isReady) {
-            newRow.classList.add('ready-row-highlight');
-        }
-        const newCell = document.createElement('td'); newCell.colSpan = parentRow.cells.length; newCell.style.cssText = 'padding: 15px; background-color: #f9f9f9;';
-
-
-        // הכפתור "פתח הזמנה" הועבר למיקום עם הכפתורים האחרים
-
-        // Add notes to the preview if found
-        if (notesText) {
-            // Highlight "מוכן" in bold if present
-            const highlightedNotes = notesText.replace(/מוכן/g, '<strong>מוכן</strong>');
-            newCell.innerHTML += `<div class="preview-notes"><i class="fa-light fa-note-sticky"></i> ${highlightedNotes}</div>`;
-        }
-
-        if (allItems.length > 0) {
-            const container = document.createElement('div'); container.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
-
-            allItems.forEach((item, itemIndex) => {
-                if (window.DEBUG_TOOLBOX) {
-
-                }
-                const itemDiv = document.createElement('div'); itemDiv.className = 'd-flex align-items-center border rounded p-2 m-1 bg-white';
-                itemDiv.style.cssText = 'min-width: 200px; max-width: 300px;';
-
-                const imageContainer = document.createElement('div'); imageContainer.style.cssText = 'width: 50px; height: 50px; margin-left: 8px; flex-shrink: 0;';
-                const img = document.createElement('img'); img.src = item.image; img.style.cssText = 'width: 100%; height: 100%; object-fit: cover; border-radius: 4px;';
-                imageContainer.appendChild(img);
-
-                const textContainer = document.createElement('div'); textContainer.style.cssText = 'flex: 1; min-width: 0;';
-                const nameDiv = document.createElement('div'); nameDiv.textContent = item.name; nameDiv.style.cssText = 'font-weight: bold; font-size: 0.9em; margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;';
-                const skuDiv = document.createElement('div'); skuDiv.textContent = `מק"ט: ${item.sku}`; skuDiv.style.cssText = 'font-size: 0.8em; color: #666; margin-bottom: 2px;';
-                
-                // Highlight pick quantities in preview (same logic as first location)
-                let highlightedQuantity = item.quantity;
-                const quantityMatch = item.quantity.match(/^(\d+)\s*\/\s*(\d+)$/);
-                if (quantityMatch) {
-                    const picked = parseInt(quantityMatch[1]);
-                    const total = parseInt(quantityMatch[2]);
-
-                    if (picked !== 0 || total !== 1) { // Skip 0/1
-                        const quantityClass =
-                            picked === total ? 'tampermonkey-picked-full' :
-                            picked === 0 && total > 1 ? 'tampermonkey-picked-none' :
-                            'tampermonkey-picked-partial';
-
-                        highlightedQuantity = `<span class="${quantityClass}">${item.quantity}</span>`;
-                    }
-                }
-                
-                const quantityDiv = document.createElement('div'); 
-                quantityDiv.innerHTML = `כמות: ${highlightedQuantity}`; 
-                quantityDiv.style.cssText = 'font-size: 0.8em; color: #666;';
-
-                if (item.price) {
-                    const priceDiv = document.createElement('div'); priceDiv.textContent = `מחיר: ₪${item.price}`; priceDiv.style.cssText = 'font-size: 0.8em; color: #666; margin-top: 2px;';
-                    textContainer.appendChild(priceDiv);
-                }
-
-                textContainer.appendChild(nameDiv); textContainer.appendChild(skuDiv); textContainer.appendChild(quantityDiv);
-                itemDiv.appendChild(imageContainer); itemDiv.appendChild(textContainer);
-
-                if (item.barcode) {
-                    const barcodeDiv = document.createElement('div'); barcodeDiv.style.cssText = 'margin-top: 4px; text-align: center;';
-                    const barcodeImg = document.createElement('img'); barcodeImg.src = item.barcode; barcodeImg.style.cssText = 'max-width: 100%; height: 30px;';
-                    barcodeDiv.appendChild(barcodeImg); itemDiv.appendChild(barcodeDiv);
-                }
-
-                container.appendChild(itemDiv);
-            });
-
-            newCell.appendChild(container);
-        }
-
-        newRow.appendChild(newCell); 
-        // Insert new row after parent row (safe method)
-        if (parentRow && parentRow.parentNode && parentRow.isConnected) {
-            safeInsertAfter(parentRow, newRow, parentRow.parentNode);
-        } else {
-            // Fallback: append to table body
-            const tableBody = parentRow?.closest('tbody') || document.querySelector('tbody');
-            if (tableBody) tableBody.appendChild(newRow);
-        }
-        updateButtonState(currentButton, true);
-        currentButton.blur(); // מסיר פוקוס מהכפתור כדי שמקשי חץ יעבדו על ה-side panel
-
-
-    } catch (err) {
-        console.error("Failed to fetch task preview:", err);
-        icon.classList.remove('fa-refresh', 'fa-spin');
-        icon.classList.add('fa-exclamation-triangle');
-        currentButton.disabled = false;
-    }
-    
-    // Fix shipment wrapping after opening preview
-    // fixShipmentWrapping(); // Removed for performance
-}
+/* Removed legacy openPreviewForTask function - replaced with optimized openPreviewForRow */
 
 // Helper function to update button state (chevron and title)
 function updateButtonState(button, isOpen) {
@@ -9254,6 +10292,7 @@ function togglePreviewSection(button, sectionType) {
   if (!sessionStartTime) {
     // זה session חדש - נקה את ה-PREVIEWs הפתוחים ושמור את זמן התחלה
     sessionStorage.removeItem('openPreviewTaskIds');
+    sessionStorage.removeItem('openPreviewTaskIds_v2');
     sessionStorage.setItem('sessionStartTime', currentTime.toString());
   } else {
     // בדוק אם יש PREVIEWs ישנים ב-sessionStorage
@@ -9264,6 +10303,7 @@ function togglePreviewSection(button, sectionType) {
       const sessionAge = currentTime - parseInt(sessionStartTime);
       if (sessionAge < 5000) {
         sessionStorage.removeItem('openPreviewTaskIds');
+        sessionStorage.removeItem('openPreviewTaskIds_v2');
       }
     }
   }
@@ -9293,32 +10333,11 @@ function togglePreviewSection(button, sectionType) {
     }
 
     // בדוק אם יש previews פתוחים ב-sessionStorage
-    const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
-    if (openPreviews.length === 0) {
-      return;
-    }
-
-    // בדוק אם זה session חדש (אחרי REFRESH) - אם כן, אל תפתח PREVIEWs
-    const sessionStartTime = sessionStorage.getItem('sessionStartTime');
-    const currentTime = Date.now();
-    const sessionAge = currentTime - parseInt(sessionStartTime || '0');
-
-    // אם ה-session צעיר מדי (פחות מ-5 שניות), אל תפתח PREVIEWs אוטומטית
-    if (sessionAge < 5000) {
-      return;
-    }
-
-    // אם יש PREVIEWs ישנים ב-sessionStorage, בדוק אם זה session חדש או ישן
-    if (openPreviews.length > 0) {
-      const sessionAge = currentTime - parseInt(sessionStartTime || '0');
-      if (sessionAge < 5000) {
-        // אם זה session חדש (אחרי REFRESH), נקה את ה-PREVIEWs ולא תפתח אותם
-        sessionStorage.removeItem('openPreviewTaskIds');
-        return;
-      }
-    }
-
-    const openTaskIds = openPreviews;
+    // Disable auto-restore after reload/entry. We still track state during this
+    // live page session, but we never reopen on load.
+    const openTaskIds = (sessionStorage.getItem('tmcNoRestore') === '1')
+      ? []
+      : [];
 
     // בדוק כל preview פתוח
     openTaskIds.forEach(taskId => {
@@ -9326,21 +10345,27 @@ function togglePreviewSection(button, sectionType) {
       const existingPreview = document.getElementById(`preview-for-${taskId}`);
 
       if (row && !existingPreview) {
-        openPreviewForTask(taskId);
+        // Use optimized preview function
+        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+        if (row) openPreviewForRow(row);
       } else if (!row) {
         // אם השורה לא נמצאה, נסה שוב אחרי קצת זמן
         setTimeout(() => {
           const retryRow = tbody.querySelector('tr[data-task-id="' + taskId + '"]');
           const retryPreview = document.getElementById(`preview-for-${taskId}`);
           if (retryRow && !retryPreview) {
-            openPreviewForTask(taskId);
+            // Use optimized preview function
+        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+        if (row) openPreviewForRow(row);
           } else if (!retryRow) {
             // נסה שוב אחרי זמן נוסף
             setTimeout(() => {
               const secondRetryRow = tbody.querySelector('tr[data-task-id="' + taskId + '"]');
               const secondRetryPreview = document.getElementById(`preview-for-${taskId}`);
               if (secondRetryRow && !secondRetryPreview) {
-                openPreviewForTask(taskId);
+                // Use optimized preview function
+        const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+        if (row) openPreviewForRow(row);
               }
             }, 500);
           }
@@ -9353,6 +10378,10 @@ function togglePreviewSection(button, sectionType) {
   }
 
   setupObserver();
+
+  // Once the page is up, explicitly clear the "no restore" flag for
+  // subsequent in-page actions (but keep not restoring on full reloads)
+  try { sessionStorage.setItem('tmcNoRestore','1'); } catch(_) {}
 })();
 
 })(); //
@@ -9391,7 +10420,7 @@ function installCopyToastBaseCSS(){
 }
 
 function ensureToastEl(){
-  if (__tmToastEl && document.body.contains(__tmToastEl)) return __tmToastEl;
+  if (__tmToastEl && document.body && document.body.contains(__tmToastEl)) return __tmToastEl;
   __tmToastEl = document.createElement('div');
   __tmToastEl.id = 'tm-copy-toast';
   __tmToastEl.className = 'tm-copy-toast-pop';
@@ -9400,7 +10429,9 @@ function ensureToastEl(){
   __tmToastEl.dataset.in = '420';
   __tmToastEl.dataset.visible = '1200';
   __tmToastEl.dataset.out = '800';
-  document.body.appendChild(__tmToastEl);
+  if (document.body) {
+    document.body.appendChild(__tmToastEl);
+  }
   return __tmToastEl;
 }
 
@@ -9590,23 +10621,10 @@ window.setTimeout = function(callback, delay, ...args) {
   return originalSetTimeout.call(this, wrappedCallback, delay);
 };
 
-// Performance monitoring for requestAnimationFrame
-const originalRequestAnimationFrame = window.requestAnimationFrame;
-window.requestAnimationFrame = function(callback) {
-  const wrappedCallback = function(timestamp) {
-    const startTime = performance.now();
-    try {
-      callback(timestamp);
-    } finally {
-      const endTime = performance.now();
-      const duration = endTime - startTime;
-      if (duration > 16) { // Log slow animation frames (should be < 16ms for 60fps)
-        // Removed excessive logging to reduce console noise
-      }
-    }
-  };
-  return originalRequestAnimationFrame.call(this, wrappedCallback);
-};
+// NOTE: removed the requestAnimationFrame wrapper.
+// Leaving rAF native reduces `[Violation] 'requestAnimationFrame' handler took <N>ms`
+// attributions pointing to our code and avoids extra overhead on every frame.
+
 
 // ===== Rename table header "מק״ט" -> "ברקוד" (and data-label) =====
 function _normalizeHeb(s){
@@ -9768,14 +10786,41 @@ const _tablesMO = new MutationObserver(() => {
 _tablesMO.observe(document.documentElement, { childList:true, subtree:true });
 
 // ---- PREVIEW reopen utilities ----
-function getOpenPreviewIds() {
+// Per-load token to ensure we never restore previews across a page refresh.
+// Tagged into sessionStorage so only the *current* load can read what it wrote.
+const TMC_SESSION_TOKEN = (function () {
   try {
-    const raw = sessionStorage.getItem('openPreviewTaskIds');
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr.filter(Boolean) : [];
-  } catch (e) {
-    return [];
+    const tok = String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+    sessionStorage.setItem('tmcSessionToken', tok);
+    return tok;
+  } catch (_) {
+    return String(Date.now());
   }
+})();
+
+// v2 writer: always store with a token (current load only).
+function setOpenPreviewIds(ids) {
+  try {
+    const unique = Array.from(new Set(Array.isArray(ids) ? ids : []));
+    const payload = { token: TMC_SESSION_TOKEN, ids: unique };
+    sessionStorage.setItem('openPreviewTaskIds_v2', JSON.stringify(payload));
+  } catch (_) {}
+}
+
+function getOpenPreviewIds() {
+  // Only restore if the token matches this exact page load.
+  try {
+    const rawV2 = sessionStorage.getItem('openPreviewTaskIds_v2');
+    if (rawV2) {
+      const obj = JSON.parse(rawV2);
+      if (obj && obj.token === TMC_SESSION_TOKEN && Array.isArray(obj.ids)) {
+        return obj.ids;
+      }
+      return [];
+    }
+  } catch (_) {}
+  // Legacy v1 (array) is ignored to prevent cross-refresh restores.
+  return [];
 }
 
 function clickPreviewToggleFor(taskId) {
@@ -9976,7 +11021,13 @@ function reopenPreviews({delay=350} = {}) {
     // חכה שה-DataTables יסיימו לצייר
     requestAnimationFrame(() => {
       scheduled = false;
-      reopenPreviews({delay: 80});
+      (function(){
+        const sticky = sessionStorage.getItem('tmcStickyPreviews') === '1';
+        const intent = sessionStorage.getItem('tmcRestoreIntent') === '1';
+        if (sticky || intent) {
+          reopenPreviews({delay: 80});
+        }
+      })();
     });
   });
   obs.observe(tbody, { childList: true, subtree: false });
