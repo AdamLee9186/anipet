@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.14
+// @version      13.8.15
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -203,7 +203,7 @@ function __tmcEnsurePreviewCSS(){
       box-sizing: border-box;
       /* avoid any theme/framework transitions causing "style shake" */
       transition: none !important;
-      /* approximate clamp on first paint; rAF clamp will refine later */
+      /* clamp לפי משתנה גלובלי – בלי כתיבה JS פר־שורה */
       max-inline-size: calc(100vw - var(--map-width, 0px));
     }
     .tmc-preview-card {
@@ -267,10 +267,12 @@ function __tmcEnsurePreviewCSS(){
 
     /* When the (left) map is open, keep previews out from under it */
     .map-open tr[id^="preview-for-"] > td > .tmc-preview-row {
-      margin-left: var(--map-width, 0px);
-      width: calc(100% - var(--map-width, 0px));
-      content-visibility: auto; /* performance: allow skip of offscreen render */
-      contain: layout paint style;     /* reduce layout scope */
+      /* במקום margin: מזיזים את אזור התוכן פנימה */
+      padding-inline-start: var(--map-width, 0px);
+      /* מונע גלישה של הכרטיס הראשון מתחת למפה */
+      overflow: clip;
+      content-visibility: auto;
+      contain: layout paint style;
       contain-intrinsic-size: 1px 400px;
     }
     `;
@@ -979,17 +981,11 @@ function idleChunk(items, work, budgetMs = 12){
     s.id = id;
     s.textContent = `
       /* Single source of truth: body.map-open + --map-width set by installMapStateTracker() */
-      body.map-open tr[id^="preview-for-"] > td {
-        /* Keep the entire preview cell clear of the fixed left map */
-        padding-left: var(--map-width, 0px) !important;
-        box-sizing: border-box !important;
-      }
       body.map-open tr[id^="preview-for-"] > td > .tmc-preview-row{
-        margin-left: var(--map-width, 0px) !important;
-        width: calc(100% - var(--map-width, 0px)) !important;
-        max-width: calc(100% - var(--map-width, 0px)) !important;
+        /* משתמשים ב-padding (לא margin) וגם גוזרים גלישה שמאלה */
+        padding-inline-start: var(--map-width, 0px) !important;
+        overflow: clip !important;
         box-sizing: border-box !important;
-        /* Containment to localize layout/paint work per row */
         content-visibility: auto;
         contain: layout paint style;
         contain-intrinsic-size: 1px 400px;
@@ -1356,60 +1352,29 @@ function __tmcFindScrollViewport(el){
 }
 
 function __tmcClampPreviewRowWidth(row){
-  // Keep the *row* full-width so it can wrap multiple fit-to-content cards,
-  // but don't force a single card to stretch.
-  const visible = Math.max(320, Math.floor(row.__tmcVis || 0));
-  // Round to 8px to avoid tiny oscillations that cause paint flashes
-  const rounded = Math.max(320, Math.round(visible / 8) * 8);
-  row.style.setProperty('box-sizing','border-box','important');
-  row.style.setProperty('width','100%','important');
-  // Write only when changed to cut style churn
-  if (row.__tmcLastMaxW !== rounded){
-    row.style.setProperty('max-width', rounded + 'px','important'); // avoid small reflow jitter
-    row.__tmcLastMaxW = rounded;
-  }
+  // No-op: המידה נגזרת מ-CSS calc(100vw - var(--map-width))
+  // משאירים רק את box-sizing כדי לוודא עטיפה נכונה בלי כתיבות חוזרות.
+  try{
+    row.style.setProperty('box-sizing','border-box','important');
+    row.style.setProperty('width','100%','important');
+  }catch(_){}
 }
 
 function __tmcClampAllPreviewRows(ctx=document){
-  // Collect candidate rows once
+  // במקום למדוד ולכתוב max-width לכל Row, רק מבטיחים מחלקות/box-model.
   const rows = Array.from(ctx.querySelectorAll(
     'tr[id^="preview-for-"] td[colspan] .tmc-preview-row,'+
     'tr[id^="preview-for-"] td[colspan] > div:first-child'
   ));
-  if (!rows.length) return;
-
-  // Group rows by viewport and compute metrics once per viewport
-  const byViewport = new Map();
   for (const row of rows){
-    const vp = __tmcFindScrollViewport(row);
-    const list = byViewport.get(vp) || [];
-    list.push(row);
-    byViewport.set(vp, list);
+    if (!row.classList.contains('tmc-preview-row')) row.classList.add('tmc-preview-row');
+    __tmcClampPreviewRowWidth(row);
   }
-
-  const mapw = __tmcMapWidthPx || 0;
-  for (const [vp, list] of byViewport){
-    // Precompute viewport paddings/width exactly once
-    const vw = (vp === document.documentElement) ? window.innerWidth : vp.clientWidth;
-    let pl=0, pr=0;
-    try {
-      const cs = getComputedStyle(vp);
-      pl = parseFloat(cs.paddingLeft)  || 0;
-      pr = parseFloat(cs.paddingRight) || 0;
-    } catch(_){}
-    const vis = Math.max(320, Math.floor(vw - pl - pr - mapw));
-    for (const row of list){
-      row.__tmcVis = vis;
-      __tmcClampPreviewRowWidth(row);
-    }
-    // Observe each unique viewport exactly once; schedule global clamp on resize
-    if (!__tmcViewportRO){
-      __tmcViewportRO = new ResizeObserver(() => __tmcScheduleClampAll());
-    }
-    if (vp && !__tmcObservedViewports.has(vp)){
-      __tmcViewportRO.observe(vp);
-      __tmcObservedViewports.add(vp);
-    }
+  // עדיין שומרים ResizeObserver על ה-viewport כדי להפעיל normalize בלבד.
+  if (!__tmcViewportRO){
+    __tmcViewportRO = new ResizeObserver(() => {
+      // לא כותבים style פר־Row – הלייאאוט מתעדכן אוטומטית דרך var(--map-width)
+    });
   }
 }
 
@@ -1516,32 +1481,59 @@ function installMapStateTracker(){
     return h ? (h.closest('.offcanvas, .offcanvas-left, .offcanvas-wrapper') || h.parentElement) : null;
   };
 
-  // Robust width measurement: fall back to the handle's right edge if container width is unreliable
-  function measureMapWidth(){
-    const root = getMapRoot();
+  // *** NEW: measure the ACTUAL left inset of the table content area ***
+  // We treat the "map width" CSS var as "how much space from viewport-left is *not* usable
+  // for previews", which is simply the left edge of the table wrapper (in px).
+  function measureLeftInset(){
+    // Prefer the main DataTables wrapper (or reasonable fallbacks)
+    const wrapper =
+      document.getElementById('operator-store-visits-table_wrapper') ||
+      document.querySelector('.dataTables_wrapper') ||
+      document.querySelector('.table-responsive') ||
+      document.querySelector('#operator-store-visits-table')?.closest('div');
+
+    // 1) If wrapper exists and is laid out, take its .left (viewport-based)
+    if (wrapper && wrapper.getBoundingClientRect){
+      try{
+        const r = wrapper.getBoundingClientRect();
+        if (r && Number.isFinite(r.left)) {
+          // small guard against sub-pixel/box-shadow noise
+          return Math.max(0, Math.round(r.left));
+        }
+      }catch(_){}
+    }
+
+    // 2) Fallback: use the resize handle right edge (slightly reduced)
     const handle = getHandle();
-    let w = 0;
-    try {
-      if (root) {
-        const rr = root.getBoundingClientRect();
-        if (rr && rr.width) w = Math.max(w, Math.round(rr.width));
-      }
-      if (handle) {
+    if (handle && handle.getBoundingClientRect){
+      try{
         const hr = handle.getBoundingClientRect();
-        // For a left map, the handle's right edge is a good proxy for current map width
-        if (hr && hr.right) w = Math.max(w, Math.round(hr.right));
-      }
-    } catch(_) {}
-    return Math.max(0, w);
+        if (hr && Number.isFinite(hr.right)) {
+          // subtract a tiny fudge to avoid early wrapping before the visual edge
+          return Math.max(0, Math.round(hr.right - 6));
+        }
+      }catch(_){}
+    }
+
+    // 3) Last resort: map root width (reduced a bit)
+    const root = getMapRoot();
+    if (root && root.getBoundingClientRect){
+      try{
+        const rr = root.getBoundingClientRect();
+        if (rr && Number.isFinite(rr.width)) {
+          return Math.max(0, Math.round(rr.width - 6));
+        }
+      }catch(_){}
+    }
+    return 0;
   }
 
   const apply = rafThrottle(() => {
     try{
-      const w = measureMapWidth();
+      const w = measureLeftInset();
       __tmcMapWidthPx = w;
       __tmcApplyMapWidth(w);
-      // Re-clamp via single global scheduler
-      __tmcScheduleClampAll();
+      // אין צורך ב-reclamp; ה-CSS calc() יסתדר לבד
     }catch(_){}
   });
 
@@ -2489,7 +2481,7 @@ setupBlockedScriptObserver();
     
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.8.2"; // Match @version
+    const SCRIPT_VERSION = "13.8.15"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
