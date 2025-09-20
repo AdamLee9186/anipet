@@ -1357,7 +1357,8 @@ function __tmcApplyBarcodeLast3Bold(scope=document){
   try{
     const root = scope || document;
     // 1) עטיפות ברורות של ברקוד
-    root.querySelectorAll('.tampermonkey-barcode-bdi, .barcode-highlight').forEach(__tmcBoldLast3DigitsInElement);
+    root.querySelectorAll('.tampermonkey-barcode-bdi, .barcode-highlight, .gallery-barcode-bdi')
+        .forEach(__tmcBoldLast3DigitsInElement);
     // 2) פריוויו: שורה בסגנון "<div><b>מק״ט:</b> 1234567890123</div>"
     root.querySelectorAll('.tmc-preview-meta > div:not([data-tmc-last3])').forEach(div=>{
       const labelEl = div.querySelector('b:first-child');
@@ -1387,6 +1388,30 @@ function __tmcApplyBarcodeLast3Bold(scope=document){
 
 // חשוף לחלוקת קריאות מכל מקומות ההידרציה
 window.__tmcApplyBarcodeLast3Bold = __tmcApplyBarcodeLast3Bold;
+
+/* גלריה נטענת דינאמית: ברגע שמופיע .gallery-barcode-bdi – הדגש 3 ספרות אחרונות */
+(function __tmcWatchGalleryBarcodes(){
+  if (window.__tmcGalleryBarcodesMO) return;
+  try{
+    const mo = new MutationObserver((muts)=>{
+      const added = [];
+      for (const m of muts){
+        if (m.type !== 'childList') continue;
+        for (const n of m.addedNodes){
+          if (n.nodeType !== 1) continue;
+          if (n.matches?.('.gallery-barcode-bdi')) added.push(n);
+          const inner = n.querySelectorAll?.('.gallery-barcode-bdi') || [];
+          inner.length && added.push(...inner);
+        }
+      }
+      if (added.length){
+        added.forEach(__tmcBoldLast3DigitsInElement);
+      }
+    });
+    mo.observe(document.documentElement, {childList:true, subtree:true});
+    window.__tmcGalleryBarcodesMO = mo;
+  }catch(_){}
+})();
 
 /* removed: legacy one-line layout helper (__forceInlineFlexOnPreviewCards) */
 
