@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.15
+// @version      13.8.16
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -361,6 +361,8 @@ function __tmcEnsurePreviewCSS(){
       if (typeof window.splitPreviewMetaLines === 'function') {
         window.splitPreviewMetaLines(el);
       }
+      // אחרי פיצול "שם/מק״ט/מחיר/כמות" – הדגש 3 ספרות אחרונות בברקוד
+      try { window.__tmcApplyBarcodeLast3Bold && window.__tmcApplyBarcodeLast3Bold(el); } catch(_){}
       if (typeof window.__tmcClampAllPreviewRows === 'function') {
         window.__tmcClampAllPreviewRows(el);
       }
@@ -1334,6 +1336,58 @@ function stableAnchorForBarcode(el, td) {
   return el && el.nodeType === Node.TEXT_NODE ? el.parentNode : el || td;
 }
 
+// ========= Bold last 3 digits in *barcode-contexts only* =========
+// Guard against double-work
+const __tmcLast3Marked = new WeakSet();
+
+function __tmcBoldLast3DigitsInElement(el){
+  try{
+    if (!el || !el.isConnected || __tmcLast3Marked.has(el)) return;
+    // קרא את הטקסט הגלוי (ללא HTML פנימי)
+    const raw = (el.textContent || '').trim();
+    // רק ספרות, 10+ תווים (ברקוד), בלי מקפים/רווחים
+    if (!/^\d{10,}$/.test(raw)) return;
+    const head = raw.slice(0, -3), tail = raw.slice(-3);
+    el.innerHTML = `${head}<b>${tail}</b>`;
+    __tmcLast3Marked.add(el);
+  }catch(_){}
+}
+
+function __tmcApplyBarcodeLast3Bold(scope=document){
+  try{
+    const root = scope || document;
+    // 1) עטיפות ברורות של ברקוד
+    root.querySelectorAll('.tampermonkey-barcode-bdi, .barcode-highlight').forEach(__tmcBoldLast3DigitsInElement);
+    // 2) פריוויו: שורה בסגנון "<div><b>מק״ט:</b> 1234567890123</div>"
+    root.querySelectorAll('.tmc-preview-meta > div:not([data-tmc-last3])').forEach(div=>{
+      const labelEl = div.querySelector('b:first-child');
+      if (!labelEl) return;
+      const labelText = (labelEl.textContent || '').replace(/[^\u0590-\u05FF]/g,'').trim(); // השמט סימנים לא-עבריים
+      if (labelText !== 'ברקוד' && labelText !== 'מקט') return; // "מק״ט" -> "מקט" אחרי ניקוי
+      // מצא טקסט לאחר ה-label שמכיל ספרות ארוכות (10+)
+      const tn = Array.from(div.childNodes).find(n => n.nodeType===Node.TEXT_NODE && /\d{10,}/.test(n.textContent||''));
+      if (!tn) return;
+      const s = tn.textContent;
+      const m = s.match(/(\d{10,})/); // רצף הספרות הראשון הארוך
+      if (!m) return;
+      const num = m[1], head = num.slice(0,-3), tail = num.slice(-3);
+      const before = s.slice(0, m.index), after = s.slice(m.index + num.length);
+      const span = document.createElement('span');
+      span.className = 'barcode-highlight';
+      span.innerHTML = `${head}<b>${tail}</b>`;
+      const frag = document.createDocumentFragment();
+      if (before) frag.appendChild(document.createTextNode(before));
+      frag.appendChild(span);
+      if (after) frag.appendChild(document.createTextNode(after));
+      tn.replaceWith(frag);
+      div.dataset.tmcLast3 = '1';
+    });
+  }catch(_){}
+}
+
+// חשוף לחלוקת קריאות מכל מקומות ההידרציה
+window.__tmcApplyBarcodeLast3Bold = __tmcApplyBarcodeLast3Bold;
+
 /* removed: legacy one-line layout helper (__forceInlineFlexOnPreviewCards) */
 
 // === PREVIEW viewport clamping so cards wrap by the visible container ===
@@ -1467,6 +1521,8 @@ function __tmcBootstrapPreviews(ctx=document){
 }
 window.addEventListener('load', () => __tmcBootstrapPreviews(), { once: true });
 window.addEventListener('tm:dom-updated', () => __tmcBootstrapPreviews(), { passive: true });
+window.addEventListener('load', () => { try{ __tmcApplyBarcodeLast3Bold(document); }catch(_){ } }, { once:true });
+window.addEventListener('tm:dom-updated', () => { try{ __tmcApplyBarcodeLast3Bold(document); }catch(_){ } });
 
 // === Map state tracker (left-only): sets body.map-open and --map-width, throttled to rAF ===
 function installMapStateTracker(){
@@ -1749,7 +1805,7 @@ function __tmcDeepDeduplicateDom(){
   }catch(e){ /* ignore */ }
 }
 
-// --- Split current preview META line into 3 lines (SKU / Price / Qty) ---
+// --- Split current preview META line into 3 lines (Barcode / Price / Qty) ---
 function splitPreviewMetaLines(rootEl){
   if (!rootEl) return;
   // scope to the preview <td> if possible; else use rootEl
@@ -1765,8 +1821,9 @@ function splitPreviewMetaLines(rootEl){
     if (!meta || meta.__tmSplitDone) return;
     const raw = (meta.textContent || '').replace(/\s+/g,' ').trim();
 
-    // חילוץ ערכים מתוך "מק\"ט: … | כמות: … | מחיר: ₪… (סה\"כ: …)"
-    const sku   = (raw.match(/מק"?ט[:\s]*([0-9]{7,14})/)||[])[1] || '';
+    // חילוץ ערכים מתוך "מק\"ט:/ברקוד: … | כמות: … | מחיר: ₪… (סה\"כ: …)"
+    // תומך גם בטקסט מקורי שמכיל "מק\"ט" וגם בגרסה עתידית עם "ברקוד"
+    const sku   = (raw.match(/(?:מק"?ט|ברקוד)[:\s]*([0-9]{7,14})/)||[])[1] || '';
     const qty   = (raw.match(/כמות[:\s]*([^|)]+)/)||[])[1]?.trim() || '';
     const price = (raw.match(/מחיר[:\s]*₪?\s*([\d.,]+)/)||[])[1] || '';
     const total = (raw.match(/סה"?כ[:\s]*₪?\s*([\d.,]+)/)||[])[1] || '';
@@ -1775,7 +1832,8 @@ function splitPreviewMetaLines(rootEl){
     const keepStyle = meta.getAttribute('style') || '';
     const keepClass = meta.getAttribute('class') || 'text-muted';
     const lines = [
-      sku   ? `<div><b>מק״ט:</b> ${sku}</div>` : '',
+      // מציגים "ברקוד:" במקום "מק״ט:"
+      sku   ? `<div><b>ברקוד:</b> ${sku}</div>` : '',
       price ? `<div><b>מחיר:</b> ₪${price}</div>` : '',
       qty   ? `<div><b>כמות:</b> ${__tmcColorQtySpan(qty)}</div>` : '',
       // אם תרצה גם את הסה"כ, בטל הערה בשורה הבאה:
@@ -1785,6 +1843,8 @@ function splitPreviewMetaLines(rootEl){
     meta.setAttribute('class', keepClass);
     if (keepStyle) meta.setAttribute('style', keepStyle);
     meta.innerHTML = lines;
+    // מיד אחרי בניית השורות, הדגש 3 ספרות אחרונות בשדה הברקוד שב־PREVIEW
+    try { window.__tmcApplyBarcodeLast3Bold && window.__tmcApplyBarcodeLast3Bold(meta); } catch(_){}
     // harden wrapping
     meta.style.whiteSpace = 'normal';
     // make sure the parent card is on the canonical variant
@@ -2481,7 +2541,7 @@ setupBlockedScriptObserver();
     
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.8.15"; // Match @version
+    const SCRIPT_VERSION = "13.8.16"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -7035,7 +7095,7 @@ td.copy-enabled.cell-copied {
 
         .barcode-highlight {
             color: #006400 !important;
-            font-weight: bold;
+            font-weight: normal;  /* רק 3 הספרות האחרונות יודגשו בקוד, לא כולו */
             cursor: help;
             transition: all 0.3s ease;
             animation: barcodeReplacement 0.5s ease-in-out;
@@ -7053,7 +7113,8 @@ td.copy-enabled.cell-copied {
         .barcode-highlight-gallery.copy-enabled {
             cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
         }
-        td.barcode-highlight, tr[id^="preview-for-"] .barcode-highlight {
+        /* Keep green bg only for table cells; NOT inside Preview rows */
+        td.barcode-highlight {
             background-color: #e6ffed;
             padding: 2px 4px;
             border-radius: 3px;
@@ -7061,10 +7122,15 @@ td.copy-enabled.cell-copied {
             animation: barcodeReplacement 0.5s ease-in-out;
         }
 
-        /* ביטול הבהוב ב-PREVIEW */
+        /* PREVIEW: never paint background behind the barcode text */
         tr[id^="preview-for-"] .barcode-highlight {
+            background-color: transparent !important;
+            padding: 0 !important;
+            border-radius: 0 !important;
             animation: none !important;
+            color: inherit !important; /* ביטול צבע ירוק בפריוויו */
         }
+
         .pick-order-item-row .barcode-highlight { background-color: transparent !important; }
         /* Special handling for picking modal - prevent background color on the entire row */
         .pick-order-item-table .pick-order-item-row.barcode-highlight {
@@ -7080,7 +7146,7 @@ td.copy-enabled.cell-copied {
         /* Ensure barcode text in picking modal has proper styling */
         .pick-order-item-table .barcode-highlight {
             color: #006400 !important;
-            font-weight: bold !important;
+            font-weight: normal !important;  /* הדגשה רק ל-3 ספרות אחרונות */
             cursor: help !important;
             transition: all 0.3s ease;
             animation: barcodeReplacement 0.5s ease-in-out;
@@ -7114,6 +7180,13 @@ td.copy-enabled.cell-copied {
         .barcode-input-highlight:hover {
             background-color: #d4edda !important;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* PREVIEW: also cancel hover bg so it won't overlap the title */
+        tr[id^="preview-for-"] .barcode-highlight:hover {
+            background-color: transparent !important;
+            box-shadow: none !important;
+            color: inherit !important; /* גם בהובר — נשאר צבע טקסט רגיל */
         }
 
         #tampermonkey-gallery-overlay {
@@ -9293,6 +9366,8 @@ function initCopyRipple(root = document) {
       const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
       const target = targetEl ? targetEl.closest(COPY_SELECTOR) : null;
       if (!target) return;
+      // ⛔ אל תייצר ripple בתוך אזור שמסומן ללא copy-ui (למשל טבלת החוסרים)
+      if (target.closest && target.closest('[data-tm-no-copy-ui]')) return;
       // שמור יעד וקואורדינטות ללוגיקת הטוסט
       window.__tmLastCopyTarget = target;
       window.__tmLastPointer = { x: e.clientX, y: e.clientY, t: performance.now(), target };
@@ -9306,6 +9381,8 @@ function initCopyRipple(root = document) {
       const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
       const target = targetEl ? targetEl.closest(COPY_SELECTOR) : null;
       if (!target) return;
+      // ⛔ אל תייצר ripple בתוך אזור שמסומן ללא copy-ui (למשל טבלת החוסרים)
+      if (target.closest && target.closest('[data-tm-no-copy-ui]')) return;
       window.__tmLastCopyTarget = target;
       // ייתכן שכבר יצרנו ripple ב-pointerdown; ה-guard ימנע כפילות
       spawnRipple(target, e);
@@ -9404,6 +9481,10 @@ dropdownCleanupObserver.observe(document.documentElement, {
 
 function spawnRipple(container, evt) {
   try {
+    // ⛔ אל תייצר ripple בתוך אזור ללא copy-ui (לדוגמה: טבלת החוסרים)
+    if (container && container.closest && container.closest('[data-tm-no-copy-ui]')) {
+      return;
+    }
     // ארח את ה-ripple על תא הטבלה כדי לקלף בתוך גבולות התא
     const cell = container.closest('td,th');
     const host = cell || container.closest('.tampermonkey-copy-wrap') || container;
@@ -9454,6 +9535,13 @@ if (document.body) {
     // TM: robust target for composed events & non-Element targets
     const raw = e.composedPath ? e.composedPath()[0] : e.target;
     const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
+
+    // Opt-out declarative: don't show copy UI (ripple/toast) inside marked containers
+    // This keeps copy-on-click logic of specific widgets (like the Missing Items table)
+    // but prevents toolbox visual feedback that may trigger layout reflow.
+    if (targetEl && targetEl.closest('[data-tm-no-copy-ui]')) {
+      return;
+    }
     
     // Never trigger copy/ripple inside dropdown/select2 areas or their host cells
     if (
@@ -9700,6 +9788,9 @@ function applyCopyIconFix(root = document){
         wrap.appendChild(bdi);
       }
     }
+
+    // הדגש 3 ספרות אחרונות ב-BDI
+    __tmcBoldLast3DigitsInElement(bdi);
 
     // Check if barcode has content before showing icon
     const barcodeText = bdi.textContent.trim();
@@ -10440,11 +10531,15 @@ function initCopyToastFromPointer(doc = document) {
         if (!reduce) {
           const now = performance.now();
           const p = window.__tmLastPointer;
-          if (p && (now - p.t) < 1200) {
-            showCopyToastAtPoint(p.x, p.y, 'הועתק!');
-          } else {
-            const anchor = window.__tmLastCopyTarget || document.activeElement || document.body;
-            showCopyToastNearNode(anchor, 'הועתק!');
+          // ⛔ אל תציג טוסט בתוך אזור ללא copy-ui (למשל טבלת החוסרים)
+          const inNoUiZone = (p && p.target && p.target.closest && p.target.closest('[data-tm-no-copy-ui]'));
+          if (!inNoUiZone) {
+            if (p && (now - p.t) < 1200) {
+              showCopyToastAtPoint(p.x, p.y, 'הועתק!');
+            } else {
+              const anchor = window.__tmLastCopyTarget || document.activeElement || document.body;
+              showCopyToastNearNode(anchor, 'הועתק!');
+            }
           }
           // סימון שנוצר טוסט הרגע כדי למנוע טוסט כפול מ-tmToast
           window.__tmToastStamp = now;
@@ -10459,6 +10554,10 @@ function initCopyToastFromPointer(doc = document) {
 
 function showCopyToastNearNode(anchor, msg='הועתק!'){
   try{
+    // Respect opt-out containers as well
+    if (anchor && anchor.closest && anchor.closest('[data-tm-no-copy-ui]')) {
+      return;
+    }
     installCopyToastBaseCSS();
     const el = ensureToastEl();
     el.textContent = msg;
@@ -10703,6 +10802,7 @@ function ensureBarcodeHighlightSpan(skuCell){
           }
         }
     }
+    if (span) { __tmcBoldLast3DigitsInElement(span); }
     return span;
 }
 
