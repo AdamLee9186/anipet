@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.17
+// @version      13.8.18
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -250,6 +250,22 @@ function __tmcEnsurePreviewCSS(){
     }
     /* ensure name/SKU/price/qty appear on separate lines consistently */
     .tmc-preview-meta > div { display:block; }
+
+    /* Barcode styling rules
+       – Keep the green highlight ONLY inside the table (td.barcode-highlight)
+       – Neutralize it in PREVIEW so it never overlaps the title */
+    td.barcode-highlight{
+      background-color:#e6ffed !important;
+      color:#0a7a0a !important;
+    }
+    tr[id^="preview-for-"] .tmc-preview-meta .barcode-highlight{
+      background:transparent !important;
+      color:inherit !important;
+    }
+    tr[id^="preview-for-"] .tmc-preview-meta .barcode-highlight b{
+      color:#000 !important;  /* ספרות הברקוד המודגשות – שחור */
+      font-weight:700 !important;
+    }
 
     /* Reserve space so cards don't "jump" before JS splits the meta line */
     tr[id^="preview-for-"] td[colspan] .text-muted{
@@ -1353,41 +1369,50 @@ function __tmcBoldLast3DigitsInElement(el){
   }catch(_){}
 }
 
-function __tmcApplyBarcodeLast3Bold(scope=document){
+window.__tmcApplyBarcodeLast3Bold = function(root){
   try{
-    const root = scope || document;
-    // 1) עטיפות ברורות של ברקוד
-    root.querySelectorAll('.tampermonkey-barcode-bdi, .barcode-highlight, .gallery-barcode-bdi')
-        .forEach(__tmcBoldLast3DigitsInElement);
-    // 2) פריוויו: שורה בסגנון "<div><b>מק״ט:</b> 1234567890123</div>"
-    root.querySelectorAll('.tmc-preview-meta > div:not([data-tmc-last3])').forEach(div=>{
-      const labelEl = div.querySelector('b:first-child');
-      if (!labelEl) return;
-      const labelText = (labelEl.textContent || '').replace(/[^\u0590-\u05FF]/g,'').trim(); // השמט סימנים לא-עבריים
-      if (labelText !== 'ברקוד' && labelText !== 'מקט') return; // "מק״ט" -> "מקט" אחרי ניקוי
-      // מצא טקסט לאחר ה-label שמכיל ספרות ארוכות (10+)
-      const tn = Array.from(div.childNodes).find(n => n.nodeType===Node.TEXT_NODE && /\d{10,}/.test(n.textContent||''));
-      if (!tn) return;
-      const s = tn.textContent;
-      const m = s.match(/(\d{10,})/); // רצף הספרות הראשון הארוך
-      if (!m) return;
-      const num = m[1], head = num.slice(0,-3), tail = num.slice(-3);
-      const before = s.slice(0, m.index), after = s.slice(m.index + num.length);
-      const span = document.createElement('span');
-      span.className = 'barcode-highlight';
-      span.innerHTML = `${head}<b>${tail}</b>`;
-      const frag = document.createDocumentFragment();
-      if (before) frag.appendChild(document.createTextNode(before));
-      frag.appendChild(span);
-      if (after) frag.appendChild(document.createTextNode(after));
-      tn.replaceWith(frag);
-      div.dataset.tmcLast3 = '1';
+    root = root || document;
+    
+    // 1) BDI elements (table + gallery)
+    root.querySelectorAll('.tampermonkey-barcode-bdi, .gallery-barcode-bdi').forEach(bdi=>{
+      bdi.setAttribute('dir','ltr'); // bidi-safe
+      __tmcBoldLast3DigitsInElement(bdi);
+    });
+    
+    // 2) PREVIEW: המרה ל"ברקוד", עטיפה ב-.barcode-highlight והדגשת 3 ספרות אחרונות
+    const els = root.querySelectorAll('.tmc-preview-meta');
+    els.forEach(row=>{
+      row.querySelectorAll('.tmc-preview-meta > div').forEach(line=>{
+        const labelEl = line.querySelector('b, strong');
+        const label = (labelEl?.textContent || '').trim();
+        if (!label) return;
+        const isSku = /^(?:מק[״"]?ט|ברקוד)\s*:?\s*$/i.test(label);
+        if (!isSku) return;
+        /* קבע תמיד "ברקוד:" – לא "מק״ט" – כדי לאחד התנהגות */
+        if (labelEl) labelEl.textContent = 'ברקוד:';
+        
+        const valueNode = Array.from(line.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
+        if (!valueNode) return;
+        const rest = valueNode.textContent.trim();
+        const digits = rest.replace(/[^\d]/g,'');
+        if (!/^\d{10,}$/.test(digits)) return;
+        const span = document.createElement('span');
+        span.classList.add('barcode-highlight');
+        span.textContent = digits;
+        valueNode.replaceWith(span);
+        __tmcBoldLast3DigitsInElement(span);
+      });
+    });
+    
+    // 3) גלריה: <bdi class="gallery-barcode-bdi">123456789012</bdi>
+    root.querySelectorAll('.gallery-barcode-bdi').forEach(bdi=>{
+      bdi.setAttribute('dir','ltr'); // bidi-safe
+      __tmcBoldLast3DigitsInElement(bdi);
     });
   }catch(_){}
-}
+};
 
 // חשוף לחלוקת קריאות מכל מקומות ההידרציה
-window.__tmcApplyBarcodeLast3Bold = __tmcApplyBarcodeLast3Bold;
 
 /* גלריה נטענת דינאמית: ברגע שמופיע .gallery-barcode-bdi – הדגש 3 ספרות אחרונות */
 (function __tmcWatchGalleryBarcodes(){
@@ -2566,7 +2591,7 @@ setupBlockedScriptObserver();
     
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.8.16"; // Match @version
+    const SCRIPT_VERSION = "13.8.18"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -7155,6 +7180,10 @@ td.copy-enabled.cell-copied {
             animation: none !important;
             color: inherit !important; /* ביטול צבע ירוק בפריוויו */
         }
+        /* בפריוויו: 3 הספרות האחרונות של הברקוד בצבע שחור */
+        tr[id^="preview-for-"] .barcode-highlight b {
+            color: #000000 !important;
+        }
 
         .pick-order-item-row .barcode-highlight { background-color: transparent !important; }
         /* Special handling for picking modal - prevent background color on the entire row */
@@ -7380,6 +7409,8 @@ table td[data-label="שם"] u{white-space:normal;word-wrap:break-word;word-break
 #operator-store-visits-table_wrapper table td[data-label="שם"] *,
 #operator-store-visits-table_wrapper table td:nth-child(12) *{white-space:nowrap !important;word-wrap:normal !important;word-break:normal !important}
 .gallery-barcode-bdi{direction:ltr;unicode-bidi:plaintext}
+/* בגלריה: 3 הספרות האחרונות של הברקוד בצבע לבן */
+.gallery-barcode-bdi b{color:#ffffff !important}
 .gallery-name-bdi{direction:auto;unicode-bidi:plaintext}
 .gallery-product-name .fa-light.fa-clone{font-size:.85em;cursor:pointer;color:#3699ff}
 .gallery-product-info .fa-light.fa-clone{margin-left:4px;margin-right:0;cursor:pointer;color:#3699ff}
@@ -9804,6 +9835,8 @@ function applyCopyIconFix(root = document){
     if (!bdi){
       bdi = document.createElement('bdi');
       bdi.className = 'tampermonkey-barcode-bdi';
+      /* bidi-safe: מציג תמיד משמאל לימין כדי למנוע "קפיצה" של הספרות */
+      bdi.setAttribute('dir','ltr');
       // Move the value node inside the BDI
       bdi.appendChild(valEl.parentNode ? valEl.parentNode.removeChild(valEl) : valEl);
       // Insert BDI as first child
