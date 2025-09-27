@@ -1,7 +1,7 @@
     // ==UserScript==
     // @name        טבלת חוסרים 27/09/2025
     // @namespace   http://tampermonkey.net/
-    // @version     5.7
+    // @version     5.8
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
