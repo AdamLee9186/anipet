@@ -5,6 +5,7 @@
 // @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. Ctrl+click או החזקה ארוכה: חצי־וי — אושר → לוקט חלקית, איקס — אושר → המתנה. יוצר: Adam Lee
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
+// @match        https://test.lionwheel.com/*
 // @run-at       document-idle
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -129,14 +130,23 @@
       .lw-quick--stacked .lw-quick-btn:nth-child(1){ grid-column: 1; grid-row: 1; }
       .lw-quick--stacked .lw-quick-btn:nth-child(2){ grid-column: 2; grid-row: 1; }
       .lw-quick--stacked .lw-quick-btn:nth-child(3){ grid-column: 3; grid-row: 1; }
-      /* Bottom row circles: center them under the gaps between top buttons */
-      .lw-quick--stacked .lw-quick-btn:nth-child(4){
-        grid-column: 2; grid-row: 2;
-        --tx: calc(-1 * (var(--slot) + var(--gap)) / 2);
+      /* ===== 5 כפתורים (ברירת מחדל ישן): שניים ממורכזים בשורה שניה ===== */
+      .lw-quick--stacked:not(.lw-quick--six) .lw-quick-btn:nth-child(4){
+        grid-column: 2; grid-row: 2; --tx: calc(-1 * (var(--slot) + var(--gap)) / 2);
       }
-      .lw-quick--stacked .lw-quick-btn:nth-child(5){
-        grid-column: 2; grid-row: 2;
-        --tx: calc((var(--slot) + var(--gap)) / 2);
+      .lw-quick--stacked:not(.lw-quick--six) .lw-quick-btn:nth-child(5){
+        grid-column: 2; grid-row: 2; --tx: calc((var(--slot) + var(--gap)) / 2);
+      }
+
+      /* ===== 6 כפתורים: 3 למעלה + 3 למטה, בלי offset ===== */
+      .lw-quick--stacked.lw-quick--six .lw-quick-btn:nth-child(4){
+        grid-column: 1; grid-row: 2; --tx: 0;
+      }
+      .lw-quick--stacked.lw-quick--six .lw-quick-btn:nth-child(5){
+        grid-column: 2; grid-row: 2; --tx: 0;
+      }
+      .lw-quick--stacked.lw-quick--six .lw-quick-btn:nth-child(6){
+        grid-column: 3; grid-row: 2; --tx: 0;
       }
       
       /* Size (sidepanel) */
@@ -872,6 +882,307 @@
     } catch (_) {}
   }
 
+  /** ================= Split Modal (פיצול הזמנה) ================= */
+  // ==== Helpers: תאריכים לנייטיב (ללא jQuery) ====
+  function parseDMY(v){
+    if(!v) return null;
+    const m = String(v).match(/^(\d{1,2})[\/\.](\d{1,2})[\/\.](\d{4})$/);
+    if(!m) return null;
+    const d = Number(m[1]), mo = Number(m[2])-1, y = Number(m[3]);
+    const dt = new Date(y, mo, d);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  function toISODate(d){
+    const y = d.getFullYear();
+    const m = String(d.getMonth()+1).padStart(2,"0");
+    const day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  }
+  function fromISOtoDMY(iso){
+    if(!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return "";
+    const [y,m,d] = iso.split("-");
+    return `${d}/${m}/${y}`;
+  }
+
+  // Helper: הצגת datepicker מקומי על האינפוט (ללא jQuery)
+  function showNativeDatepicker(input){
+    if(!input) return false;
+    // שמור ערך קיים ובנה ISO
+    const prev = input.value;
+    const base = parseDMY(prev) || new Date();
+    const iso = toISODate(base);
+    let restored = false;
+    const restore = (commit) => {
+      if (restored) return;
+      restored = true;
+      const pickedIso = commit ? input.value : iso;
+      try{ input.type = "text"; }catch{}
+      input.value = commit ? fromISOtoDMY(pickedIso) : prev;
+      input.removeEventListener("change", onChange);
+      input.removeEventListener("blur", onBlur, true);
+      // בועה ל־change כדי שליוןויל יקלוט
+      if (commit){
+        input.dispatchEvent(new Event("input",{bubbles:true}));
+        input.dispatchEvent(new Event("change",{bubbles:true}));
+      }
+    };
+    const onChange = () => restore(true);
+    const onBlur = () => restore(false);
+    try { input.type = "date"; } catch {}
+    input.value = iso;
+    input.addEventListener("change", onChange);
+    input.addEventListener("blur", onBlur, true);
+    try { if (typeof input.showPicker === "function") input.showPicker(); else input.click(); }
+    catch { input.focus(); }
+    return true;
+  }
+
+  // Helper: אתחול/הצגה – אם יש jQuery נשתמש בו, אחרת native
+  function forceShowDatepickerOnGroup(group){
+    try{
+      const $ = window.jQuery;
+      // ללא jQuery → fallback נייטיב
+      if (!($ && $.fn?.datepicker)){
+        const input = group?.querySelector("input.form-control");
+        return showNativeDatepicker(input);
+      }
+      const input = group?.querySelector("input.form-control");
+      if (!input) return false;
+      const $input = $(input);
+      // אתחול אם אין אינסטנס
+      if (!$input.data("datepicker")){
+        $input.datepicker({
+          autoclose: true,
+          todayHighlight: true,
+          container: "body",
+          orientation: "auto right"
+        });
+      }
+      // ודא שאין dropdownים קודמים
+      document.querySelectorAll(".datepicker-dropdown").forEach(n => n.remove());
+      // הצג דרך האינסטנס
+      const inst = $input.data("datepicker");
+      if (inst && typeof inst.show === "function"){ inst.show(); return true; }
+      // fallback: נסה שוב טיק אחרי אתחול
+      setTimeout(() => { const i2 = $input.data("datepicker"); if (i2?.show) i2.show(); }, 0);
+      return true;
+    }catch(e){ console.warn("forceShowDatepickerOnGroup failed", e); return false; }
+  }
+
+  // מאזין גלובלי (once) ללחיצה על אייקון הלוח שנה בתוך #split-modal
+  function installGlobalDatepickerDelegates(){
+    if (document.documentElement.dataset.lwDpDelegate) return;
+    document.documentElement.dataset.lwDpDelegate = "1";
+    document.addEventListener("click", (ev) => {
+      const append = ev.target && ev.target.closest('#split-modal .input-group.date .input-group-append, #split-modal .input-group.date .input-group-text');
+      if (!append) return;
+      ev.preventDefault(); ev.stopPropagation();
+      const group = append.closest(".input-group.date");
+      forceShowDatepickerOnGroup(group);
+    }, true); // capture כדי לרוץ לפני מאזינים אחרים
+  }
+
+  function wireSplitModalDatepicker(modalEl){
+    if (!modalEl || modalEl.dataset.lwDateWired) return;
+    modalEl.dataset.lwDateWired = "1";
+    const $ = window.jQuery;
+
+    // z-index fix: וודא שהלוח מעל המודל
+    if (!document.getElementById("lw-datepicker-zfix")) {
+      const st = document.createElement("style");
+      st.id = "lw-datepicker-zfix";
+      st.textContent = ".datepicker-dropdown{z-index:1070 !important;}"; // modal ≈1050
+      document.head.appendChild(st);
+    }
+
+    modalEl.querySelectorAll(".input-group.date").forEach(group => {
+      const input = group.querySelector("input.form-control");
+      if (!input) return;
+
+      try {
+        if ($ && $.fn?.datepicker) {
+          // הכרחה מסודרת דרך האינפוט + האזנה לאייקון
+          forceShowDatepickerOnGroup(group);
+          const append = group.querySelector(".input-group-append, .input-group-text");
+          if (append && !append.dataset.lwOpenWired) {
+            append.dataset.lwOpenWired = "1";
+            append.style.cursor = "pointer";
+            append.addEventListener("click", (e) => {
+              e.preventDefault(); e.stopPropagation();
+              forceShowDatepickerOnGroup(group);
+            });
+          }
+          if (!input.dataset.lwFocusWired) {
+            input.dataset.lwFocusWired = "1";
+            input.addEventListener("focus", () => { forceShowDatepickerOnGroup(group); });
+          }
+        } else {
+          // בלי jQuery/datepicker: פתיחה נייטיבית על האינפוט
+          const append = group.querySelector(".input-group-append, .input-group-text");
+          if (append && !append.dataset.lwOpenWired) {
+            append.dataset.lwOpenWired = "1";
+            append.style.cursor = "pointer";
+            append.addEventListener("click", (e) => {
+              e.preventDefault(); e.stopPropagation();
+              showNativeDatepicker(input);
+            });
+          }
+          if (!input.dataset.lwFocusWired) {
+            input.dataset.lwFocusWired = "1";
+            input.addEventListener("focus", () => showNativeDatepicker(input));
+          }
+        }
+      } catch (err) {
+        console.warn("wireSplitModalDatepicker: init failed", err);
+      }
+    });
+  }
+
+  function wireModalDismissBehavior(modalEl) {
+    if (!modalEl || modalEl.dataset.lwWiredClose) return;
+    modalEl.dataset.lwWiredClose = "1";
+
+    const body = document.body;
+
+    const closeManually = () => {
+      try {
+        if (window.jQuery && window.jQuery.fn?.modal) {
+          // אם הפלגין קיים, נבקש ממנו לסגור (מכסה גם delegated [data-dismiss])
+          window.jQuery(modalEl).modal("hide");
+          return;
+        }
+      } catch (_) {}
+      // Fallback: סגירה ידנית
+      modalEl.classList.remove("show");
+      modalEl.style.display = "none";
+      body.classList.remove("modal-open");
+      const bd = document.querySelector(".modal-backdrop");
+      if (bd) bd.remove();
+      // נקה dropdown של datepicker אם נשאר פתוח
+      try {
+        if (window.jQuery && window.jQuery.fn?.datepicker) {
+          window.jQuery(".datepicker-dropdown").remove();
+        } else {
+          document.querySelectorAll(".datepicker-dropdown").forEach(n=>n.remove());
+        }
+      } catch(_) {}
+    };
+
+    // כפתור X וכל אלמנט עם data-dismiss="modal"
+    modalEl.addEventListener("click", (e) => {
+      const target = e.target;
+      if (target?.closest('[data-dismiss="modal"]')) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeManually();
+      }
+    });
+
+    // Esc לסגירה
+    const onKey = (e) => {
+      if (e.key === "Escape" || e.key === "Esc") {
+        closeManually();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+
+    // ניקוי מאזינים כשנסגר (אם יש Bootstrap)
+    if (window.jQuery && window.jQuery.fn?.modal) {
+      try {
+        window.jQuery(modalEl).on("hidden.bs.modal.lw", () => {
+          document.removeEventListener("keydown", onKey);
+        });
+      } catch (_) {}
+    }
+
+    // אם אנחנו במצב fallback (ללא $.fn.modal) – נוודא שה־backdrop סוגר בלחיצה
+    if (!(window.jQuery && window.jQuery.fn?.modal)) {
+      const bd = document.querySelector(".modal-backdrop");
+      if (bd && !bd.dataset.lwBackdropWired) {
+        bd.dataset.lwBackdropWired = "1";
+        bd.addEventListener("click", closeManually, { once: false });
+      }
+    }
+  }
+
+  async function openSplitModal(headerRow) {
+    try {
+      // 1) אם יש טריגר data-target – לחץ עליו (Bootstrap יטפל בשאר)
+      const trigger =
+        document.querySelector('a.dropdown-item[data-target="#split-modal"]') ||
+        document.querySelector('[data-toggle="modal"][data-target="#split-modal"]');
+      if (trigger) {
+        trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        return true;
+      }
+
+      // 2) אם המודל כבר בדף – הצג אותו
+      const existing = document.getElementById("split-modal");
+      if (existing) {
+        if (window.jQuery && window.jQuery.fn?.modal) {
+          window.jQuery(existing).modal("show");
+        } else {
+          // Fallback: הצגה ידנית + backdrop לחיץ
+          existing.style.display = "block";
+          existing.classList.add("show");
+          document.body.classList.add("modal-open");
+          const oldBd = document.querySelector(".modal-backdrop");
+          if (oldBd) oldBd.remove();
+          const bd = document.createElement("div");
+          bd.className = "modal-backdrop fade show";
+          document.body.appendChild(bd);
+        }
+        wireSplitModalDatepicker(existing);
+        installGlobalDatepickerDelegates();
+        wireModalDismissBehavior(existing);
+        return true;
+      }
+
+      // 3) הזרקה "חכמה": שלוף את דף המשימה, חלץ #split-modal, הזרק והצג
+      const taskId = getTaskIdRobust(headerRow);
+      if (!taskId) throw new Error("openSplitModal: missing taskId");
+      const res = await fetch(`/tasks/${String(taskId)}`, { credentials: "include" });
+      const html = await res.text();
+      const holder = document.createElement("div");
+      holder.innerHTML = html;
+      const fetched = holder.querySelector("#split-modal");
+      if (fetched) {
+        const dup = document.getElementById("split-modal");
+        if (dup) dup.remove();
+        document.body.appendChild(fetched);
+        if (window.jQuery && window.jQuery.fn?.modal) {
+          window.jQuery(fetched).modal("show");
+        } else {
+          // Fallback: הצגה ידנית + backdrop לחיץ
+          fetched.style.display = "block";
+          fetched.classList.add("show");
+          document.body.classList.add("modal-open");
+          const oldBd = document.querySelector(".modal-backdrop");
+          if (oldBd) oldBd.remove();
+          const bd = document.createElement("div");
+          bd.className = "modal-backdrop fade show";
+          document.body.appendChild(bd);
+        }
+        wireSplitModalDatepicker(fetched);
+        installGlobalDatepickerDelegates();
+        wireModalDismissBehavior(fetched);
+        return true;
+      }
+
+      // 4) נסיון אחרון: קישור טקסטואלי "פיצול"
+      const byText = Array.from(document.querySelectorAll("a, .dropdown-item"))
+        .find(a => (a.textContent || "").trim() === "פיצול");
+      if (byText) { byText.click(); return true; }
+
+      alert("לא הצלחתי לפתוח את חלון הפיצול בדף הזה.");
+      return false;
+    } catch (e) {
+      console.warn("openSplitModal failed:", e);
+      alert("שגיאה בפתיחת חלון הפיצול.");
+      return false;
+    }
+  }
+
 
 
   function disableFor(btn, ms) {
@@ -997,6 +1308,33 @@
     wrapper.appendChild(btnX);
     wrapper.appendChild(btnCircle1);
     wrapper.appendChild(btnCircle2);
+
+    // === NEW: Split button (placeholder icon) ===
+    const btnSplit = document.createElement("button");
+    btnSplit.type = "button";
+    btnSplit.className = "lw-quick-btn";
+    btnSplit.title = "פיצול הזמנה";
+    // איקון placeholder מינימלי (נחליף בהמשך)
+    btnSplit.innerHTML = `
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 640 640" aria-hidden="true" focusable="false">
+  <defs>
+    <style>
+      .st0 {
+        fill: #33baff;
+      }
+    </style>
+  </defs>
+  <g id="Layer_1" focusable="false">
+    <path class="st0" d="M320,112c114.9,0,208,93.1,208,208s-93.1,208-208,208-208-93.1-208-208,93.1-208,208-208ZM320,576c141.4,0,256-114.6,256-256S461.4,64,320,64,64,178.6,64,320s114.6,256,256,256Z"/>
+    <path class="st0" d="M320,466.33c-9.94,0-18-8.06-18-18v-67.89c0-10.84-4.85-20.93-13.31-27.7l-26.72-21.37c-17.04-13.63-26.82-33.97-26.83-55.79v-24.44l-9.38,9.38c-7.03,7.03-18.43,7.03-25.46,0-7.03-7.03-7.03-18.43,0-25.46l40.11-40.11c1.78-1.78,3.83-3.1,6.03-3.98,0,0,0,0,0,0,.01,0,.02,0,.03-.01,1.86-.74,3.88-1.19,6-1.26.45-.02.9-.02,1.34,0,2.11.08,4.13.52,6,1.26.01,0,.02,0,.03.01,0,0,0,0,0,0,2.19.88,4.25,2.21,6.02,3.98l40.11,40.11c7.03,7.03,7.03,18.43,0,25.46-7.03,7.03-18.43,7.03-25.46,0l-9.38-9.38v24.44c0,10.83,4.86,20.92,13.31,27.69l26.72,21.38c3.47,2.78,6.63,5.83,9.48,9.12,3.86-4.79,8.27-9.19,13.19-13.13l16.65-13.34c11.66-9.33,18.34-23.23,18.35-38.15v-18l-9.38,9.38c-7.03,7.03-18.43,7.03-25.46,0s-7.03-18.43,0-25.46l40.11-40.11c1.78-1.78,3.83-3.1,6.03-3.98,0,0,0,0,0,0,0,0,.02,0,.03-.01,1.87-.74,3.88-1.19,6-1.26.45-.02.9-.02,1.34,0,2.11.08,4.13.52,5.99,1.26.01,0,.02,0,.04.01,0,0,0,0,0,0,2.19.88,4.25,2.21,6.03,3.98l40.11,40.11c7.03,7.03,7.03,18.43,0,25.46s-18.43,7.03-25.46,0l-9.38-9.38v18.01c0,25.92-11.61,50.07-31.85,66.25l-16.65,13.33c-11.66,9.33-18.35,23.23-18.35,38.15v61.46c0,9.94-8.06,18-18,18Z"/>
+  </g>
+</svg>`.trim();
+    wrapper.appendChild(btnSplit);
+
+    // אם אנחנו ב־offcanvas – הפוך את הגריד ל-3×2
+    if (wrapper.classList.contains("lw-quick--stacked")) {
+      wrapper.classList.add("lw-quick--six");
+    }
 
     // פעולות
     // Per-button guard to prevent the default path after an alt Ctrl/⌘ click
@@ -1250,6 +1588,16 @@
       }
     };
     btnCircle2.addEventListener("click", handleMagentaButtonClick);
+
+    // === SPLIT button: פותח את דיאלוג הפיצול ===
+    const handleSplitButtonClick = async () => {
+      if (btnSplit.disabled) return;
+      const headerRow = findHeaderRow();
+      if (!headerRow) return;
+      disableFor(btnSplit, 1200);
+      await openSplitModal(headerRow);
+    };
+    btnSplit.addEventListener("click", handleSplitButtonClick);
     
     if (DEBUG_PERFORMANCE) {
       logPerformance('Button creation', startTime);
