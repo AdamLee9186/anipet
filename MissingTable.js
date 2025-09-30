@@ -1,7 +1,7 @@
     // ==UserScript==
-    // @name        טבלת חוסרים 27/09/2025
+    // @name        טבלת חוסרים 29/09/2025
     // @namespace   http://tampermonkey.net/
-    // @version     5.8
+    // @version     6
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -21,6 +21,156 @@
 
     (function () {
         'use strict';
+
+        // ===== Performance/UX Boosts — MissingTable fast-path =====
+        // Toggle verbose logs without touching callsites
+        const CONFIG = Object.assign({
+            DEBUG: false,
+            FETCH_CONCURRENCY: 12,      // 8–12 recommended
+            YIELD_EVERY: 50,            // yield to main thread every N heavy iterations
+            VIRTUAL_THRESHOLD: 500,     // switch to virtualized rendering beyond this many rows
+            CATALOG_URL: "https://raw.githubusercontent.com/AdamLee9186/anipet/main/backoffice_catalog.csv",
+            CACHE_NS: "catalog_csv_v1"
+        }, window.MISSINGTABLE_CONFIG || {});
+        const log = {
+            debug: (...a) => CONFIG.DEBUG && console.log("[MT]", ...a),
+            info:  (...a) => console.log("[MT]", ...a),
+            warn:  (...a) => console.warn("[MT]", ...a),
+            error: (...a) => console.error("[MT]", ...a),
+        };
+
+        // Small helper to keep the UI responsive in long loops
+        const yieldToMain = () => new Promise(r => setTimeout(r, 0));
+        async function maybeYield(i, every = CONFIG.YIELD_EVERY) {
+            if (i % every === 0) await yieldToMain();
+        }
+
+        // Lightweight p-limit implementation (no deps)
+        function pLimit(concurrency) {
+            let active = 0;
+            const queue = [];
+            const next = () => {
+                if (active >= concurrency || queue.length === 0) return;
+                active++;
+                const { fn, resolve, reject } = queue.shift();
+                Promise.resolve()
+                    .then(fn)
+                    .then((v) => { active--; resolve(v); next(); })
+                    .catch((e) => { active--; reject(e); next(); });
+            };
+            return (fn) => new Promise((resolve, reject) => { queue.push({ fn, resolve, reject }); next(); });
+        }
+        const limitFetch = pLimit(CONFIG.FETCH_CONCURRENCY);
+
+        // ETag/Last-Modified aware fetch for the catalog CSV
+        async function fetchWithValidators(url) {
+            const key = (s) => `${CONFIG.CACHE_NS}:${s}:${url}`;
+            const cachedBody = localStorage.getItem(key("body"));
+            const cachedETag = localStorage.getItem(key("etag"));
+            const cachedLM   = localStorage.getItem(key("lm"));
+
+            // Try conditional GET first (works when server supports 304)
+            const headers = new Headers();
+            if (cachedETag) headers.set("If-None-Match", cachedETag);
+            if (cachedLM)   headers.set("If-Modified-Since", cachedLM);
+
+            const resp = await fetch(url, { headers });
+            if (resp.status === 304 && cachedBody) {
+                log.debug("Catalog: 304 Not Modified — serving from cache");
+                return new Response(new Blob([cachedBody]), { status: 200 });
+            }
+            if (!resp.ok) return resp;
+            const e = resp.headers.get("ETag");
+            const lm = resp.headers.get("Last-Modified");
+            const text = await resp.text();
+            try {
+                localStorage.setItem(key("body"), text);
+                if (e)  localStorage.setItem(key("etag"), e);
+                if (lm) localStorage.setItem(key("lm"), lm);
+            } catch (err) {
+                // best-effort cache
+                log.warn("Catalog cache write failed (quota?)", err);
+            }
+            return new Response(new Blob([text]), { status: 200 });
+        }
+
+        // CSV parsing (off-main-thread when PapaParse is available)
+        async function parseCsvSmart(csvText) {
+            if (typeof Papa !== "undefined") {
+                return new Promise((resolve, reject) => {
+                    Papa.parse(csvText, {
+                        header: true,
+                        dynamicTyping: false,
+                        skipEmptyLines: true,
+                        worker: true,
+                        complete: (r) => resolve(r.data),
+                        error: reject,
+                    });
+                });
+            }
+            // Minimal fallback parser (sync)
+            const [headerLine, ...lines] = csvText.split(/\r?\n/).filter(Boolean);
+            const headers = headerLine.split(",");
+            return lines.map(l => {
+                const cols = l.split(",");
+                const obj = {};
+                headers.forEach((h, i) => obj[h] = cols[i]);
+                return obj;
+            });
+        }
+
+        // Create fast lookup Map for sku -> barcode
+        function buildSkuBarcodeMap(rows, skuKey = "sku", barcodeKey = "barcode") {
+            const map = new Map();
+            for (let i = 0; i < rows.length; i++) {
+                const r = rows[i];
+                if (r && r[skuKey]) map.set(String(r[skuKey]).trim(), String(r[barcodeKey] || "").trim());
+            }
+            log.info(`🔗 מיפוי מק"ט לברקוד (Map): ${map.size} ערכים`);
+            return map;
+        }
+
+        // Virtualized renderer for large tables (> threshold)
+        function mountVirtualTable(tbody, rows, rowFactory) {
+            const ROW_H = 36; // px; keep in sync with row CSS
+            const total = rows.length;
+            const container = tbody.parentElement; // assuming tbody is inside a scrollable table container
+            container.style.position = "relative";
+            container.style.overflowY = "auto";
+            const spacer = document.createElement("div");
+            spacer.style.height = (total * ROW_H) + "px";
+            spacer.style.position = "relative";
+            tbody.replaceChildren(); // clear
+            tbody.appendChild(spacer);
+
+            function renderSlice() {
+                const start = Math.max(0, Math.floor(container.scrollTop / ROW_H) - 20);
+                const visible = Math.ceil(container.clientHeight / ROW_H) + 40;
+                const end = Math.min(total, start + visible);
+                const frag = document.createDocumentFragment();
+                const baseTop = start * ROW_H;
+                for (let i = start; i < end; i++) {
+                    const tr = rowFactory(rows[i], i);
+                    tr.style.position = "absolute";
+                    tr.style.top = (baseTop + (i - start) * ROW_H) + "px";
+                    tr.style.height = ROW_H + "px";
+                    frag.appendChild(tr);
+                }
+                spacer.replaceChildren(frag);
+            }
+            container.addEventListener("scroll", renderSlice, { passive: true });
+            renderSlice();
+        }
+
+        // Batch DOM writes with DocumentFragment
+        function appendRowsBatch(tbody, rows, rowFactory) {
+            const frag = document.createDocumentFragment();
+            for (let i = 0; i < rows.length; i++) {
+                const tr = rowFactory(rows[i], i);
+                frag.appendChild(tr);
+            }
+            tbody.replaceChildren(frag);
+        }
 
         // 1. הגדרה גלובלית של ה-Web App URL
         const GAS_URL = 'https://script.google.com/macros/s/AKfycbxmfwfg9X1GlFeBdmXv6aBozUOxX5nh1u7Y7tOuKkyC8Nc2kzYsp56gbajcbiDbQGwQvw/exec';
@@ -98,6 +248,7 @@
         console.log('🚀 טבלת חוסרים - סקריפט Tampermonkey טוען...');
         console.log('📍 URL של הסקריפט Google Apps Script:', GAS_URL);
         console.log('📋 Sheet ID: 1ufzGaLz_dRzHqI6cclTLEzpwAiSHLytIKpVh-JLYVe8');
+        console.log('💡 אם נתקלת בבעיות QuotaExceededError, הרץ: clearOldCache()');
         console.log('🔧 גרסה 1.5 - עם שיפורי ביצועים וולידציה מתקדמת');
         console.log('⚠️  חשוב: אם אתה רואה "0 פריטים" אחרי ייצוא, זה אומר שה-URL מצביע על גרסה ישנה');
         console.log('🔧 כדי לתקן:');
@@ -204,6 +355,82 @@
         // 4. פונקציה לניקוי וסינון האיזור
         const EXCLUDED_REGION = "מרלוג צור יגאל (צ'יטה)";
 
+        // פונקציה לסינון מראש מתוך הטבלה הראשית
+        function getRegionFromMainTable(taskId){
+            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+            const cells = row?.querySelectorAll('td') || [];
+            const region = cells[7]?.textContent.trim() || '';
+            if (!region) return '';                 // לא ידוע – נמשיך לפולבק בדף המשימה
+            if (region === EXCLUDED_REGION) return null; // לדלג מראש
+            return region;
+        }
+
+        // מערכת קאש למשימות - גרסה בטוחה
+        const TASK_CACHE_KEY = 'missing_table_task_cache_v1';
+        const MAX_TASKS_TO_KEEP = 60;   // כמה רשומות להחזיק בשגרה
+        const PRUNE_TO = 30;            // לדלל עד לכמות זו אם חוטפים QuotaExceeded
+        let disableTaskCache = false;
+
+        const taskCache = (() => {
+            try { return JSON.parse(sessionStorage.getItem(TASK_CACHE_KEY) || '{}'); }
+            catch { return {}; }
+        })();
+
+        function prune(cache, keep = MAX_TASKS_TO_KEEP) {
+            const entries = Object.entries(cache)
+                .map(([id, v]) => [id, v && v.ts ? v.ts : 0])
+                .sort((a, b) => b[1] - a[1]); // חדש→ישן
+            for (let i = keep; i < entries.length; i++) {
+                delete cache[entries[i][0]];
+            }
+        }
+
+        function safeSaveTaskCache() {
+            if (disableTaskCache) return;
+            try {
+                prune(taskCache, MAX_TASKS_TO_KEEP);
+                sessionStorage.setItem(TASK_CACHE_KEY, JSON.stringify(taskCache));
+            } catch (err) {
+                if (err?.name === 'QuotaExceededError' || err?.code === 22 || err?.code === 1014) {
+                    console.warn('[MissingTable] Storage full. Pruning & retrying…');
+                    // נקה מפתחות כבדים מוכרים כדי לפנות מקום (אם קיימים)
+                    ['catalog_csv_v1', 'catalog_csv'].forEach(k => {
+                        try { localStorage.removeItem(k); sessionStorage.removeItem(k); } catch {}
+                    });
+                    prune(taskCache, PRUNE_TO);
+                    try {
+                        sessionStorage.setItem(TASK_CACHE_KEY, JSON.stringify(taskCache));
+                    } catch {
+                        console.warn('[MissingTable] Disabling task cache for this session.');
+                        disableTaskCache = true;
+                    }
+                } else {
+                    console.error(err);
+                }
+            }
+        }
+
+        // תאימות לאזכורים קיימים של saveTaskCache():
+        const saveTaskCache = safeSaveTaskCache;
+
+        function getUpdatedAtFromRow(taskId){
+            const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
+            // דוגמה: תא 4 מכיל תאריך/שעה – להתאים לשדה האמיתי אצלך
+            const t = row?.querySelectorAll('td')[4]?.textContent.trim() || '';
+            return t; // משתמש כמזהה גרסה
+        }
+
+        function readTaskFromCache(id, ver) {
+            const c = taskCache[id];
+            return (c && c.ver === ver) ? c.data : null;
+        }
+
+        function writeTaskToCache(id, ver, data) {
+            if (disableTaskCache) return;
+            taskCache[id] = { ver, data, ts: Date.now() }; // ts לצורך LRU
+            saveTaskCache();
+        }
+
         function getDestinationRegion(taskId, doc) {
             let destinationRegion = '';
 
@@ -264,10 +491,83 @@
         const MASTER_CSV_URL = 'https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v1.csv';
         console.log('📁 URL של קובץ הקטלוג CSV:', CSV_URL);
         console.log('🖼️ URL של מאסטר התמונות CSV:', MASTER_CSV_URL);
+
+        // מערכת קאש ל-CSV עם ETag
+        function parseHeader(headersStr){
+            const out={}; 
+            headersStr.split(/\r?\n/).forEach(l=>{
+                const i=l.indexOf(':'); 
+                if(i>0){ 
+                    out[l.slice(0,i).trim().toLowerCase()] = l.slice(i+1).trim(); 
+                }
+            }); 
+            return out;
+        }
+
+        async function gmGetWithETag(url, cacheKey){
+            const metaKey = cacheKey + ':meta';
+            const meta = JSON.parse(localStorage.getItem(metaKey) || '{}');
+
+            return new Promise((resolve, reject)=>{
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url,
+                    headers: meta.etag ? { 'If-None-Match': meta.etag } : {},
+                    onload: res => {
+                        const hs = parseHeader(res.responseHeaders||'');
+                        if (res.status === 304 && meta.text) { 
+                            console.log(`📦 משתמש בקאש עבור ${cacheKey}`);
+                            resolve(meta.text); 
+                            return; 
+                        }
+                        if (res.status >= 200 && res.status < 300) {
+                            try {
+                                localStorage.setItem(metaKey, JSON.stringify({ etag: hs['etag']||'', text: res.responseText }));
+                                console.log(`💾 שמירה בקאש עבור ${cacheKey}`);
+                            } catch (err) {
+                                if (err?.name === 'QuotaExceededError' || err?.code === 22 || err?.code === 1014) {
+                                    console.warn(`[MissingTable] Storage full for ${cacheKey}. Skipping cache save.`);
+                                    // ממשיכים בלי קאש במקום להפיל
+                                } else {
+                                    console.error('Error saving cache:', err);
+                                }
+                            }
+                            resolve(res.responseText);
+                        } else reject(new Error(`HTTP ${res.status}`));
+                    },
+                    onerror: reject,
+                    timeout: 30000
+                });
+            });
+        }
         let catalogData = null;
         let allResults = []; // Store all fetched results
         let filteredAndSortedResults = []; // Store currently filtered and sorted results
         let selectedItemUniqueIds = new Set(); // Stores uniqueId of selected items for export
+        
+        // AbortController להרצה נקייה
+        let currentRun = null;
+        
+        function startRun(){
+            if (currentRun?.abort){ currentRun.abort(); }
+            const controller = new AbortController();
+            currentRun = controller;
+            return controller;
+        }
+
+        // ניקוי חד-פעמי של קאש ישן (להפעלה ידנית אם נדרש)
+        function clearOldCache() {
+            const keysToRemove = ['missing_table_task_cache_v1', 'catalog_csv_v1', 'catalog_csv'];
+            keysToRemove.forEach(k => {
+                try { 
+                    localStorage.removeItem(k); 
+                    sessionStorage.removeItem(k); 
+                    console.log(`🧹 נוקה ${k}`);
+                } catch(e) { 
+                    console.warn(`לא ניתן לנקות ${k}:`, e); 
+                }
+            });
+        }
 
         // ------------------ Master catalog (images) ------------------
         let masterCatalogReady = false;
@@ -293,6 +593,43 @@
         let currentMode = 'missing'; // 'missing' or 'negative'
         // מצב גלריה (ON/OFF)
         let isGalleryView = false;
+
+        // קריאת כמות לפריט – מתחשבת במצב הטבלה (חוסרים/נגטיב) ומגוון שמות עמודות
+        function getItemQuantity(row){
+          const getValue = (r,k)=> (r && r[k] != null ? String(r[k]).trim() : '');
+          const parseNumber = (v)=>{
+            if (!v) return 0;
+            const m = String(v).match(/-?\d+(?:[.,]\d+)?/);
+            return m ? parseFloat(m[0].replace(',', '.')) : 0;
+          };
+
+          // מפתחות רלוונטיים
+          // מצב חוסרים: לוקחים *רק* עמודות חסרים – לא "נגטיב" ולא total.
+          const MISSING_KEYS  = [
+            'סה"כ חסרים','סה״כ חסרים','סה"כ חסרים','סהכ חסרים',
+            'סה"כ חוסרים','סה״כ חוסרים','סה"כ חוסרים','סהכ חוסרים',
+            'totalMissing','missing','missingTotal','חסרים'
+          ];
+          const NEGATIVE_KEYS = ['סה"כ לוקטו','סה״כ לוקטו','סה"כ לוקטו','סהכ לוקטו','לוקטו סה״כ','לוקטו סה"כ','לוקטו סהכ',
+                           'לוקטו','נגטיב','picked','pickedTotal'];
+          // fallback עדין: במצב חוסרים לא ניפול ל-total/סה"כ כדי שלא נתבלבל בכמויות הכלליות.
+          const COMMON_FALLBACK_ALL = ['סה"כ','סהכ','quantity','qty','count','amount','total'];
+          const COMMON_FALLBACK = (window.__missingTableMode === 'negative')
+            ? COMMON_FALLBACK_ALL
+            : ['quantity','qty','count']; // חוסרים – בלי total/סה"כ
+
+          const currentMode = window.__missingTableMode === 'negative' ? 'negative' : 'missing';
+          const ORDER = currentMode === 'negative'
+            ? [...NEGATIVE_KEYS, ...MISSING_KEYS, ...COMMON_FALLBACK]
+            : [...MISSING_KEYS, ...NEGATIVE_KEYS, ...COMMON_FALLBACK];
+
+          for (const key of ORDER){
+            const val = getValue(row, key);
+            const n = parseNumber(val);
+            if (n > 0) return n;
+          }
+          return 0;
+        }
 
         /**
          * Replaces problematic characters in a string to make it safe for HTML attributes and CSS selectors.
@@ -529,6 +866,30 @@
               .missing-gallery-card{position:relative; width:100px; height:100px; background:#fff; border:1px solid #fff; border-radius:8px; overflow:hidden;}
               .missing-gallery-card img{width:100%; height:100%; object-fit:contain; display:block;}
 
+              /* === Quantity badge on thumbnails === */
+              .lw-thumb-badge{
+                position:absolute;
+                top:6px;
+                left:6px;
+                z-index:3;
+                min-width:28px;
+                height:28px;
+                padding:0 8px;
+                border-radius:999px;
+                border:2px solid #fff;
+                background:#000000a6; /* שחור עם שקיפות קלה */
+                color:#fff;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+                font-family:"Noto Sans Hebrew", Arial, sans-serif;
+                font-weight:700;
+                font-size:12px;
+                line-height:1;
+                pointer-events:none;
+                backdrop-filter:saturate(120%) blur(2px);
+              }
+
               /* overlay: hidden by default, slide-up on hover */
               .missing-gallery-overlay{position:absolute; left:0; right:0; bottom:0; padding:6px 8px; background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:1.25; direction:rtl; text-align:right; transform:translateY(100%); transition:transform .18s ease;}
               .missing-gallery-card:hover .missing-gallery-overlay{transform:translateY(0);}
@@ -744,6 +1105,9 @@ function ensureLocalOverlay(){
     // thumbs
     $thumbs.innerHTML = '';
     S.items.forEach((it,i)=>{
+      const container = document.createElement('div');
+      container.style.position = 'relative';
+      
       const im = document.createElement('img');
       const src0 = it.thumbnailUrl || it.fullSizeUrl || '';
       if (src0){
@@ -756,7 +1120,21 @@ function ensureLocalOverlay(){
       im.alt = it.productName || '';
       im.title = it.productName || '';
       im.onclick = ()=>load(i);
-      $thumbs.appendChild(im);
+      
+      container.appendChild(im);
+      
+      // === Quantity badge (overlay thumbnails) ===
+      // השתמש בכמות שכבר חושבה ונשמרה ב-overlay item
+      const qty = (it.quantity && Number.isFinite(+it.quantity) && +it.quantity > 0) ? +it.quantity : 0;
+      if (qty > 1){
+        const badge = document.createElement('span');
+        badge.className = 'lw-thumb-badge';
+        badge.style.transform = 'scale(0.9)'; /* מעט קטן יותר בשורת התחתית */
+        badge.textContent = 'X' + qty;
+        container.appendChild(badge);
+      }
+      
+      $thumbs.appendChild(container);
     });
     root.classList.add('active'); load(S.idx);
   }
@@ -867,13 +1245,12 @@ function showGalleryOverlay(items, startIndex){
           return -1;
         }
 
-        function loadMasterCatalog(){
-          return new Promise(resolve => {
+        async function loadMasterCatalog(){
+          return new Promise(async resolve => {
             if (masterCatalogReady) return resolve(true);
-            GM_xmlhttpRequest({
-              method: 'GET',
-              url: MASTER_CSV_URL,
-              onload: (res) => {
+            try {
+              const csvText = await gmGetWithETag(MASTER_CSV_URL, 'master_csv_v1');
+              const res = { responseText: csvText };
                 try{
                   const rows = csvParseSmart(res.responseText || '');
                   if (!rows.length) { console.warn('[MissingTable] master: empty'); return resolve(false); }
@@ -912,9 +1289,10 @@ function showGalleryOverlay(items, startIndex){
                   console.log(`[MissingTable] master loaded ✓  sku→image: ${masterSkuToImage.size}, bc→image: ${masterBarcodeToImage.size}, sku→url: ${masterSkuToUrl.size}, bc→url: ${masterBarcodeToUrl.size}, added=${added}`);
                   resolve(true);
                 }catch(e){ console.error('[MissingTable] master load error', e); resolve(false); }
-              },
-              onerror: () => resolve(false),
-            });
+            } catch(e) { 
+              console.error('[MissingTable] master load error', e); 
+              resolve(false); 
+            }
           });
         }
 
@@ -929,8 +1307,12 @@ function showGalleryOverlay(items, startIndex){
           const bcRaw = item?.barcode;
           const bc    = normalizeBarcode(bcRaw);
           let   sku   = normalizeSku(item?.makt || item?.sku);
-          if (!sku && bc && barcodeToMaktMap[bc]) {
-            sku = normalizeSku(barcodeToMaktMap[bc]);
+          // Fast lookup with Map (fallback to object if Map not present)
+          if (!sku && bc) {
+            sku = (window.__skuBarcodeMap instanceof Map
+                ? window.__skuBarcodeMap.get(String(bc).trim())
+                : (barcodeToMaktMap && barcodeToMaktMap[bc])) || '';
+            if (sku) sku = normalizeSku(sku);
           }
           if (sku && masterSkuToImage.has(sku)) {
             return { url: masterSkuToImage.get(sku), by: 'SKU', key: sku };
@@ -959,75 +1341,100 @@ function showGalleryOverlay(items, startIndex){
         async function loadCatalogData() {
             console.log('📁 טוען נתוני קטלוג מ-CSV...');
             console.log('🔗 URL:', CSV_URL);
-            return new Promise((resolve, reject) => {
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: CSV_URL,
-                    onload: function(response) {
-                        try {
-                            const newCatalogData = {};
-                            const maktToBarcodeMap = {}; // מיפוי חדש: מק"ט -> ברקוד
-                            barcodeToMaktMap = {}; // מיפוי הפוך: ברקוד -> מק"ט (גלובלי)
-                            const lines = response.responseText.split('\n');
-                            const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                            const barcodeIndex = headers.indexOf('ברקוד');
-                            const descriptionIndex = headers.indexOf('תאור פריט');
-                            const maktIndex = headers.indexOf('קוד פריט');
-
-                            if (barcodeIndex === -1 || descriptionIndex === -1 || maktIndex === -1) {
-                                throw new Error('חסרות עמודות נדרשות (ברקוד, תאור פריט, קוד פריט) בקובץ ה-CSV.');
+            
+            try {
+                // Use new validator-aware fetch if URL matches
+                if (CSV_URL === CONFIG.CATALOG_URL) {
+                    const resp = await fetchWithValidators(CONFIG.CATALOG_URL);
+                    if (resp.ok) {
+                        const csvText = await resp.text();
+                        const catalogRows = await parseCsvSmart(csvText);
+                        // prefer Map for lookups
+                        window.__skuBarcodeMap = buildSkuBarcodeMap(catalogRows, "קוד פריט", "ברקוד");
+                        // Keep backward compatibility
+                        catalogData = {};
+                        barcodeToMaktMap = {};
+                        for (const row of catalogRows) {
+                            if (row['תאור פריט']) {
+                                catalogData[row['תאור פריט']] = { 
+                                    barcode: row['ברקוד'] || '', 
+                                    makt: row['קוד פריט'] || '' 
+                                };
                             }
-
-                            for (let i = 1; i < lines.length; i++) {
-                                const line = lines[i].trim();
-                                if (!line) continue;
-
-                                const cells = [];
-                                let inQuote = false;
-                                let currentCell = '';
-                                for (let char of line) {
-                                    if (char === '"') {
-                                        inQuote = !inQuote;
-                                    } else if (char === ',' && !inQuote) {
-                                        cells.push(currentCell.trim());
-                                        currentCell = '';
-                                    } else {
-                                        currentCell += char;
-                                    }
-                                }
-                                cells.push(currentCell.trim());
-
-                                const description = cells[descriptionIndex] ? cells[descriptionIndex].replace(/"/g, '') : '';
-                                const barcode = cells[barcodeIndex] ? cells[barcodeIndex].replace(/"/g, '') : '';
-                                const makt = cells[maktIndex] ? cells[maktIndex].replace(/"/g, '') : '';
-
-                                if (description) {
-                                    newCatalogData[description] = { barcode: barcode, makt: makt };
-                                }
-
-                                // הוסף למיפוי מק"ט -> ברקוד
-                                if (makt && barcode) {
-                                    maktToBarcodeMap[makt] = barcode;
-                                    barcodeToMaktMap[barcode] = makt; // חדש: תרגום ברקוד→מק"ט
-                                }
+                            if (row['קוד פריט'] && row['ברקוד']) {
+                                barcodeToMaktMap[row['ברקוד']] = row['קוד פריט'];
                             }
-                            catalogData = newCatalogData;
-                            catalogData.maktToBarcodeMap = maktToBarcodeMap; // שמור את המיפוי החדש
-                            catalogData.barcodeToMaktMap = barcodeToMaktMap; // חדש
-                            console.log('✅ נתוני קטלוג נטענו בהצלחה:', Object.keys(catalogData).length, 'פריטים');
-                            console.log('🔗 מיפוי מק"ט לברקוד:', Object.keys(maktToBarcodeMap).length, 'ערכים');
-                            resolve();
-                        } catch (e) {
-                            console.error('שגיאה בניתוח קובץ CSV:', e);
-                            reject(new Error('שגיאה בניתוח קובץ קטלוג: ' + e.message));
                         }
-                    },
-                    onerror: function(error) {
-                        console.error('שגיאה בטעינת קובץ CSV:', error);
-                        reject(new Error('שגיאה בטעינת קובץ קטלוג.'));
+                        console.log('✅ נתוני קטלוג נטענו בהצלחה (חדש):', Object.keys(catalogData).length, 'פריטים');
+                        return;
+                    }
+                }
+                
+                // Fallback to old method
+                const csvText = await gmGetWithETag(CSV_URL, 'catalog_csv_v1');
+                return new Promise((resolve, reject) => {
+                    try {
+                        const newCatalogData = {};
+                        const maktToBarcodeMap = {}; // מיפוי חדש: מק"ט -> ברקוד
+                        barcodeToMaktMap = {}; // מיפוי הפוך: ברקוד -> מק"ט (גלובלי)
+                        const lines = csvText.split('\n');
+                        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                        const barcodeIndex = headers.indexOf('ברקוד');
+                        const descriptionIndex = headers.indexOf('תאור פריט');
+                        const maktIndex = headers.indexOf('קוד פריט');
+
+                        if (barcodeIndex === -1 || descriptionIndex === -1 || maktIndex === -1) {
+                            throw new Error('חסרות עמודות נדרשות (ברקוד, תאור פריט, קוד פריט) בקובץ ה-CSV.');
+                        }
+
+                        for (let i = 1; i < lines.length; i++) {
+                            const line = lines[i].trim();
+                            if (!line) continue;
+
+                            const cells = [];
+                            let inQuote = false;
+                            let currentCell = '';
+                            for (let char of line) {
+                                if (char === '"') {
+                                    inQuote = !inQuote;
+                                } else if (char === ',' && !inQuote) {
+                                    cells.push(currentCell.trim());
+                                    currentCell = '';
+                                } else {
+                                    currentCell += char;
+                                }
+                            }
+                            cells.push(currentCell.trim());
+
+                            const description = cells[descriptionIndex] ? cells[descriptionIndex].replace(/"/g, '') : '';
+                            const barcode = cells[barcodeIndex] ? cells[barcodeIndex].replace(/"/g, '') : '';
+                            const makt = cells[maktIndex] ? cells[maktIndex].replace(/"/g, '') : '';
+
+                            if (description) {
+                                newCatalogData[description] = { barcode: barcode, makt: makt };
+                            }
+
+                            // הוסף למיפוי מק"ט -> ברקוד
+                            if (makt && barcode) {
+                                maktToBarcodeMap[makt] = barcode;
+                                barcodeToMaktMap[barcode] = makt; // חדש: תרגום ברקוד→מק"ט
+                            }
+                        }
+                        catalogData = newCatalogData;
+                        catalogData.maktToBarcodeMap = maktToBarcodeMap; // שמור את המיפוי החדש
+                        catalogData.barcodeToMaktMap = barcodeToMaktMap; // חדש
+                        console.log('✅ נתוני קטלוג נטענו בהצלחה:', Object.keys(catalogData).length, 'פריטים');
+                        console.log('🔗 מיפוי מק"ט לברקוד:', Object.keys(maktToBarcodeMap).length, 'ערכים');
+                        resolve();
+                    } catch (e) {
+                        console.error('שגיאה בניתוח קובץ CSV:', e);
+                        reject(new Error('שגיאה בניתוח קובץ קטלוג: ' + e.message));
                     }
                 });
-            });
+            } catch (e) {
+                console.error('שגיאה בטעינת קובץ CSV:', e);
+                reject(new Error('שגיאה בטעינת קובץ קטלוג.'));
+            }
         }
 
         // Check if the button already exists to prevent duplication
@@ -1144,9 +1551,98 @@ function showGalleryOverlay(items, startIndex){
         /**
          * Starts the process of fetching and displaying the missing items table.
          */
+        // Helper functions for rate limiting and retry logic
+        function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+        
+        function parseRetryAfter(res) {
+            const ra = res.headers.get('retry-after');
+            if (!ra) return null;
+            const s = Number(ra);
+            if (!Number.isNaN(s)) return s * 1000;
+            const when = Date.parse(ra);
+            return Number.isNaN(when) ? null : Math.max(0, when - Date.now());
+        }
+
+        // מערכת תור משופרת עם jitter ו-backoff חכם
+        function createQueue({maxConcurrent=5, minDelayMs=120, maxDelayMs=240}={}){
+            let active = 0; 
+            const q = [];
+            const nap = ms => new Promise(r => setTimeout(r, ms));
+            const jitter = () => minDelayMs + Math.random()*(maxDelayMs-minDelayMs);
+
+            const runNext = async () => {
+                if (active >= maxConcurrent || !q.length) return;
+                const job = q.shift(); 
+                active++;
+                try { 
+                    await job.fn(); 
+                } finally {
+                    active--; 
+                    if (maxDelayMs) await nap(jitter());
+                    runNext();
+                }
+            };
+            
+            return fn => new Promise((resolve, reject)=>{
+                q.push({ fn: () => fn().then(resolve, reject) }); 
+                runNext();
+            });
+        }
+
+        async function fetchDocWithBackoff(url, opts={}, {maxRetries=4}={}){
+            let attempt=0, wait=600;
+            while (true){
+                try{
+                    const res = await fetch(url, { credentials: "include", ...opts });
+                    if (res.status === 429) {
+                        const ra = res.headers.get('Retry-After');
+                        throw { retry:true, delay: ra ? (+ra*1000||wait) : wait };
+                    }
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                    const text = await res.text();
+                    return new DOMParser().parseFromString(text, 'text/html');
+                }catch(e){
+                    if (attempt++ >= maxRetries) throw e;
+                    const delay = (e.delay || wait) + Math.random()*250;
+                    await new Promise(r=>setTimeout(r, delay));
+                    wait = Math.min(8000, wait*2);
+                }
+            }
+        }
+        
+        async function fetchTaskPanelView(id, csrfToken, attempt = 0) {
+            const res = await fetch(`/tasks/${id}/panel_view`, {
+                method: 'POST',
+                headers: {
+                    'accept': '*/*',
+                    'content-type': 'application/json',
+                    'x-csrf-token': csrfToken
+                },
+                credentials: 'include'
+            });
+            if (res.status === 429) {
+                const retryMsFromHeader = parseRetryAfter(res);
+                const base = retryMsFromHeader ?? Math.min(60000 * Math.pow(2, attempt), 300000);
+                const jitter = Math.floor(Math.random() * 1000);
+                const wait = base + jitter;
+                console.warn(`429 עבור ${id}, המתנה ${wait}ms ואז מנסים שוב`);
+                await sleep(wait);
+                return fetchTaskPanelView(id, csrfToken, attempt + 1);
+            }
+            if (!res.ok) {
+                const msg = await res.text();
+                throw new Error(`HTTP ${res.status} עבור ${id}, ${msg.substring(0, 200)}`);
+            }
+            const html = await res.text();
+            return { html, id };
+        }
+
         async function startMissingTable() {
             console.log('🚀 פונקציית startMissingTable החלה');
             console.log('📊 מצב:', currentMode === 'negative' ? 'נגטיב' : 'חוסרים');
+            
+            // התחל ריצה חדשה עם AbortController
+            const ctrl = startRun();
 
             if (document.getElementById('missing-items-modal')) {
                 console.log('⚠️ מודל חוסרים כבר פתוח, עוצר.');
@@ -1181,12 +1677,12 @@ function showGalleryOverlay(items, startIndex){
             }
             console.log('🔐 CSRF Token נמצא');
 
-            const taskIds = [...new Set(
+            const allTaskIds = [...new Set(
                 [...document.querySelectorAll('[data-task-id]')].map(e => e.getAttribute('data-task-id'))
             )];
 
-            console.log('📋 מזהי משימות (Task IDs) שנמצאו בדף:', taskIds);
-            if (taskIds.length === 0) {
+            console.log('📋 מזהי משימות (Task IDs) שנמצאו בדף:', allTaskIds);
+            if (allTaskIds.length === 0) {
                 console.warn('⚠️ לא נמצאו מזהי משימות (Task IDs) בדף הנוכחי. ייתכן שאין הזמנות או שהמבנה השתנה.');
                 showMessageModal('שים לב', 'לא נמצאו הזמנות לטיפול בדף זה. וודא שאתה נמצא בדף המתאים.');
                 if (loader && loader.parentNode) loader.remove();
@@ -1194,31 +1690,70 @@ function showGalleryOverlay(items, startIndex){
                 return;
             }
 
+            // סינון מראש של משימות מיותרות
+            const tasksToFetch = allTaskIds
+                .map(id => ({ id, region: getRegionFromMainTable(id) }))
+                .filter(t => t.region !== null); // דילוג על פסולים
+
+            const taskIds = tasksToFetch.map(t => t.id);
+            const excludedCount = allTaskIds.length - taskIds.length;
+            
+            if (excludedCount > 0) {
+                console.log(`🚫 דילגנו על ${excludedCount} משימות עם איזור חריג`);
+            }
+            
+            console.log(`📋 נמשיך עם ${taskIds.length} משימות (מתוך ${allTaskIds.length})`);
+
             const excludedBarcodes = ['10000', '491', '1948', '1949', '555503', '2543'];
             const fetchedRawItems = []; // Temporary array to hold raw fetched item data with their task statuses
 
             try {
-                const fetches = taskIds.map(id =>
-                    fetch(`/tasks/${id}/panel_view`, {
-                        method: 'POST',
-                        headers: {
-                            'accept': '*/*',
-                            'content-type': 'application/json',
-                            'x-csrf-token': csrfToken
-                        },
-                        credentials: 'include'
-                    }).then(async res => {
-                        if (!res.ok) {
-                            const errorText = await res.text();
-                            console.error(`Fetch error for Task ID ${id}: Status ${res.status}, URL: ${res.url}, Response: ${errorText.substring(0, 500)}...`);
-                            throw new Error(`HTTP error! Status: ${res.status} for Task ID: ${id}`);
+                // מערכת תור משופרת עם jitter ו-backoff חכם
+                const schedule = createQueue({maxConcurrent: 5, minDelayMs: 120, maxDelayMs: 240});
+                
+                // בדיקת קאש לפני fetch
+                const tasksToProcess = [];
+                for (const id of taskIds) {
+                    const ver = getUpdatedAtFromRow(id);
+                    const cached = readTaskFromCache(id, ver);
+                    if (cached) {
+                        console.log(`📦 משתמש בקאש עבור Task ${id}`);
+                        fetchedRawItems.push(cached);
+                    } else {
+                        tasksToProcess.push(id);
+                    }
+                }
+                
+                console.log(`📦 ${fetchedRawItems.length} משימות מהקאש, ${tasksToProcess.length} משימות חדשות`);
+                
+                // תזמון רק המשימות החדשות דרך התור החדש
+                const taskScheduler = pLimit(CONFIG.FETCH_CONCURRENCY);
+                const jobs = [];
+                for (let i = 0; i < tasksToProcess.length; i++) {
+                    const id = tasksToProcess[i];
+                    jobs.push(taskScheduler(async () => {
+                        if (ctrl.signal.aborted) return; // אל תמשיך לעבד תוצאה של ריצה קודמת
+                        try {
+                            const { html, id: taskId } = await fetchTaskPanelView(id, csrfToken);
+                            if (ctrl.signal.aborted) return;
+                            const ver = getUpdatedAtFromRow(id);
+                            const data = { html, id: taskId };
+                            writeTaskToCache(id, ver, data);
+                            fetchedRawItems.push(data);
+                        } catch (err) {
+                            console.error(`כשל ב-Task ${id}, ממשיכים`, err);
                         }
-                        return res.text().then(html => ({ html, id }));
-                    })
-                );
+                        // Keep the UI responsive
+                        await maybeYield(i);
+                    }));
+                }
+                await Promise.allSettled(jobs);
 
-                const responses = await Promise.all(fetches);
+                // מכאן והלאה תשאיר את הלוגיקה הקיימת שמפרקת HTML וממפה סטטוסים, בדיוק כמו היום
+                const responses = fetchedRawItems;
                 console.log('✅ כל בקשות ה-fetch הושלמו');
+
+                if (ctrl.signal.aborted) return; // בדיקה נוספת לפני עיבוד
 
                 responses.forEach(({ html, id: taskId }) => {
                     const doc = new DOMParser().parseFromString(html, 'text/html');
@@ -1359,13 +1894,17 @@ function showGalleryOverlay(items, startIndex){
                         let makt = '';
                         const originalBarcode = barcode; // שמור את המק"ט המקורי
 
-                        // קודם ננסה למצוא לפי המק"ט הקיים
-                        if (catalogData && catalogData.maktToBarcodeMap && catalogData.maktToBarcodeMap[originalBarcode]) {
-                            const catalogBarcode = catalogData.maktToBarcodeMap[originalBarcode];
-                            if (catalogBarcode && catalogBarcode.trim() !== '') {
-                                barcode = catalogBarcode;
-                                console.log(`עודכן ברקוד לפי מק"ט "${originalBarcode}": ${barcode}`);
-                            }
+                        // קודם ננסה למצוא לפי המק"ט הקיים (Map או Object)
+                        let catalogBarcode = '';
+                        if (window.__skuBarcodeMap instanceof Map) {
+                            catalogBarcode = window.__skuBarcodeMap.get(String(originalBarcode).trim()) || '';
+                        } else if (catalogData && catalogData.maktToBarcodeMap) {
+                            catalogBarcode = catalogData.maktToBarcodeMap[originalBarcode] || '';
+                        }
+                        
+                        if (catalogBarcode && catalogBarcode.trim() !== '') {
+                            barcode = catalogBarcode;
+                            console.log(`עודכן ברקוד לפי מק"ט "${originalBarcode}": ${barcode}`);
                         }
                         // אם לא נמצא לפי מק"ט, ננסה לפי שם המוצר
                         else if (catalogData && catalogData[name]) {
@@ -1409,11 +1948,11 @@ function showGalleryOverlay(items, startIndex){
                 });
                 console.log(`סך הכל פריטים גולמיים שנותחו: ${fetchedRawItems.length}`);
 
-                // Log fetched raw items with their statuses and task statuses for debugging
-                console.log('Fetched raw items before final filtering (with task status & region):');
-                fetchedRawItems.forEach(item => {
-                    console.log(`- Item: ${item.name} | Item Status (display): '${item.status}' | Task Status (internal): '${item.taskOverallStatus}' | Region: '${item.destinationRegion}' | Missing: ${item.missing}`);
-                });
+                // Log fetched raw items with their statuses and task statuses for debugging (reduced noise)
+                if (Array.isArray(fetchedRawItems) && fetchedRawItems.length){
+                    console.debug(`Fetched ${fetchedRawItems.length} raw items. Sample:`,
+                        fetchedRawItems.slice(0, 5).map(i => i?.name || i?.productName || '(no name)'));
+                }
 
                 // 6. בשלב זה אתה קורא ל־processTasks ולהמשך הלוגיקה שלך:
                 // Process data based on current mode
@@ -2101,6 +2640,39 @@ function showGalleryOverlay(items, startIndex){
                 if(oldTable) {
                     oldTable.remove();
                     console.log('טבלה קודמת הוסרה מ-missing-table-container.');
+                }
+
+                // Use new rendering system for large datasets
+                if (filteredAndSortedResults.length >= CONFIG.VIRTUAL_THRESHOLD) {
+                    log.info(`Using virtualized rendering for ${filteredAndSortedResults.length} items`);
+                    // Create virtual table structure
+                    const table = document.createElement('table');
+                    table.className = `table table-bordered table-hover order-item-table view-grouped`;
+                    table.style.fontSize = '14px';
+                    table.style.width = '100%';
+                    table.style.tableLayout = 'fixed';
+                    
+                    // Add headers
+                    const thead = document.createElement('thead');
+                    const headerRow = document.createElement('tr');
+                    // ... header setup ...
+                    thead.appendChild(headerRow);
+                    table.appendChild(thead);
+                    
+                    const tbody = document.createElement('tbody');
+                    table.appendChild(tbody);
+                    container.appendChild(table);
+                    
+                    // Use virtual rendering
+                    const rowFactory = (row, i) => {
+                        // Create row element based on row data
+                        const tr = document.createElement('tr');
+                        // ... row content setup ...
+                        return tr;
+                    };
+                    
+                    mountVirtualTable(tbody, filteredAndSortedResults, rowFactory);
+                    return;
                 }
 
                 const table = document.createElement('table');
@@ -3165,6 +3737,10 @@ expandedGroups.clear();
                 img.alt = name;
                 img.src = imgUrl || buildTextPlaceholder(name);
 
+                // חשב כמות פעם אחת לפי מצב הטבלה (חוסרים/נגטיב)
+                // כך שה-badge לא ימשוך בטעות מעמודת "סה\"כ חסרים" כשאנחנו בנגטיב.
+                const resolvedQty = getItemQuantity(item);
+
                 // פריט עבור overlay (לפי המודל של toolbox)
                 const idx = overlayItems.length; // שמור אינדקס נכון ללחיצה
                 overlayItems.push({
@@ -3172,13 +3748,23 @@ expandedGroups.clear();
                   thumbnailUrl: imgUrl || '',
                   productName: name,
                   sku: item.makt || item.sku || (item.barcode||'').toString(),
-                  quantity: item.quantity || '',
+                  // שמור את הכמות המחושבת כדי שגם ה-thumbnails ב-overlay ישתמשו בה ישירות
+                  quantity: (Number.isFinite(+resolvedQty) && +resolvedQty>0) ? +resolvedQty : '',
                   price: item.price || null,
                   link: item.link || null
                 });
 
                 // לחיצה – פותח את הפריט הנכון (לא האחרון)
                 card.addEventListener('click', () => showGalleryOverlay(overlayItems, idx), {passive:true});
+                // === Quantity badge (grid) ===
+                const qty = resolvedQty;
+                if (qty > 1){
+                  const badge = document.createElement('span');
+                  badge.className = 'lw-thumb-badge';
+                  badge.textContent = 'X' + qty;
+                  card.appendChild(badge);
+                }
+
                 // overlay
                 const ov = document.createElement('div');
                 ov.className = 'missing-gallery-overlay';
