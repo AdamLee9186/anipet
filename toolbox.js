@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.18
+// @version      13.8.20
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -174,8 +174,8 @@ function __tmcEnsurePreviewCSS(){
       flex: 0 0 auto !important;
       margin-inline-start: 6px !important;
     }
-    /* Let meta wrap naturally until JS splits it into separate lines */
-    tr[id^="preview-for-"] td[colspan] .text-muted{
+    /* Let meta wrap naturally only inside cards (not the entire row) */
+    tr[id^="preview-for-"] td[colspan] .tmc-preview-card .text-muted{
       white-space: normal !important;
       word-break: break-word !important;
     }
@@ -205,6 +205,42 @@ function __tmcEnsurePreviewCSS(){
       transition: none !important;
       /* clamp לפי משתנה גלובלי – בלי כתיבה JS פר־שורה */
       max-inline-size: calc(100vw - var(--map-width, 0px));
+    }
+    /* === Empty-state sizing: no big reserved height === */
+    tr[id^="preview-for-"] > td > .tmc-preview-row:has(.tmc-preview-empty){
+      content-visibility: visible !important;      /* אל תשתמש ברזרבה גדולה */
+      contain-intrinsic-size: 1px 36px !important; /* רזרבה זעירה בלבד */
+      min-height: 0 !important;
+      height: auto !important;
+      padding-block: 4px !important;
+      margin: 0 !important;
+    }
+    /* Collapse ONLY when truly empty: allow an "empty-state" placeholder */
+    tr[id^="preview-for-"] td[colspan] > .tmc-preview-row:empty,
+    tr[id^="preview-for-"] td[colspan] > .tmc-preview-row:not(:has(.tmc-preview-card, .tmc-preview-empty)){
+      display: none !important;
+      padding: 0 !important;
+      margin: 0 !important;
+      min-height: 0 !important;
+      height: 0 !important;
+      content-visibility: visible !important;  /* ensure no reserved intrinsic size */
+      contain-intrinsic-size: auto !important;
+    }
+
+    /* Empty-state chip shown when an order has no items */
+    .tmc-preview-empty{
+      display: inline-flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      padding: 8px 12px !important;
+      border: 1px dashed #d9d9d9 !important;
+      border-radius: 12px !important;
+      background: #f8f9fa !important;
+      color: #6c757d !important;
+      font-size: .9rem !important;
+      line-height: 1.2 !important;
+      white-space: normal !important;
+      direction: rtl !important;
     }
     .tmc-preview-card {
       display: flex !important;
@@ -267,9 +303,9 @@ function __tmcEnsurePreviewCSS(){
       font-weight:700 !important;
     }
 
-    /* Reserve space so cards don't "jump" before JS splits the meta line */
-    tr[id^="preview-for-"] td[colspan] .text-muted{
-      display:block;
+    /* Reserve space only for card meta (not for the row itself) */
+    tr[id^="preview-for-"] td[colspan] .tmc-preview-card .text-muted{
+      display: block;
       /* 3 lines worth; assumes ~1.2 line-height on the site */
       min-height: calc(1em * 3.2);
     }
@@ -289,7 +325,13 @@ function __tmcEnsurePreviewCSS(){
       overflow: clip;
       content-visibility: auto;
       contain: layout paint style;
+      /* ברירת מחדל לכרטיסים אמיתיים */
       contain-intrinsic-size: 1px 400px;
+    }
+    /* תחת map-open: כאשר מדובר במצב־ריק, אל תשמור 400px */
+    body.map-open tr[id^="preview-for-"] > td > .tmc-preview-row:has(.tmc-preview-empty){
+      content-visibility: visible !important;
+      contain-intrinsic-size: 1px 36px !important;
     }
     `;
     // Replace-or-create the single style node
@@ -1492,6 +1534,8 @@ function __tmcNormalizePreviewStylesImpl(td){
   try{
     // Ensure the td has proper box-sizing
     td.style.setProperty('box-sizing', 'border-box', 'important');
+    // אל תתייחס ל-<td> עצמו כאל כרטיס (אם הוכנסה המחלקה בטעות)
+    td.classList.remove('tmc-preview-card');
     
     // Find the preview row container
     let row = td.querySelector('.tmc-preview-row');
@@ -1518,6 +1562,30 @@ function __tmcNormalizePreviewStylesImpl(td){
       rowStyles.forEach(([property, value, priority]) => {
         row.style.setProperty(property, value, priority);
       });
+
+      // Empty-state for orders with no items: show a small placeholder chip
+      const hasCards = !!row.querySelector('.tmc-preview-card');
+      const hasText  = !!(row.textContent && row.textContent.trim() !== '');
+      const tr = td.closest('tr[id^="preview-for-"]');
+      if (!hasCards && !hasText) {
+        // ensure row is visible (in case host/CSS tried to hide it)
+        if (tr) tr.style.removeProperty('display');
+        if (!row.querySelector('.tmc-preview-empty')){
+          const chip = document.createElement('div');
+          chip.className = 'tmc-preview-empty';
+          chip.textContent = 'אין פריטים בהזמנה';
+          row.appendChild(chip);
+        }
+        // בטל רזרבה גדולה שנקבעת לכלל כרטיסים – שים רזרבה זעירה
+        row.style.setProperty('content-visibility','visible','important');
+        row.style.setProperty('contain-intrinsic-size','1px 36px','important');
+        row.style.setProperty('min-height','0','important');
+        row.style.setProperty('height','auto','important');
+        // continue normalization so layout remains consistent
+      } else if (tr) {
+        // If previously hidden but now has content – restore visibility
+        tr.style.removeProperty('display');
+      }
     }
     // Force every card to the new variant (fit-to-content + big image + multi-line)
     row?.querySelectorAll('.d-flex.align-items-center.border.rounded.p-2.m-1.bg-white, .tmc-preview-card, [data-preview-card]')
@@ -2591,7 +2659,7 @@ setupBlockedScriptObserver();
     
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.8.18"; // Match @version
+    const SCRIPT_VERSION = "13.8.20"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
