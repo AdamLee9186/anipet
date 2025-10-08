@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.20
+// @version      13.8.30
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -360,6 +360,52 @@ function __tmcEnsurePreviewCSS(){
   }catch(_){}
 }
 
+/* =========================
+   PHONE WARNING CSS (blink)
+   ========================= */
+function __tmcEnsurePhoneCSS(){
+  try{
+    const css = `
+      @keyframes tmcPhoneBlink {
+        0%, 100% { background-color: transparent; }
+        50% { background-color: #ff0; } /* row blink color */
+      }
+      /* Blink the entire row (and ensure visibility even if TDs have own bg) - infinite */
+      tr.tmc-phone-blink,
+      tr.tmc-phone-blink > td {
+        animation: tmcPhoneBlink 1.2s ease-in-out infinite;
+      }
+    `;
+    let st = document.getElementById('tmc-phone-css');
+    if (!st){
+      st = document.createElement('style');
+      st.id = 'tmc-phone-css';
+      document.head.appendChild(st);
+    }
+    if (st.textContent !== css) st.textContent = css;
+  }catch(_){}
+}
+
+// Helper: toggle infinite row blink class
+function __tmcSetRowBlink(tr, shouldBlink){
+  if (!tr) return;
+  if (shouldBlink) tr.classList.add('tmc-phone-blink');
+  else tr.classList.remove('tmc-phone-blink');
+}
+
+// מזהה פורמט בינלאומי ישראלי (+972 או 00972) ללא ה-0 המוביל
+function __tmcIsILInternational(digits){
+  if (!digits) return false;
+  let d = digits;
+  // תמיכה גם ב-00972 וגם ב-+972 (פלוס כבר הוסר בסינון, נשאר 972)
+  if (d.startsWith('00')) d = d.slice(2);
+  if (!d.startsWith('972')) return false;
+  const rest = d.slice(3); // בלי קידומת המדינה
+  // קווי בזק: 8 ספרות אחרי 972 (כי 04xxxxxxx ⇒ 4 + 7)
+  // סלולר:   9 ספרות אחרי 972 (כי 05xxxxxxxx ⇒ 5x + 7)
+  return rest.length === 8 || rest.length === 9;
+}
+
 /* NEW: purge legacy preview styles to prevent cascade racing on first paint */
 (function __tmcPurgeLegacyPreviewStyles(){
   try{
@@ -572,8 +618,13 @@ function __tmcEnsurePreviewCSS(){
   document.addEventListener('DOMContentLoaded', installPassiveFixForPerfectScrollbar, { once: true });
   window.addEventListener('load', installPassiveFixForPerfectScrollbar, { once: true });
 
+  // Install phone blink CSS early so it's ready everywhere
+  try{ __tmcEnsurePhoneCSS(); }catch(_){}
+
   // אם יש לך טריגר פנימי אחרי רינדור/עדכון DOM (למשל אחרי פתיחת/סגירת PREVIEW, או אחרי טעינה חלקית של טבלה):
   window.addEventListener('tm:dom-updated', installPassiveFixForPerfectScrollbar);
+  // וכך גם לבדיקת טלפונים
+  window.addEventListener('tm:dom-updated', () => validatePhonesEverywhere());
 
   // Install map state tracker early so layout reacts as soon as the map opens/resizes
   installMapStateTracker();
@@ -2659,7 +2710,7 @@ setupBlockedScriptObserver();
     
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.8.20"; // Match @version
+    const SCRIPT_VERSION = "13.8.30"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -10181,11 +10232,83 @@ function addClickableLinksToAllTables(force = false) {
     return true; // Return success indicator
 }
 
+// ===============================
+// Phone validation + yellow blink
+// ===============================
+// כללים:
+// - פחות מ־8 ספרות => להבהב
+// - מקסימום 10 ספרות => אם 11+ => להבהב
+// - 9 ספרות שחסר להן 0 בהתחלה => לא להבהב (ממילא 8–10 נחשבים תקינים כאן)
+// - מתחיל ב־04 ובאורך 9 => לא להבהב (גם מכוסה ע"י 8–10)
+// - להתעלם ממקפים באמצע (לא נספרים כספרות)
+// - חדש: פורמט בינ"ל ישראלי (972/00972 + מספר ללא ה-0) באורך כולל 11–12 ספרות => תקין, לא להבהב
+// - חדש: כל מספר חייב להתחיל ב-0, למעט חריג מפורש – אם הוא בן 9 ספרות והספרה הראשונה אינה 0: לא מהבהב
+function validatePhonesEverywhere(root = document){
+  try{
+    const scope = root || document;
+    const cells = scope.querySelectorAll('td[data-label="טלפון"]');
+    cells.forEach(td => {
+      const raw = (td.textContent || '').trim();
+      const digits = raw.replace(/\D/g, ''); // מנקים כל מה שלא ספרה
+      const len = digits.length;
+      const internationalOK = __tmcIsILInternational(digits);
+      const tr = td.closest('tr');
+      if (!tr) return;
+
+      // טיפול מיוחד במספרים שמתחילים ב־'4' (חסר 0 לקידומת 04):
+      // - אם אורך < 8 ⇒ להבהב
+      // - אם אורך = 8 ⇒ הוספת '0' נותנת 9 ספרות עם '04' ⇒ תקין (לא מהבהב)
+      // - אם אורך = 9 ⇒ הוספת '0' נותנת 10 ספרות ⇒ שגוי (מהבהב)
+      if (digits.startsWith('4')) {
+        const candidate = '0' + digits;
+        if (len < 8) { __tmcSetRowBlink(tr, true); return; }
+        if (len === 8 && candidate.startsWith('04') && candidate.length === 9) { __tmcSetRowBlink(tr, false); return; }
+        if (len === 9) { __tmcSetRowBlink(tr, true); return; }
+        // לשאר האורכים נמשיך לכללי הברירות הכלליים למטה
+      }
+
+      // כלל עדיפות עליונה כללי: ≤8 ספרות (כולל ריק) ⇒ להבהב
+      if (len === 0 || len <= 8) { __tmcSetRowBlink(tr, true); return; }
+
+      let invalid = false;
+      if (len >= 11 && !internationalOK) {
+        // 11+ ספרות לא תקין, אלא אם כן זה בפורמט בינלאומי ישראלי חוקי
+        invalid = true;
+      } else if (len === 10) {
+        // חדש: 10 ספרות חייב להתחיל ב-0. דוגמה 5445046099 => חסר 0 מוביל => להבהב
+        if (digits[0] !== '0') invalid = true;
+      } else if (len === 9) {
+        // כללי 9 ספרות:
+        // - אם מתחיל ב־04 => תקין (לא מהבהב)
+        // - אם מתחיל ב־0 אבל לא 04 => שגוי (כן מהבהב) — למשל 054450460
+        // - אם הספרה הראשונה אינה 0 => תקין (לא מהבהב) — נחשב "חסר 0 מוביל" מותר ב-9 ספרות
+        if (digits.startsWith('04')) {
+          invalid = false;
+        } else if (digits[0] === '0') {
+          invalid = true;
+        } else {
+          invalid = false;
+        }
+      }
+
+      // החל מ־9 ספרות ומעלה – הפעלה/כיבוי בהתאם לחישוב
+      __tmcSetRowBlink(tr, invalid);
+    });
+  }catch(e){
+    if (typeof DEBUG!=='undefined' && DEBUG) console.warn('[Toolbox] validatePhonesEverywhere error:', e);
+  }
+}
+
 // Give late-rendered cells a second and third pass
 requestAnimationFrame(() => {
   addClickableLinksToAllTables();
   const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
   if (panel) addClickableLinksToAllTables();
+});
+requestAnimationFrame(() => {
+  validatePhonesEverywhere();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) validatePhonesEverywhere(panel);
 });
 setTimeout(() => {
   addClickableLinksToAllTables();
@@ -10193,14 +10316,25 @@ setTimeout(() => {
   if (panel) addClickableLinksToAllTables();
 }, 200);
 setTimeout(() => {
+  validatePhonesEverywhere();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) validatePhonesEverywhere(panel);
+}, 200);
+setTimeout(() => {
   addClickableLinksToAllTables();
   const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
   if (panel) addClickableLinksToAllTables();
+}, 600);
+setTimeout(() => {
+  validatePhonesEverywhere();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) validatePhonesEverywhere(panel);
 }, 600);
 
 // MutationObserver hook for dynamically added rows (including side panels)
 (function observeTablesEverywhere(){
   const runFor = oncePerAnimationFrame(() => addClickableLinksToAllTables());
+  const runPhones = oncePerAnimationFrame(() => validatePhonesEverywhere());
 
   const mo = new MutationObserver(muts => {
     let touched = false, touchedPanel = false;
@@ -10216,8 +10350,12 @@ setTimeout(() => {
     }
     if (touched) {
       runFor(document);
+      runPhones(document);
       const panel = document.querySelector('.offcanvas.show, .offcanvas-right.show, .offcanvas-custom.show, #panel_view');
-      if (panel && touchedPanel) runFor(panel);
+      if (panel && touchedPanel) {
+        runFor(panel);
+        validatePhonesEverywhere(panel);
+      }
     }
   });
 
@@ -10228,7 +10366,10 @@ setTimeout(() => {
   // Bootstrap offcanvas events – כשנפתח/נסגר, תריץ על הפאנל
   document.addEventListener('shown.bs.offcanvas', () => {
     const panel = document.querySelector('.offcanvas.show, .offcanvas-right.show, .offcanvas-custom.show, #panel_view');
-    if (panel) runFor(panel);
+    if (panel){
+      runFor(panel);
+      validatePhonesEverywhere(panel);
+    }
   });
 })();
 
@@ -11467,3 +11608,4 @@ function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
     });
   };
 })();
+
