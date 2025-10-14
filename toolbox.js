@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.30
+// @version      13.8.50
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -7072,6 +7072,15 @@ tr[id^="preview-for-"] td div.font-weight-bold.copy-enabled {
     flex-shrink: 0;
 }
 
+/* Guard against external scripts overriding caption positioning */
+#tampermonkey-gallery-overlay .gallery-caption {
+    position: relative !important;
+    left: auto !important;
+    right: auto !important;
+    bottom: auto !important;
+    z-index: 2;
+}
+
 /* Footer container for caption and thumbnails */
 .gallery-footer {
     display: flex;
@@ -10255,6 +10264,16 @@ function validatePhonesEverywhere(root = document){
       const tr = td.closest('tr');
       if (!tr) return;
 
+      // Landline area-code prefixes that MUST be exactly 9 digits total (including leading 0)
+      // Examples: 02/03/04/08/09 + 7 digits  => 9 digits total
+      const isLandline9Prefix =
+        digits.startsWith('02') ||
+        digits.startsWith('03') ||
+        digits.startsWith('04') ||
+        digits.startsWith('08') ||
+        digits.startsWith('09');
+      const isMobilePrefix = digits.startsWith('05'); // 05X must be exactly 10 digits
+
       // טיפול מיוחד במספרים שמתחילים ב־'4' (חסר 0 לקידומת 04):
       // - אם אורך < 8 ⇒ להבהב
       // - אם אורך = 8 ⇒ הוספת '0' נותנת 9 ספרות עם '04' ⇒ תקין (לא מהבהב)
@@ -10275,15 +10294,28 @@ function validatePhonesEverywhere(root = document){
         // 11+ ספרות לא תקין, אלא אם כן זה בפורמט בינלאומי ישראלי חוקי
         invalid = true;
       } else if (len === 10) {
-        // חדש: 10 ספרות חייב להתחיל ב-0. דוגמה 5445046099 => חסר 0 מוביל => להבהב
-        if (digits[0] !== '0') invalid = true;
-      } else if (len === 9) {
-        // כללי 9 ספרות:
-        // - אם מתחיל ב־04 => תקין (לא מהבהב)
-        // - אם מתחיל ב־0 אבל לא 04 => שגוי (כן מהבהב) — למשל 054450460
-        // - אם הספרה הראשונה אינה 0 => תקין (לא מהבהב) — נחשב "חסר 0 מוביל" מותר ב-9 ספרות
-        if (digits.startsWith('04')) {
+        // 10 digits:
+        // - Mobile 05X => valid
+        // - Landline 02/03/04/08/09 should NOT be 10 => invalid
+        // - Otherwise: must start with 0
+        if (isMobilePrefix) {
           invalid = false;
+        } else if (isLandline9Prefix) {
+          invalid = true; // e.g., 0475415877 should blink (landline must be 9)
+        } else if (digits[0] !== '0') {
+          invalid = true;
+        } else {
+          invalid = false;
+        }
+      } else if (len === 9) {
+        // 9 digits:
+        // - Landline 02/03/04/08/09 => valid (correct length for these prefixes)
+        // - Mobile 05X => invalid (mobile must be 10)
+        // - If first digit is 0 but not a known 9-digit landline => invalid
+        if (isLandline9Prefix) {
+          invalid = false;
+        } else if (isMobilePrefix) {
+          invalid = true;
         } else if (digits[0] === '0') {
           invalid = true;
         } else {

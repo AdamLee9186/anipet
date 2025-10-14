@@ -1,7 +1,7 @@
     // ==UserScript==
-    // @name        טבלת חוסרים 02/10/2025
+    // @name        טבלת חוסרים 14/10/2025
     // @namespace   http://tampermonkey.net/
-    // @version     7
+    // @version     7.2
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -1012,9 +1012,9 @@
                 background:rgba(0,0,0,.35); color:#fff; display:flex; align-items:center; justify-content:center; font-size:22px; cursor:pointer; user-select:none}
               #lw-ov-thumbs-prev{right:16px} /* RTL: prev מימין בשורת ה-thumbs */
               #lw-ov-thumbs-next{left:16px}
-              /* התאמות זום/כיתוב תואמות toolbox (שימוש חוזר במחלקות) */
-              .gallery-caption{position: absolute; bottom: 12px; left: 12px; right: 12px; text-align:center; color:#fff}
-              .gallery-zoom-controls{position:absolute; bottom:12px; left:12px; display:flex; gap:8px}
+              /* Scope to MissingTable overlay only – prevents clobbering toolbox.js gallery */
+              #lw-overlay .gallery-caption{position:absolute; bottom:12px; left:12px; right:12px; text-align:center; color:#fff}
+              #lw-overlay .gallery-zoom-controls{position:absolute; bottom:12px; left:12px; display:flex; gap:8px}
               .lw-hidden{display:none!important;}
             `;
             try{
