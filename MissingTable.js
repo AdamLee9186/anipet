@@ -1,7 +1,7 @@
     // ==UserScript==
     // @name        טבלת חוסרים 14/10/2025
     // @namespace   http://tampermonkey.net/
-    // @version     7.2
+    // @version     7.3
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -3777,11 +3777,18 @@ expandedGroups.clear();
 
               // 2) הבאת דאטה + הכנת תמונות
               await ensureImagesReady(); // ודא שמאגר התמונות זמין
-              // דה־דופליקציה לפי שם+ברקוד
-              const uniq = new Map();
+              // Aggregate by name+barcode: SUM quantities across all orders for the same item.
+              // This fixes the badge showing only a single order's quantity.
+              const agg = new Map();
               (filteredAndSortedResults || []).forEach(r => {
                 const key = `${r.name}|||${r.barcode}`;
-                if (!uniq.has(key)) uniq.set(key, r);
+                const q = Number.isFinite(+getItemQuantity(r)) ? +getItemQuantity(r) : 0;
+                if (!agg.has(key)) {
+                  agg.set(key, { rep: r, qtySum: q });
+                } else {
+                  const s = agg.get(key);
+                  s.qtySum += q;
+                }
               });
               // 3) Placeholder טקסט שממלא 100×100
               const buildTextPlaceholder = (txt='') => {
@@ -3805,10 +3812,10 @@ expandedGroups.clear();
 
               // 4) דאטה עבור Overlay
               const overlayItems = [];
-
               const cards = [];
               const preloadFirst = [];
-              uniq.forEach((item) => {
+              // Use aggregated entries (rep = representative row, qtySum = total across rows)
+              agg.forEach(({ rep: item, qtySum }) => {
                 const name    = item.name || '';
                 const imgUrl  = findImageForItem(item);
                 const card = document.createElement('div');
@@ -3818,9 +3825,8 @@ expandedGroups.clear();
                 img.alt = name;
                 img.src = imgUrl || buildTextPlaceholder(name);
 
-                // חשב כמות פעם אחת לפי מצב הטבלה (חוסרים/נגטיב)
-                // כך שה-badge לא ימשוך בטעות מעמודת "סה\"כ חסרים" כשאנחנו בנגטיב.
-                const resolvedQty = getItemQuantity(item);
+                // Quantity already aggregated across all rows of the same item
+                const resolvedQty = Number.isFinite(+qtySum) ? +qtySum : 0;
 
                 // פריט עבור overlay (לפי המודל של toolbox)
                 const idx = overlayItems.length; // שמור אינדקס נכון ללחיצה
@@ -3829,8 +3835,8 @@ expandedGroups.clear();
                   thumbnailUrl: imgUrl || '',
                   productName: name,
                   sku: item.makt || item.sku || (item.barcode||'').toString(),
-                  // שמור את הכמות המחושבת כדי שגם ה-thumbnails ב-overlay ישתמשו בה ישירות
-                  quantity: (Number.isFinite(+resolvedQty) && +resolvedQty>0) ? +resolvedQty : '',
+                  // Store aggregated quantity so overlay thumbnails show the same sum
+                  quantity: (resolvedQty > 0) ? resolvedQty : '',
                   price: item.price || null,
                   link: item.link || null
                 });
