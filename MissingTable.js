@@ -1,7 +1,7 @@
     // ==UserScript==
-    // @name        טבלת חוסרים 14/10/2025
+    // @name        טבלת חוסרים 18/10/2025
     // @namespace   http://tampermonkey.net/
-    // @version     7.3
+    // @version     7.4
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -173,7 +173,7 @@
         }
 
         // 1. הגדרה גלובלית של ה-Web App URL
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxmfwfg9X1GlFeBdmXv6aBozUOxX5nh1u7Y7tOuKkyC8Nc2kzYsp56gbajcbiDbQGwQvw/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzUzqWm4WUFU6j736-j5hxbhEmg37Ym8V70LUxUz3qFsWLKTDeAugC1sqoQEX_GWYlJxg/exec';
 
         // פונקציה לבדיקת חיבור לשרת
         async function testServerConnection() {
@@ -546,7 +546,7 @@
                 if (region === null) return out;
                 task.destinationRegion = region;
                 out.push(task);
-                return out;             
+                return out;
             }, []);
         }
 
@@ -557,13 +557,13 @@
 
         // מערכת קאש ל-CSV עם ETag
         function parseHeader(headersStr){
-            const out={}; 
+            const out={};
             headersStr.split(/\r?\n/).forEach(l=>{
-                const i=l.indexOf(':'); 
-                if(i>0){ 
-                    out[l.slice(0,i).trim().toLowerCase()] = l.slice(i+1).trim(); 
+                const i=l.indexOf(':');
+                if(i>0){
+                    out[l.slice(0,i).trim().toLowerCase()] = l.slice(i+1).trim();
                 }
-            }); 
+            });
             return out;
         }
 
@@ -578,10 +578,10 @@
                     headers: meta.etag ? { 'If-None-Match': meta.etag } : {},
                     onload: res => {
                         const hs = parseHeader(res.responseHeaders||'');
-                        if (res.status === 304 && meta.text) { 
+                        if (res.status === 304 && meta.text) {
                             console.log(`📦 משתמש בקאש עבור ${cacheKey}`);
-                            resolve(meta.text); 
-                            return; 
+                            resolve(meta.text);
+                            return;
                         }
                         if (res.status >= 200 && res.status < 300) {
                             try {
@@ -607,10 +607,10 @@
         let allResults = []; // Store all fetched results
         let filteredAndSortedResults = []; // Store currently filtered and sorted results
         let selectedItemUniqueIds = new Set(); // Stores uniqueId of selected items for export
-        
+
         // AbortController להרצה נקייה
         let currentRun = null;
-        
+
         function startRun(){
             if (currentRun?.abort){ currentRun.abort(); }
             const controller = new AbortController();
@@ -622,12 +622,12 @@
         function clearOldCache() {
             const keysToRemove = ['missing_table_task_cache_v1', 'catalog_csv_v1', 'catalog_csv'];
             keysToRemove.forEach(k => {
-                try { 
-                    localStorage.removeItem(k); 
-                    sessionStorage.removeItem(k); 
+                try {
+                    localStorage.removeItem(k);
+                    sessionStorage.removeItem(k);
                     console.log(`🧹 נוקה ${k}`);
-                } catch(e) { 
-                    console.warn(`לא ניתן לנקות ${k}:`, e); 
+                } catch(e) {
+                    console.warn(`לא ניתן לנקות ${k}:`, e);
                 }
             });
         }
@@ -1170,7 +1170,7 @@ function ensureLocalOverlay(){
     S.items.forEach((it,i)=>{
       const container = document.createElement('div');
       container.style.position = 'relative';
-      
+
       const im = document.createElement('img');
       const src0 = it.thumbnailUrl || it.fullSizeUrl || '';
       if (src0){
@@ -1183,9 +1183,9 @@ function ensureLocalOverlay(){
       im.alt = it.productName || '';
       im.title = it.productName || '';
       im.onclick = ()=>load(i);
-      
+
       container.appendChild(im);
-      
+
       // === Quantity badge (overlay thumbnails) ===
       // השתמש בכמות שכבר חושבה ונשמרה ב-overlay item
       const qty = (it.quantity && Number.isFinite(+it.quantity) && +it.quantity > 0) ? +it.quantity : 0;
@@ -1196,7 +1196,7 @@ function ensureLocalOverlay(){
         badge.textContent = 'X' + qty;
         container.appendChild(badge);
       }
-      
+
       $thumbs.appendChild(container);
     });
     root.classList.add('active'); load(S.idx);
@@ -1352,9 +1352,9 @@ function showGalleryOverlay(items, startIndex){
                   console.log(`[MissingTable] master loaded ✓  sku→image: ${masterSkuToImage.size}, bc→image: ${masterBarcodeToImage.size}, sku→url: ${masterSkuToUrl.size}, bc→url: ${masterBarcodeToUrl.size}, added=${added}`);
                   resolve(true);
                 }catch(e){ console.error('[MissingTable] master load error', e); resolve(false); }
-            } catch(e) { 
-              console.error('[MissingTable] master load error', e); 
-              resolve(false); 
+            } catch(e) {
+              console.error('[MissingTable] master load error', e);
+              resolve(false);
             }
           });
         }
@@ -1404,7 +1404,7 @@ function showGalleryOverlay(items, startIndex){
         async function loadCatalogData() {
             console.log('📁 טוען נתוני קטלוג מ-CSV...');
             console.log('🔗 URL:', CSV_URL);
-            
+
             try {
                 // Use new validator-aware fetch if URL matches
                 if (CSV_URL === CONFIG.CATALOG_URL) {
@@ -1419,9 +1419,9 @@ function showGalleryOverlay(items, startIndex){
                         barcodeToMaktMap = {};
                         for (const row of catalogRows) {
                             if (row['תאור פריט']) {
-                                catalogData[row['תאור פריט']] = { 
-                                    barcode: row['ברקוד'] || '', 
-                                    makt: row['קוד פריט'] || '' 
+                                catalogData[row['תאור פריט']] = {
+                                    barcode: row['ברקוד'] || '',
+                                    makt: row['קוד פריט'] || ''
                                 };
                             }
                             if (row['קוד פריט'] && row['ברקוד']) {
@@ -1432,7 +1432,7 @@ function showGalleryOverlay(items, startIndex){
                         return;
                     }
                 }
-                
+
                 // Fallback to old method
                 const csvText = await gmGetWithETag(CSV_URL, 'catalog_csv_v1');
                 return new Promise((resolve, reject) => {
@@ -1641,7 +1641,7 @@ function showGalleryOverlay(items, startIndex){
          */
         // Helper functions for rate limiting and retry logic
         function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-        
+
         function parseRetryAfter(res) {
             const ra = res.headers.get('retry-after');
             if (!ra) return null;
@@ -1653,26 +1653,26 @@ function showGalleryOverlay(items, startIndex){
 
         // מערכת תור משופרת עם jitter ו-backoff חכם
         function createQueue({maxConcurrent=5, minDelayMs=120, maxDelayMs=240}={}){
-            let active = 0; 
+            let active = 0;
             const q = [];
             const nap = ms => new Promise(r => setTimeout(r, ms));
             const jitter = () => minDelayMs + Math.random()*(maxDelayMs-minDelayMs);
 
             const runNext = async () => {
                 if (active >= maxConcurrent || !q.length) return;
-                const job = q.shift(); 
+                const job = q.shift();
                 active++;
-                try { 
-                    await job.fn(); 
+                try {
+                    await job.fn();
                 } finally {
-                    active--; 
+                    active--;
                     if (maxDelayMs) await nap(jitter());
                     runNext();
                 }
             };
-            
+
             return fn => new Promise((resolve, reject)=>{
-                q.push({ fn: () => fn().then(resolve, reject) }); 
+                q.push({ fn: () => fn().then(resolve, reject) });
                 runNext();
             });
         }
@@ -1697,7 +1697,7 @@ function showGalleryOverlay(items, startIndex){
                 }
             }
         }
-        
+
         async function fetchTaskPanelView(id, csrfToken, attempt = 0) {
             const res = await fetch(`/tasks/${id}/panel_view`, {
                 method: 'POST',
@@ -1728,7 +1728,7 @@ function showGalleryOverlay(items, startIndex){
         async function startMissingTable() {
             console.log('🚀 פונקציית startMissingTable החלה');
             console.log('📊 מצב:', currentMode === 'negative' ? 'נגטיב' : 'חוסרים');
-            
+
             // התחל ריצה חדשה עם AbortController
             const ctrl = startRun();
 
@@ -1775,11 +1775,11 @@ function showGalleryOverlay(items, startIndex){
 
             const taskIds = tasksToFetch.map(t => t.id);
             const excludedCount = allTaskIds.length - taskIds.length;
-            
+
             if (excludedCount > 0) {
                 console.log(`🚫 דילגנו על ${excludedCount} משימות עם איזור חריג`);
             }
-            
+
             console.log(`📋 נמשיך עם ${taskIds.length} משימות (מתוך ${allTaskIds.length})`);
 
             const excludedBarcodes = ['10000', '491', '1948', '1949', '555503', '2543'];
@@ -1788,7 +1788,7 @@ function showGalleryOverlay(items, startIndex){
             try {
                 // מערכת תור משופרת עם jitter ו-backoff חכם
                 const schedule = createQueue({maxConcurrent: 5, minDelayMs: 120, maxDelayMs: 240});
-                
+
                 // בדיקת קאש לפני fetch
                 const tasksToProcess = [];
                 for (const id of taskIds) {
@@ -1801,9 +1801,9 @@ function showGalleryOverlay(items, startIndex){
                         tasksToProcess.push(id);
                     }
                 }
-                
+
                 console.log(`📦 ${fetchedRawItems.length} משימות מהקאש, ${tasksToProcess.length} משימות חדשות`);
-                
+
                 // תזמון רק המשימות החדשות דרך התור החדש
                 const taskScheduler = pLimit(CONFIG.FETCH_CONCURRENCY);
                 const jobs = [];
@@ -1979,7 +1979,7 @@ function showGalleryOverlay(items, startIndex){
                         } else if (catalogData && catalogData.maktToBarcodeMap) {
                             catalogBarcode = catalogData.maktToBarcodeMap[originalBarcode] || '';
                         }
-                        
+
                         if (catalogBarcode && catalogBarcode.trim() !== '') {
                             barcode = catalogBarcode;
                             console.log(`עודכן ברקוד לפי מק"ט "${originalBarcode}": ${barcode}`);
@@ -2700,7 +2700,7 @@ function showGalleryOverlay(items, startIndex){
                 renderTable();
                 // אם מצב גלריה פעיל — נרנדר גלריה לפי הנתונים המעודכנים
                 try{
-                  if (isGalleryView) { 
+                  if (isGalleryView) {
                     const gal = document.getElementById('missing-gallery-container');
                     if (gal && gal.style.display !== 'none') {
                       renderMissingGallery().catch(e => console.error('Gallery render error:', e));
@@ -2732,18 +2732,18 @@ function showGalleryOverlay(items, startIndex){
                     table.style.fontSize = '14px';
                     table.style.width = '100%';
                     table.style.tableLayout = 'fixed';
-                    
+
                     // Add headers
                     const thead = document.createElement('thead');
                     const headerRow = document.createElement('tr');
                     // ... header setup ...
                     thead.appendChild(headerRow);
                     table.appendChild(thead);
-                    
+
                     const tbody = document.createElement('tbody');
                     table.appendChild(tbody);
                     container.appendChild(table);
-                    
+
                     // Use virtual rendering
                     const rowFactory = (row, i) => {
                         // Create row element based on row data
@@ -2751,7 +2751,7 @@ function showGalleryOverlay(items, startIndex){
                         // ... row content setup ...
                         return tr;
                     };
-                    
+
                     mountVirtualTable(tbody, filteredAndSortedResults, rowFactory);
                     return;
                 }
