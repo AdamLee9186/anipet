@@ -10258,11 +10258,19 @@ function validatePhonesEverywhere(root = document){
     const cells = scope.querySelectorAll('td[data-label="טלפון"]');
     cells.forEach(td => {
       const raw = (td.textContent || '').trim();
+      
+      // Skip cells that haven't fully loaded yet
+      if (!td.textContent && td.children.length === 0) return; // Empty, not loaded
+      if (td.classList.contains('loading') || td.classList.contains('skeleton')) return;
+      
       const digits = raw.replace(/\D/g, ''); // מנקים כל מה שלא ספרה
       const len = digits.length;
       const internationalOK = __tmcIsILInternational(digits);
       const tr = td.closest('tr');
       if (!tr) return;
+      
+      // Skip rows that are still loading
+      if (tr.classList.contains('loading') || tr.classList.contains('skeleton')) return;
 
       // Landline area-code prefixes that MUST be exactly 9 digits total (including leading 0)
       // Examples: 02/03/04/08/09 + 7 digits  => 9 digits total
@@ -10287,7 +10295,9 @@ function validatePhonesEverywhere(root = document){
       }
 
       // כלל עדיפות עליונה כללי: ≤8 ספרות (כולל ריק) ⇒ להבהב
-      if (len === 0 || len <= 8) { __tmcSetRowBlink(tr, true); return; }
+      // Skip completely empty cells (likely still loading) - don't mark as invalid yet
+      if (len === 0 && raw === '') return; // Wait for content to load
+      if (len > 0 && len <= 8) { __tmcSetRowBlink(tr, true); return; }
 
       let invalid = false;
       if (len >= 11 && !internationalOK) {
@@ -11640,4 +11650,3 @@ function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
     });
   };
 })();
-
