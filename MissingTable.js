@@ -1,7 +1,7 @@
     // ==UserScript==
     // @name        טבלת חוסרים 18/10/2025
     // @namespace   http://tampermonkey.net/
-    // @version     7.4
+    // @version     8.0
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -173,7 +173,7 @@
         }
 
         // 1. הגדרה גלובלית של ה-Web App URL
-        const GAS_URL = 'https://script.google.com/macros/s/AKfycbzUzqWm4WUFU6j736-j5hxbhEmg37Ym8V70LUxUz3qFsWLKTDeAugC1sqoQEX_GWYlJxg/exec';
+        const GAS_URL = 'https://script.google.com/macros/s/AKfycbxhld1BsKOEnDTpjM54X-aVwjdvZAbdL6T78jQ9nyHeJyyaasTgNB2SDFPVoRNhhCBpRg/exec';
 
         // פונקציה לבדיקת חיבור לשרת
         async function testServerConnection() {
@@ -923,9 +923,24 @@
               #missing-gallery-container{display:none; position:relative; flex:1 1 auto; min-height:0; width:100%; height:100%; overflow:auto; padding:0;}
               .missing-gallery-loader{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.65); z-index:2}
               .missing-gallery-spinner{width:44px; height:44px; border-radius:50%; border:3px solid #d6dae0; border-top-color:#6c757d; animation:tm-spin .8s linear infinite}
+              
+              /* Gallery close button */
+              .gallery-close-button{
+                position:absolute; top:12px; right:12px; z-index:20;
+                width:32px; height:32px; border-radius:50%;
+                background:rgba(0,0,0,0.6); border:none; cursor:pointer;
+                display:none; align-items:center; justify-content:center;
+                color:white; font-size:14px; transition:all 0.2s ease;
+              }
+              .gallery-close-button:hover{
+                background:rgba(0,0,0,0.8); transform:scale(1.1);
+              }
+              .gallery-close-button:active{
+                transform:scale(0.95);
+              }
 
               /* Grid קבוע 100×100, צמוד ללא רווחים, גבול לבן 1px */
-              .missing-gallery-grid{display:grid; grid-template-columns:repeat(auto-fill,100px); grid-auto-rows:100px; gap:0; background:#fff;}
+              .missing-gallery-grid{display:grid; grid-template-columns:repeat(auto-fill,100px); grid-auto-rows:100px; gap:0; background:#fff; padding-top:50px;}
               .missing-gallery-card{position:relative; width:100px; height:100px; background:#fff; border:1px solid #fff; border-radius:8px; overflow:hidden;}
               .missing-gallery-card img{width:100%; height:100%; object-fit:contain; display:block;}
 
@@ -958,6 +973,34 @@
               .missing-gallery-card:hover .missing-gallery-overlay{transform:translateY(0);}
               .missing-gallery-name{display:block; white-space:normal; word-break:break-word;}
               .missing-gallery-code{display:block; opacity:.9; font-family:monospace; direction:ltr;}
+              
+              /* === Checkmark Overlay === */
+              .checkmark-overlay{
+                position:absolute; top:0; left:0; right:0; bottom:0; 
+                background:rgba(16, 185, 129, 0.3); 
+                display:flex; align-items:center; justify-content:center;
+                z-index:10; border-radius:8px;
+                animation: checkmarkFadeIn 0.3s ease-out;
+              }
+              .checkmark-icon{
+                background:white; border-radius:50%; padding:8px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                animation: checkmarkBounce 0.4s ease-out;
+              }
+              .missing-gallery-card.checked{
+                border: 2px solid #10B981;
+                box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.2);
+              }
+              @keyframes checkmarkFadeIn{
+                from{opacity:0; transform:scale(0.8);}
+                to{opacity:1; transform:scale(1);}
+              }
+              @keyframes checkmarkBounce{
+                0%{transform:scale(0.3);}
+                50%{transform:scale(1.1);}
+                100%{transform:scale(1);}
+              }
+              
               #toggle-gallery-btn.btn-primary{background-color:#D7DAE7; border-color:#D7DAE7; color:#000;}
               #toggle-gallery-btn.btn-primary:hover{background-color:#C5C9D6; border-color:#C5C9D6; color:#000;}
 
@@ -1589,6 +1632,13 @@ function showGalleryOverlay(items, startIndex){
         const handleButtonClick = async () => {
             console.log('🔘 כפתור "הצג חוסרים" נלחץ!');
             console.log('🎯 מצב נוכחי:', currentMode === 'negative' ? 'נגטיב' : 'חוסרים');
+
+            // ============ התיקון כאן ============
+            // הגדר את המשתנה הגלובלי שהפונקציה getItemQuantity
+            // קוראת כדי לדעת באיזה מצב אנחנו
+            window.__missingTableMode = currentMode;
+            // ===================================
+
             btn.removeEventListener('click', handleButtonClick); // Prevent multiple clicks
             btn.disabled = true;
 
@@ -2470,7 +2520,12 @@ function showGalleryOverlay(items, startIndex){
                         </div>
                         <div class="modal-body px-4 py-3" style="flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;">
                             <div id="missing-table-container" style="flex-grow: 1; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; background-color: #fff; box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);"></div>
-                            <div id="missing-gallery-container"><div class="missing-gallery-grid" id="missing-gallery-grid"></div></div>
+                            <div id="missing-gallery-container">
+                                <button id="gallery-close-btn" class="gallery-close-button" title="סגור גלריה">
+                                    <i class="ki ki-close"></i>
+                                </button>
+                                <div class="missing-gallery-grid" id="missing-gallery-grid"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -3741,15 +3796,26 @@ expandedGroups.clear();
               }, {passive:true});
             }
 
+            // --- Gallery close button (X) ---
+            const galleryCloseBtn = document.getElementById('gallery-close-btn');
+            if (galleryCloseBtn){
+              galleryCloseBtn.addEventListener('click', () => {
+                isGalleryView = false;
+                toggleGallery(false);
+              }, {passive:true});
+            }
+
             function toggleGallery(show){
               const tableC = document.getElementById('missing-table-container');
               const galC   = document.getElementById('missing-gallery-container');
               const btn    = document.getElementById('toggle-gallery-btn');
+              const closeBtn = document.getElementById('gallery-close-btn');
               if (!galC) return;
               if (show){
                 tableC.style.display = 'none';
                 galC.style.display = 'block';
                 if (btn){ btn.classList.remove('btn-outline-secondary'); btn.classList.add('btn-primary'); }
+                if (closeBtn){ closeBtn.style.display = 'flex'; }
                 // Loader immediately (לפעמים אפילו לשלד לוקח זמן להופיע)
                 if (!galC.querySelector('.missing-gallery-loader')){
                   const l = document.createElement('div'); l.className='missing-gallery-loader';
@@ -3761,7 +3827,33 @@ expandedGroups.clear();
                 galC.style.display = 'none';
                 tableC.style.display = '';
                 if (btn){ btn.classList.add('btn-outline-secondary'); btn.classList.remove('btn-primary'); }
+                if (closeBtn){ closeBtn.style.display = 'none'; }
               }
+            }
+
+            // --- Toggle Checkmark Overlay ---
+            function toggleCheckmarkOverlay(card) {
+                // בדוק אם כבר יש checkmark
+                const existingCheckmark = card.querySelector('.checkmark-overlay');
+                
+                if (existingCheckmark) {
+                    // הסר את ה-checkmark
+                    existingCheckmark.remove();
+                    card.classList.remove('checked');
+                } else {
+                    // הוסף checkmark
+                    const checkmarkOverlay = document.createElement('div');
+                    checkmarkOverlay.className = 'checkmark-overlay';
+                    checkmarkOverlay.innerHTML = `
+                        <div class="checkmark-icon">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" fill="#10B981"/>
+                            </svg>
+                        </div>
+                    `;
+                    card.appendChild(checkmarkOverlay);
+                    card.classList.add('checked');
+                }
             }
 
             // --- Render Gallery from filteredAndSortedResults ---
@@ -3841,8 +3933,56 @@ expandedGroups.clear();
                   link: item.link || null
                 });
 
-                // לחיצה – פותח את הפריט הנכון (לא האחרון)
-                card.addEventListener('click', () => showGalleryOverlay(overlayItems, idx), {passive:true});
+                // לחיצה רגילה - toggle checkmark overlay
+                card.addEventListener('click', (e) => {
+                    // בדוק אם זה לא היה long press
+                    if (!isLongPress) {
+                        toggleCheckmarkOverlay(card);
+                    }
+                });
+                
+                // לחיצה ארוכה - פתיחת גלריה
+                let longPressTimer = null;
+                let isLongPress = false;
+                
+                // Mouse events
+                card.addEventListener('mousedown', (e) => {
+                    isLongPress = false;
+                    longPressTimer = setTimeout(() => {
+                        isLongPress = true;
+                        showGalleryOverlay(overlayItems, idx);
+                    }, 800); // 800ms for long press
+                });
+                
+                card.addEventListener('mouseup', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                card.addEventListener('mouseleave', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                // Touch events for mobile devices
+                card.addEventListener('touchstart', (e) => {
+                    isLongPress = false;
+                    longPressTimer = setTimeout(() => {
+                        isLongPress = true;
+                        showGalleryOverlay(overlayItems, idx);
+                    }, 800); // 800ms for long press
+                });
+                
+                card.addEventListener('touchend', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                card.addEventListener('touchcancel', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                // Prevent context menu on long press
+                card.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                });
                 // === Quantity badge (grid) ===
                 const qty = resolvedQty;
                 if (qty > 1){
