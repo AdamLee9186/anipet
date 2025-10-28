@@ -3935,8 +3935,8 @@ expandedGroups.clear();
 
                 // לחיצה רגילה - toggle checkmark overlay
                 card.addEventListener('click', (e) => {
-                    // בדוק אם זה לא היה long press
-                    if (!isLongPress) {
+                    // בדוק אם זה לא היה long press ולא הייתה תנועה
+                    if (!isLongPress && !hasMoved) {
                         toggleCheckmarkOverlay(card);
                     }
                 });
@@ -3944,6 +3944,9 @@ expandedGroups.clear();
                 // לחיצה ארוכה - פתיחת גלריה
                 let longPressTimer = null;
                 let isLongPress = false;
+                let touchStartX = 0;
+                let touchStartY = 0;
+                let hasMoved = false;
                 
                 // Mouse events
                 card.addEventListener('mousedown', (e) => {
@@ -3965,10 +3968,30 @@ expandedGroups.clear();
                 // Touch events for mobile devices
                 card.addEventListener('touchstart', (e) => {
                     isLongPress = false;
+                    hasMoved = false;
+                    touchStartX = e.touches[0].clientX;
+                    touchStartY = e.touches[0].clientY;
                     longPressTimer = setTimeout(() => {
-                        isLongPress = true;
-                        showGalleryOverlay(overlayItems, idx);
+                        if (!hasMoved) {
+                            isLongPress = true;
+                            showGalleryOverlay(overlayItems, idx);
+                        }
                     }, 800); // 800ms for long press
+                });
+                
+                card.addEventListener('touchmove', (e) => {
+                    if (e.touches.length > 0) {
+                        const currentX = e.touches[0].clientX;
+                        const currentY = e.touches[0].clientY;
+                        const deltaX = currentX - touchStartX;
+                        const deltaY = currentY - touchStartY;
+                        const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+                        
+                        if (distance > 10) {
+                            hasMoved = true;
+                            clearTimeout(longPressTimer);
+                        }
+                    }
                 });
                 
                 card.addEventListener('touchend', () => {
