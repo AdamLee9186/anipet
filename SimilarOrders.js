@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Lionwheel - חיפוש משלוחים דומים
 // @namespace    http://tampermonkey.net/
-// @version      2.6
-// @description  מוסיף כפתור חיפוש וגם תצוגה מקדימה (previews) של פריטי המשלוח בתוך מודאל החיפוש.
+// @version      3.1
+// @description  מוסיף כפתור חיפוש, תצוגת פריטים, ואפשרות לשיוך נהג ישירות ממודאל החיפוש. כולל תיקון לנהגים ישנים ואייקוני שותפים.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -129,7 +129,7 @@
         }
 
 
-        /* --- [שונה] עיצוב כפתורי כותרת ו-Preview (צבעי רקע ופונט) --- */
+        /* --- עיצוב כפתורי כותרת ו-Preview (צבעי רקע ופונט) --- */
         .lw-header-btn, .lw-preview-toggle {
             display: flex;
             align-items: center;
@@ -152,7 +152,7 @@
 
         .lw-header-btn:hover, .lw-preview-toggle:hover {
             background-color: #d1e4ff;
-            color: #216dbe; /* צבע טקסט ב-hover לא כ"כ משנה, אבל משאיר כהה */
+            color: #216dbe;
             border-color: #a4c8f3;
         }
         .lw-header-btn:hover i, .lw-preview-toggle:hover i {
@@ -228,15 +228,27 @@
             min-width: 85px;
             text-align: center;
             display: inline-block;
+            margin-top: 4px; /* רווח מהכפתורים שמעל */
         }
+
+        /* אזור שמאל תחתון (סטטוס ונהג) */
+        .lw-result-bottom-left {
+            display: flex;
+            flex-direction: column;
+            align-items: center; /* ממורכז */
+            text-align: left;
+            margin-left: 0.5rem; /* ml-2 */
+            flex-shrink: 0;
+        }
+
 
         /* מחלקות עזר של Bootstrap (כדי למנוע התנגשויות) */
         .lw-search-modal .d-flex { display: flex !important; }
-        .lw-search-modal .align-items: center { align-items: center !important; }
+        .lw-search-modal .align-items-center { align-items: center !important; }
         .lw-search-modal .align-self-center { align-self: center !important; }
         .lw-search-modal .justify-content-between { justify-content: space-between !important; }
         .lw-search-modal .flex-grow-1 { flex-grow: 1 !important; }
-        .lw-search-modal .flex-shrink-0 { flex-shrink-0 !important; }
+        .lw-search-modal .flex-shrink-0 { flex-shrink: 0 !important; }
         .lw-search-modal .flex-column { flex-direction: column !important; }
         .lw-search-modal .text-dark { color: #333 !important; }
         .lw-search-modal .font-weight-bold { font-weight: 600 !important; }
@@ -350,6 +362,112 @@
             color: #000 !important;
             font-weight: 700 !important;
         }
+
+        /* --- עיצוב Dropdown נהגים (נפתח בלחיצה) --- */
+        .lw-driver-dropdown-wrap {
+            position: relative;
+            width: 85px; /* רוחב כפי שביקשת */
+            margin-top: 4px;
+        }
+        .lw-driver-btn {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            background-color: #f3f6f9;
+            border: 1px solid #e1e3ea;
+            border-radius: 4px;
+            padding: 4px 6px;
+            cursor: pointer;
+            text-align: right;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #3f4254;
+        }
+        .lw-driver-btn:hover {
+            background-color: #e9ecef;
+        }
+        .lw-driver-btn-content {
+            display: flex;
+            align-items: center;
+            overflow: hidden;
+        }
+        .lw-driver-btn-content img, .lw-driver-btn-content i {
+            width: 16px;
+            height: 16px;
+            margin-left: 5px; /* margin-right ב-RTL */
+            flex-shrink: 0;
+            border-radius: 3px;
+        }
+        .lw-driver-btn-content span {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .lw-driver-btn i.fa-angle-down {
+            flex-shrink: 0;
+            margin-right: 5px;
+        }
+
+        /* ספינר טעינה לכפתור */
+        .lw-driver-btn.loading .lw-driver-btn-content {
+            display: none; /* הסתר תוכן בזמן טעינה */
+        }
+        .lw-driver-btn.loading::after {
+            content: "";
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            margin: 0 auto; /* ממורכז */
+            border: 2px solid #b5b5c3;
+            border-top: 2px solid #3699ff;
+            border-radius: 50%;
+            animation: lw-spin 0.6s linear infinite;
+        }
+
+        .lw-driver-list {
+            display: none; /* נשלט על ידי JS, לא hover */
+            position: absolute;
+            top: 100%;
+            left: 0;
+            width: 150px; /* רשימה רחבה יותר מהכפתור */
+            background: #fff;
+            border: 1px solid #e1e3ea;
+            border-radius: 4px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 10000; /* מעל הכל */
+            padding: 5px 0;
+            margin-top: 2px;
+        }
+        .lw-driver-list ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .lw-driver-list li {
+            display: flex;
+            align-items: center;
+            padding: 6px 10px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .lw-driver-list li:hover {
+            background-color: #f3f6f9;
+        }
+        .lw-driver-list li img, .lw-driver-list li i {
+            width: 16px;
+            height: 16px;
+            margin-left: 8px;
+            flex-shrink: 0;
+            border-radius: 3px;
+        }
+        .lw-driver-list li.unassign-option {
+            color: #f64e60;
+            border-top: 1px solid #eee;
+        }
     `);
 
     // -------------------------------------------------------------------------
@@ -393,16 +511,43 @@
 
         modal.querySelector('.lw-search-close').onclick = hideModal;
 
-        // --- לוגיקת קליקים ---
+        // --- לוגיקת קליקים (כולל טיפול בנהגים) ---
         modalContent.addEventListener('click', (e) => {
             const previewToggle = e.target.closest('.lw-preview-toggle');
+            const driverBtn = e.target.closest('.lw-driver-btn');
+            const driverListItem = e.target.closest('.lw-driver-list li');
             const itemLink = e.target.closest('.lw-search-result-item');
 
-            if (previewToggle) {
+            if (driverListItem) {
+                // לחיצה על בחירת נהג
+                e.preventDefault();
+                e.stopPropagation();
+                const driverId = driverListItem.dataset.driverId;
+                const dropdownWrap = driverListItem.closest('.lw-driver-dropdown-wrap');
+                const taskId = dropdownWrap.dataset.taskId;
+
+                const btn = dropdownWrap.querySelector('.lw-driver-btn');
+                btn.classList.add('loading');
+
+                const list = driverListItem.closest('.lw-driver-list');
+                if (list) list.style.display = 'none';
+
+                assignDriver(taskId, driverId, btn);
+
+            } else if (driverBtn) {
+                // לחיצה על כפתור ה-Dropdown הראשי
+                e.preventDefault();
+                e.stopPropagation();
+                const list = driverBtn.nextElementSibling;
+                if (list && list.classList.contains('lw-driver-list')) {
+                    list.style.display = (list.style.display === 'block') ? 'none' : 'block';
+                }
+            } else if (previewToggle) {
                 // לחיצה על כפתור Preview
                 e.preventDefault();
-                e.stopPropagation(); // <-- מונע פתיחת הקישור של השורה
+                e.stopPropagation();
                 handlePreviewToggle(previewToggle);
+
             } else if (itemLink) {
                 // לחיצה על שורת התוצאה (בכל מקום אחר)
                 e.preventDefault();
@@ -530,7 +675,7 @@
             const previewContainerId = `preview-for-task-${task.id}`;
 
             html += `
-                <a href="#" data-href="${taskUrl}" class="lw-search-result-item task-row d-block" title="פתח משלוח ${task.id}">
+                <a href="#" data-href="${taskUrl}" class="lw-search-result-item task-row d-block" title="פתח משלוח ${task.id}" data-task-id-row="${task.id}">
                     <div class="d-flex align-items-center flex-grow-1 justify-content-between p-2">
 
                         <div class="flex-shrink-0 align-self-center ml-2">
@@ -544,7 +689,7 @@
                             <span class="font-size-xs font-weight-bold text-dark-50">${task.address || 'לא צוינה כתובת'}</span>
                         </div>
 
-                        <div class="ml-2 flex-shrink-0" style="text-align: left;">
+                        <div class="lw-result-bottom-left">
                              <div class="text-dark font-weight-bold font-size-12" style="margin-bottom: 0.25rem;">
                                 ${task.id}
                                 <i class="fa-solid fa-arrow-up-right-from-square ml-2" style="font-size: 0.9em; color: #888;"></i>
@@ -556,7 +701,8 @@
                                 <span class="lw-result-status" style="background-color: ${statusInfo.color};">
                                     ${statusInfo.text}
                                 </span>
-                            </div>
+                             </div>
+                             <div class="lw-driver-placeholder" id="lw-driver-placeholder-${task.id}"></div>
                         </div>
 
                     </div>
@@ -625,14 +771,21 @@
     }
 
     // -------------------------------------------------------------------------
-    // 6. לוגיקה של שליפת ורנדור ה-Preview
+    // 6. לוגיקה של שליפת ורנדור ה-Preview והנהגים
     // -------------------------------------------------------------------------
 
     async function handlePreviewToggle(toggleButton, forceState = null) {
         const taskId = toggleButton.dataset.taskId;
         const icon = toggleButton.querySelector('i');
         const container = document.getElementById(`preview-for-task-${taskId}`);
-        if (!taskId || !icon || !container) return;
+
+        const resultRow = toggleButton.closest('.lw-search-result-item');
+        const driverPlaceholder = resultRow.querySelector(`#lw-driver-placeholder-${taskId}`);
+
+        if (!taskId || !icon || !container || !driverPlaceholder) {
+            console.error("Preview toggle failed: missing elements.", {taskId, icon, container, driverPlaceholder});
+            return;
+        }
 
         const isOpen = icon.classList.contains('fa-chevron-left');
 
@@ -643,6 +796,7 @@
             // סגור
             container.style.display = 'none';
             container.innerHTML = '';
+            driverPlaceholder.innerHTML = '';
             icon.classList.remove('fa-chevron-left');
             icon.classList.add('fa-chevron-down');
         } else {
@@ -651,37 +805,56 @@
             icon.classList.add('fa-spinner', 'fa-spin');
             container.innerHTML = '<div class="lw-preview-loader">טוען פריטים...</div>';
             container.style.display = 'block';
+            driverPlaceholder.innerHTML = '';
 
             try {
-                let items = previewCache.get(taskId);
-                if (!items) {
-                    const html = await fetchTaskPreview(taskId);
-                    items = parsePreviewHTML(html);
-                    if (items.length > 0) {
-                        previewCache.set(taskId, items);
+                let cachedData = previewCache.get(taskId);
+                if (!cachedData) {
+                    const [itemsHtml, driverData] = await Promise.all([
+                        fetchTaskPreview(taskId),
+                        fetchTaskDriverData(taskId)    // <-- עכשיו שולף גם את תמונת השותף
+                    ]);
+
+                    const items = parsePreviewHTML(itemsHtml);
+                    cachedData = { items, ...driverData };
+
+                    if (cachedData.items.length > 0 || (cachedData.availableDrivers && cachedData.availableDrivers.length > 0)) {
+                        previewCache.set(taskId, cachedData);
+                    } else {
+                         console.warn(`No items or drivers found for task ${taskId}`);
                     }
                 }
 
+                // [שונה] הוספת currentDriverImageSrc
+                const { items, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc } = cachedData;
+
                 const cardsHtml = buildPreviewCards(items);
                 container.innerHTML = `<div class="lw-preview-content">${cardsHtml}</div>`;
+
+                // [שונה] העברת currentDriverImageSrc לבניית ה-Dropdown
+                const driverDropdownHtml = buildDriverDropdownHTML(taskId, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc);
+                driverPlaceholder.innerHTML = driverDropdownHtml;
+
                 icon.classList.remove('fa-spinner', 'fa-spin');
                 icon.classList.add('fa-chevron-left');
 
             } catch (error) {
                 console.error(`[Preview Error] Task ${taskId}:`, error);
                 container.innerHTML = `<div style="color: red; padding: 10px;">שגיאה בטעינת הפריטים.</div>`;
+                driverPlaceholder.innerHTML = '';
                 icon.classList.remove('fa-spinner', 'fa-spin');
                 icon.classList.add('fa-exclamation-triangle');
             }
         }
     }
 
+    /**
+     * שולף רק את ה-HTML של ה-panel_view עבור *פריטים*.
+     */
     function fetchTaskPreview(taskId) {
         return new Promise((resolve, reject) => {
             const token = getCSRFToken();
-            if (!token) {
-                return reject(new Error('CSRF token not found'));
-            }
+            if (!token) return reject(new Error('CSRF token not found'));
 
             GM_xmlhttpRequest({
                 method: "POST",
@@ -692,20 +865,78 @@
                     'x-csrf-token': token
                 },
                 data: JSON.stringify({}),
-                onload: function(response) {
-                    if (response.status >= 200 && response.status < 300) {
-                        resolve(response.responseText);
-                    } else {
-                        reject(new Error(`Fetch failed with status: ${response.status}`));
-                    }
-                },
-                onerror: function(error) {
-                    reject(new Error(`Network error: ${error.statusText}`));
-                }
+                onload: (response) => response.status >= 200 && response.status < 300 ? resolve(response.responseText) : reject(new Error(`Fetch (panel_view) failed: ${response.status}`)),
+                onerror: (error) => reject(new Error(`Network error (panel_view): ${error.statusText}`))
             });
         });
     }
 
+    /**
+     * [שונה] שולף את דף המשימה המלא עבור *נתוני נהגים*, *השם המוצג* ו*אייקון הנהג/גשר*.
+     */
+    function fetchTaskDriverData(taskId) {
+         return new Promise((resolve, reject) => {
+            const token = getCSRFToken();
+            if (!token) return reject(new Error('CSRF token not found'));
+
+            GM_xmlhttpRequest({
+                method: "GET",
+                url: `https://members.lionwheel.com/tasks/${taskId}`,
+                headers: {
+                    'accept': 'text/html',
+                    'x-csrf-token': token
+                },
+                onload: (response) => {
+                    if (response.status >= 200 && response.status < 300) {
+                        const doc = new DOMParser().parseFromString(response.responseText, 'text/html');
+                        const driverDropdown = doc.querySelector('.drivers-dropdown[data-task][data-drivers]');
+
+                        let currentDriverId = null;
+                        let availableDrivers = [];
+                        let currentDriverName = null;
+                        let currentDriverImageSrc = null; // <-- [חדש]
+
+                        if (driverDropdown) {
+                            try {
+                                const taskData = JSON.parse(driverDropdown.dataset.task);
+                                currentDriverId = taskData.driverId;
+                            } catch (e) { console.warn("Failed to parse data-task JSON"); }
+                            try {
+                                availableDrivers = JSON.parse(driverDropdown.dataset.drivers);
+                            } catch (e) { console.warn("Failed to parse data-drivers JSON"); }
+
+                            // --- [חדש] חילוץ השם המוצג ---
+                            const nameSpan = driverDropdown.querySelector('.drivers-dropdown-current-driver');
+                            if (nameSpan) {
+                                currentDriverName = nameSpan.textContent.trim();
+                            }
+
+                            // --- [חדש] חילוץ האייקון (אם קיים תמונת שותף) ---
+                            const iconImg = driverDropdown.querySelector('.drivers-dropdown-current-driver-icon img');
+                            if (iconImg) {
+                                currentDriverImageSrc = iconImg.getAttribute('src');
+                            }
+                            // --- [סוף חדש] ---
+
+                        } else {
+                            console.warn(`Could not find driver dropdown in task page HTML for ${taskId}`);
+                        }
+                        // [שונה] מחזיר גם את currentDriverImageSrc
+                        resolve({ currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc });
+
+                    } else {
+                        reject(new Error(`Fetch (task page) failed: ${response.status}`));
+                    }
+                },
+                onerror: (error) => reject(new Error(`Network error (task page): ${error.statusText}`))
+            });
+        });
+    }
+
+
+    /**
+     * מפענח HTML ומחזיר רק { items }
+     */
     function parsePreviewHTML(htmlString) {
         const doc = new DOMParser().parseFromString(htmlString, 'text/html');
         const table = doc.querySelector('.table-responsive .table');
@@ -738,13 +969,7 @@
                 const match = findImageMatch(sku, name);
                 const imageSrc = (match && match.image) ? getOptimizedImageUrl(match.image, 100) : PLACEHOLDER_IMG_URL;
 
-                items.push({
-                    name,
-                    sku,
-                    quantity,
-                    price: price.toFixed(2),
-                    imageSrc
-                });
+                items.push({ name, sku, quantity, price: price.toFixed(2), imageSrc });
             } catch(e) {
                 console.warn("Failed to parse preview row", e, row);
             }
@@ -779,11 +1004,146 @@
         }).join('');
     }
 
+    /**
+     * [שונה] בונה את ה-HTML ל-Dropdown של הנהגים (מטפל בנהגים ישנים ובאייקון שותף)
+     */
+    function buildDriverDropdownHTML(taskId, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc) { // <-- [שונה]
+        if (!availableDrivers) {
+            availableDrivers = []; // ודא שזה מערך גם אם ה-fetch נכשל
+        }
+
+        let currentDriver = availableDrivers.find(d => d.id === currentDriverId);
+        let btnIcon, btnText;
+
+        // 1. קודם כל, נבדוק אם יש תמונת אייקון ספציפית שחולצה מה-HTML החיצוני (כמו Solo)
+        if (currentDriverId && currentDriverImageSrc && !currentDriverImageSrc.includes('fa-light') && !currentDriverImageSrc.includes('blank_logo.png')) {
+            // Case 1A: נהג/גשר משויך עם אייקון חיצוני (כמו Solo)
+            btnText = currentDriverName.trim();
+            btnIcon = `<img src="${currentDriverImageSrc}" alt="${btnText}">`;
+
+        } else if (currentDriver) {
+            // Case 2: הנהג המשויך קיים ברשימה (נהג רגיל או גשר ללא תמונה חיצונית)
+            btnText = currentDriver.name.trim();
+            if (currentDriver.partner_bridge_image && !currentDriver.partner_bridge_image.includes('blank_logo.png')) {
+                btnIcon = `<img src="${currentDriver.partner_bridge_image}" alt="">`;
+            } else {
+                btnIcon = `<i class="fa-light fa-user"></i>`;
+            }
+        } else if (currentDriverId && currentDriverName) {
+            // Case 3: הנהג המשויך (נהג ישן, לא קיים ברשימה, אין תמונה חיצונית)
+            btnText = currentDriverName;
+            btnIcon = `<i class="fa-light fa-user"></i>`; // הצג אייקון גנרי
+        } else {
+            // Case 4: אין נהג משויך
+            btnText = "נהג";
+            btnIcon = `<i class="fa-light fa-user"></i>`;
+        }
+
+        // בניית רשימת הנהגים
+        let listItems = availableDrivers.map(driver => {
+            const icon = (driver.partner_bridge_image && !driver.partner_bridge_image.includes('blank_logo.png'))
+                ? `<img src="${driver.partner_bridge_image}" alt="">`
+                : `<i class="fa-light fa-user" style="color: #ccc;"></i>`;
+            return `<li data-driver-id="${driver.id}">${icon}<span>${driver.name.trim()}</span></li>`;
+        }).join('');
+
+        listItems += `<li class="unassign-option" data-driver-id=""><i class="fa-light fa-remove"></i><span>הסר נהג</span></li>`;
+
+        return `
+            <div class="lw-driver-dropdown-wrap" data-task-id="${taskId}">
+                <button class="lw-driver-btn">
+                    <div class="lw-driver-btn-content">
+                        ${btnIcon}
+                        <span>${btnText}</span>
+                    </div>
+                    <i class="fa-light fa-angle-down"></i>
+                </button>
+                <div class="lw-driver-list">
+                    <ul>
+                        ${listItems}
+                    </ul>
+                </div>
+            </div>
+        `;
+    }
+
+    /**
+     * [שונה] שולח בקשת API לשיוך נהג (עם תיקון ל-driver_id)
+     */
+    async function assignDriver(taskId, driverId, buttonElement) {
+        const token = getCSRFToken();
+        if (!token) {
+            alert("שגיאה: לא נמצא טוקן אבטחה (CSRF).");
+            buttonElement.classList.remove('loading');
+            return;
+        }
+
+        // --- [תיקון] שולח "" במקום null (כפי שמופיע ב-fetch לדוגמה) ---
+        const payload = {
+            task_id: String(taskId),
+            driver_id: driverId // driverId הוא כבר "" עבור "הסר נהג"
+        };
+
+        try {
+            const response = await fetch("https://members.lionwheel.com/tasks/assign_driver.json", {
+                method: "POST",
+                headers: {
+                    "accept": "*/*",
+                    "content-type": "application/json",
+                    "x-csrf-token": token
+                },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                let errorText = response.statusText;
+                try {
+                    const errorJson = await response.json();
+                    errorText = errorJson.error || errorText;
+                } catch(e) {}
+                throw new Error(`שגיאת שרת: ${errorText} (${response.status})`);
+            }
+
+            const result = await response.json();
+
+            // עדכון חזותי של הכפתור
+            buttonElement.classList.remove('loading');
+            const btnContent = buttonElement.querySelector('.lw-driver-btn-content');
+
+            // --- [תיקון] בודק "" במקום null ---
+            if (payload.driver_id === "") {
+                btnContent.innerHTML = `<i class="fa-light fa-user"></i><span>נהג</span>`;
+            } else {
+                const driverLi = buttonElement.closest('.lw-driver-dropdown-wrap').querySelector(`li[data-driver-id="${driverId}"]`);
+                if (driverLi) {
+                    btnContent.innerHTML = driverLi.innerHTML;
+                }
+            }
+
+            // נקה את ה-cache של המשימה הזו
+            previewCache.delete(taskId);
+
+            // עדכן את הסטטוס (אם השרת החזיר סטטוס חדש)
+            if (result.new_status_badge) {
+                const resultRow = buttonElement.closest('.lw-search-result-item');
+                const statusBadge = resultRow.querySelector('.lw-result-status');
+                if (statusBadge) {
+                    statusBadge.outerHTML = result.new_status_badge;
+                }
+            }
+
+        } catch (error) {
+            console.error("Assign driver error:", error);
+            alert(`שגיאה בשיוך נהג: ${error.message}`);
+            buttonElement.classList.remove('loading');
+        }
+    }
+
+
     // -------------------------------------------------------------------------
-    // 7. פונקציות עזר (כולל טעינת קטלוג תמונות)
+    // 8. פונקציות עזר (כולל טעינת קטלוג תמונות)
     // -------------------------------------------------------------------------
 
-    // --- פונקציות לטעינת קטלוג התמונות (עם תיקון ל-Cache) ---
     async function getProductData() {
         if (productDataCache) return;
 
@@ -791,7 +1151,6 @@
             const cachedData = await GM_getValue(PRODUCT_DATA_CACHE_KEY, null);
             const cachedTimestamp = await GM_getValue(IMAGE_CACHE_TIMESTAMP_KEY, 0);
 
-            // בנה מחדש את ה-Map מהמערך השמור
             if (cachedData && Array.isArray(cachedData) && (Date.now() - cachedTimestamp < CACHE_DURATION_MS)) {
                 productDataCache = new Map(cachedData);
                 console.log(`LW Search: Product catalog loaded from cache: ${productDataCache.size} items.`);
@@ -804,7 +1163,6 @@
                 url: IMAGE_FINDER_CSV_URL,
                 onload: async (response) => {
                     productDataCache = processImageCsvText(response.responseText);
-                    // שמור כמערך של [key, value]
                     await GM_setValue(PRODUCT_DATA_CACHE_KEY, Array.from(productDataCache.entries()));
                     await GM_setValue(IMAGE_CACHE_TIMESTAMP_KEY, Date.now());
                     console.log(`LW Search: Product catalog loaded from CSV: ${productDataCache.size} items.`);
@@ -842,7 +1200,6 @@
                 if (parts.length < headers.length) continue;
 
                 const skusString = (parts[skuIndex] || "").trim().replace(/^"|"$/g, '');
-                // --- [תוקן] סוגריים חסרים תוקנו בגרסה הקודמת ---
                 const image = (parts[imageIndex] || "").trim().replace(/^"|"$/g, '');
                 const link = (parts[urlIndex] || "").trim().replace(/^"|"$/g, '');
                 const name = (parts[nameIndex] || "").trim().replace(/^"|"$/g, '');
@@ -870,7 +1227,6 @@
         }
     }
 
-    // פונקציית חיפוש התמונות (בודקת ש-productDataCache הוא אכן Map)
     function findImageMatch(sku, productName) {
         if (!productDataCache || typeof productDataCache.has !== 'function') {
             if (!productDataCache) {
@@ -881,14 +1237,12 @@
             return null;
         }
 
-        // 1. נסה לפי SKU מנורמל
         if (sku) {
             const normSku = normalizeSku(sku);
             if (productDataCache.has(normSku)) {
                 return productDataCache.get(normSku);
             }
         }
-        // 2. נסה לפי שם מוצר מדויק (כגיבוי)
         if (productName) {
             const normName = productName.toLowerCase().trim();
             if (productDataCache.has(normName)) {
@@ -946,7 +1300,7 @@
     }
 
     // -------------------------------------------------------------------------
-    // 8. הפעלה ומעקב אחר שינויים (MutationObserver)
+    // 9. הפעלה ומעקב אחר שינויים (MutationObserver)
     // -------------------------------------------------------------------------
 
     // טען את קטלוג התמונות ברקע
