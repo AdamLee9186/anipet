@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - חיפוש משלוחים דומים
 // @namespace    http://tampermonkey.net/
-// @version      3.1
+// @version      3.2
 // @description  מוסיף כפתור חיפוש, תצוגת פריטים, ואפשרות לשיוך נהג ישירות ממודאל החיפוש. כולל תיקון לנהגים ישנים ואייקוני שותפים.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*
@@ -351,7 +351,11 @@
         /* עיצוב צבעי כמויות (מ-Toolbox) */
         .tampermonkey-picked-full { color: #0c7b0c !important; font-weight: 600 !important; }
         .tampermonkey-picked-partial { color: #b26a00 !important; font-weight: 600 !important; }
-        .tampermonkey-picked-none { color: #842029 !important; font-weight: 600 !important; }
+        .tampermonkey-picked-none { color: #dc3545 !important; font-weight: 600 !important; }
+        /* הגדלה ספציפית עבור preview cards - override כל CSS אחר */
+        .tmc-preview-meta .tampermonkey-picked-full { color: #0c7b0c !important; font-weight: 600 !important; }
+        .tmc-preview-meta .tampermonkey-picked-partial { color:rgb(255, 153, 1) !important; font-weight: 600 !important; }
+        .tmc-preview-meta .tampermonkey-picked-none { color:rgb(230, 6, 28) !important; font-weight: 600 !important; }
 
         /* עיצוב הדגשת ברקוד (מ-Toolbox) */
         .tmc-preview-meta .barcode-highlight {
@@ -1279,10 +1283,17 @@
             if (!m) return qtyText;
             const picked = parseInt(m[1], 10), total = parseInt(m[2], 10);
             if (picked === total && total === 0) return qtyText;
+            if (picked === 0 && total === 1) return qtyText; // skip trivial 0/1
             if (picked > total || total > 1000) return qtyText;
-            const cls = picked === total ? 'tampermonkey-picked-full'
-                : picked === 0 && total > 0 ? 'tampermonkey-picked-none'
-                : 'tampermonkey-picked-partial';
+            // Determine color class
+            let cls;
+            if (picked === total) {
+                cls = 'tampermonkey-picked-full'; // green
+            } else if (picked === 0 && total > 1) {
+                cls = 'tampermonkey-picked-none'; // red
+            } else {
+                cls = 'tampermonkey-picked-partial'; // orange
+            }
             return `<span class="${cls}">${picked} / ${total}</span>`;
         } catch (e) { return qtyText; }
     }
