@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.51
+// @version      13.8.53
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -510,12 +510,12 @@ function __tmcIsILInternational(digits){
       window.__tmcPreviewCanonMO = new MutationObserver((muts)=>{
         if (touchesPreview(muts)) enforceThrottled();
       });
-      const root = document.getElementById('operator-store-visits-table_wrapper') 
+      const root = document.getElementById('operator-store-visits-table_wrapper')
                 || document.body || document.documentElement;
-      window.__tmcPreviewCanonMO.observe(root, { 
-        childList: true, 
-        subtree: true, 
-        attributes: true, 
+      window.__tmcPreviewCanonMO.observe(root, {
+        childList: true,
+        subtree: true,
+        attributes: true,
         attributeFilter: ['class','style']
       });
     }
@@ -605,10 +605,10 @@ function __tmcIsILInternational(digits){
   if (typeof window !== 'undefined') {
     window.CRISP_SAFE_MODE = true;
     window.USERSCRIPT_SAFE_MODE = true;
-    
+
     if (!window.$crisp) window.$crisp = [];
     if (Array.isArray(window.$crisp)) window.$crisp.push(["safe", true]);
-    
+
     if (!window.crisp) window.crisp = [];
     if (Array.isArray(window.crisp)) window.crisp.push(["safe", true]);
   }
@@ -1072,9 +1072,9 @@ function idleChunk(items, work, budgetMs = 12){
       s.id = id;
       s.textContent = `
         /* Skip layout/paint for offscreen previews until needed */
-        .tm-preview-root { 
-          content-visibility: auto; 
-          contain-intrinsic-size: 600px 300px; 
+        .tm-preview-root {
+          content-visibility: auto;
+          contain-intrinsic-size: 600px 300px;
           contain: layout paint style;
         }
       `;
@@ -1315,25 +1315,25 @@ function oncePerAnimationFrame(fn){
 // Rate-limited warning system
 const warnOnce = (() => {
   const seen = new Set();
-  return (key, ...args) => { 
-    if (!seen.has(key)) { 
-      seen.add(key); 
-      console.warn(...args); 
-    } 
+  return (key, ...args) => {
+    if (!seen.has(key)) {
+      seen.add(key);
+      console.warn(...args);
+    }
   };
 })();
 
 // Debounce utility for performance optimization
-function debounce(fn, ms = 120) { 
-  let t; 
-  return (...a) => { 
-    clearTimeout(t); 
-    t = setTimeout(() => fn(...a), ms); 
-  }; 
+function debounce(fn, ms = 120) {
+  let t;
+  return (...a) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...a), ms);
+  };
 }
 
 // Idle callback with fallback for non-critical work
-const scheduleIdleWork = window.requestIdleCallback || 
+const scheduleIdleWork = window.requestIdleCallback ||
   ((cb) => setTimeout(() => cb({didTimeout: true, timeRemaining: () => 0}), 200));
 
 // Clean up old debug logs from console
@@ -1465,13 +1465,13 @@ function __tmcBoldLast3DigitsInElement(el){
 window.__tmcApplyBarcodeLast3Bold = function(root){
   try{
     root = root || document;
-    
+
     // 1) BDI elements (table + gallery)
     root.querySelectorAll('.tampermonkey-barcode-bdi, .gallery-barcode-bdi').forEach(bdi=>{
       bdi.setAttribute('dir','ltr'); // bidi-safe
       __tmcBoldLast3DigitsInElement(bdi);
     });
-    
+
     // 2) PREVIEW: המרה ל"ברקוד", עטיפה ב-.barcode-highlight והדגשת 3 ספרות אחרונות
     const els = root.querySelectorAll('.tmc-preview-meta');
     els.forEach(row=>{
@@ -1483,7 +1483,7 @@ window.__tmcApplyBarcodeLast3Bold = function(root){
         if (!isSku) return;
         /* קבע תמיד "ברקוד:" – לא "מק״ט" – כדי לאחד התנהגות */
         if (labelEl) labelEl.textContent = 'ברקוד:';
-        
+
         const valueNode = Array.from(line.childNodes).find(n => n.nodeType === Node.TEXT_NODE);
         if (!valueNode) return;
         const rest = valueNode.textContent.trim();
@@ -1496,7 +1496,7 @@ window.__tmcApplyBarcodeLast3Bold = function(root){
         __tmcBoldLast3DigitsInElement(span);
       });
     });
-    
+
     // 3) גלריה: <bdi class="gallery-barcode-bdi">123456789012</bdi>
     root.querySelectorAll('.gallery-barcode-bdi').forEach(bdi=>{
       bdi.setAttribute('dir','ltr'); // bidi-safe
@@ -1587,7 +1587,7 @@ function __tmcNormalizePreviewStylesImpl(td){
     td.style.setProperty('box-sizing', 'border-box', 'important');
     // אל תתייחס ל-<td> עצמו כאל כרטיס (אם הוכנסה המחלקה בטעות)
     td.classList.remove('tmc-preview-card');
-    
+
     // Find the preview row container
     let row = td.querySelector('.tmc-preview-row');
     if (!row) {
@@ -1598,7 +1598,7 @@ function __tmcNormalizePreviewStylesImpl(td){
         row.classList.add('tmc-preview-row');
       }
     }
-    
+
     if (row) {
       // Ensure proper box-sizing and display - batch these operations
       const rowStyles = [
@@ -1608,7 +1608,7 @@ function __tmcNormalizePreviewStylesImpl(td){
         ['align-items', 'flex-start', 'important'],
         ['justify-content', 'flex-start', 'important']
       ];
-      
+
       // Apply all styles at once to minimize reflows
       rowStyles.forEach(([property, value, priority]) => {
         row.style.setProperty(property, value, priority);
@@ -2215,37 +2215,37 @@ function configureCrispSafeMode() {
         if (DEBUG) console.log('[Toolbox] Crisp safe mode configured via $crisp');
         return true;
       }
-      
+
       // Method 2: Set global flag for other scripts
       window.CRISP_SAFE_MODE = true;
-      
+
       // Method 3: Try to configure via window.crisp (alternative API)
       if (window.crisp && typeof window.crisp.push === 'function') {
         window.crisp.push(["safe", true]);
         if (DEBUG) console.log('[Toolbox] Crisp safe mode configured via crisp');
         return true;
       }
-      
+
       return false;
     } catch (e) {
       if (DEBUG) console.warn('[Toolbox] Error configuring Crisp safe mode:', e);
       return false;
     }
   };
-  
+
   // Immediate attempt
   if (setCrispSafe()) return;
-  
+
   // Poll for Crisp with multiple strategies
   let attempts = 0;
   const maxAttempts = 100; // 20 seconds
-  
+
   const pollInterval = setInterval(() => {
     if (setCrispSafe() || ++attempts >= maxAttempts) {
       clearInterval(pollInterval);
     }
   }, 200);
-  
+
   // Also listen for DOM events that might indicate Crisp loading
   const crispLoadEvents = ['DOMContentLoaded', 'load', 'crisp:ready'];
   crispLoadEvents.forEach(event => {
@@ -2259,7 +2259,7 @@ function configureCrispSafeMode() {
 function setupCrossScriptConsoleFiltering() {
   // Set up global flag to help other scripts behave better
   window.LIONWHEEL_PRODUCTION_MODE = !DEBUG;
-  
+
   // Signal to other scripts that they should reduce logging
   window.addEventListener('message', function(event) {
     if (event.data && event.data.type === 'LIONWHEEL_GET_DEBUG_MODE') {
@@ -2269,30 +2269,30 @@ function setupCrossScriptConsoleFiltering() {
       }, event.origin);
     }
   });
-  
+
   // Set up early Crisp configuration to reduce warnings - multiple approaches
   if (!window.$crisp) {
     window.$crisp = [];
   }
-  
+
   // Add safe mode immediately if Crisp array exists
   if (Array.isArray(window.$crisp)) {
     window.$crisp.push(["safe", true]);
   }
-  
+
   // Also set up alternative Crisp APIs
   if (!window.crisp) {
     window.crisp = [];
   }
-  
+
   if (Array.isArray(window.crisp)) {
     window.crisp.push(["safe", true]);
   }
-  
+
   // Set a global flag that Crisp can check
   window.CRISP_SAFE_MODE = true;
   window.USERSCRIPT_SAFE_MODE = true;
-  
+
   if (DEBUG) {
     console.log('[Toolbox] Cross-script coordination initialized');
   }
@@ -2319,12 +2319,12 @@ function tmToast(msg = 'הועתק!', targetElement = null) {
 function withCopying(fn){
   return (...args) => {
     window._tmCopying = true;
-    try { 
+    try {
       const result = fn(...args);
-      
+
       // Fix shipment wrapping after copying (debounced)
       // fixShipmentWrapping(); // Removed for performance
-      
+
       return result;
     }
     finally { setTimeout(()=>{ window._tmCopying = false; }, 150); }
@@ -2339,7 +2339,7 @@ function scheduleHeavy(fn){
   requestAnimationFrame(() => {
     _tmObsScheduled = false;
     fn();
-    
+
     // Fix shipment wrapping after heavy operations (debounced)
     // fixShipmentWrapping(); // Removed for performance
   });
@@ -2352,12 +2352,12 @@ const FIX_SHIPMENT_DEBOUNCE_MS = 100; // Only run once every 100ms
 
 function fixShipmentWrapping() {
   const now = Date.now();
-  
+
   // Clear existing timeout
   if (fixShipmentWrappingTimeout) {
     clearTimeout(fixShipmentWrappingTimeout);
   }
-  
+
   // If we just ran recently, debounce it
   if (now - fixShipmentWrappingLastRun < FIX_SHIPMENT_DEBOUNCE_MS) {
     fixShipmentWrappingTimeout = setTimeout(() => {
@@ -2365,7 +2365,7 @@ function fixShipmentWrapping() {
     }, FIX_SHIPMENT_DEBOUNCE_MS);
     return;
   }
-  
+
   // Run immediately
   fixShipmentWrappingImpl();
 }
@@ -2373,24 +2373,24 @@ function fixShipmentWrapping() {
 function fixShipmentWrappingImpl() {
   try {
     fixShipmentWrappingLastRun = Date.now();
-    
+
     // Use CSS classes instead of inline styles for better performance
     const shipmentCells = document.querySelectorAll('td[data-label="משלוח"]:not(.shipment-no-wrap)');
-    
+
     if (shipmentCells.length === 0) {
       return; // No new cells to fix
     }
-    
+
     shipmentCells.forEach(cell => {
       cell.classList.add('shipment-no-wrap');
-      
+
       // Apply to child elements that don't already have the class
       const childElements = cell.querySelectorAll('*:not(.shipment-no-wrap)');
       childElements.forEach(child => {
         child.classList.add('shipment-no-wrap');
       });
     });
-    
+
     if (window.DEBUG_TOOLBOX) {
       console.log(`[Toolbox] Fixed ${shipmentCells.length} shipment cells (optimized)`);
     }
@@ -2454,12 +2454,12 @@ function setupBlockedScriptObserver() {
   // List of blocked script patterns
   const blockedPatterns = [
     'rollbar.min.js',
-    'beacon.min.js', 
+    'beacon.min.js',
     'fbevents.js',
     'clarity.ms',
     'google-analytics.com'
   ];
-  
+
   // MutationObserver to detect and neutralize blocked scripts after they're added
   const observer = new MutationObserver((mutations) => {
     mutations.forEach((mutation) => {
@@ -2477,13 +2477,13 @@ function setupBlockedScriptObserver() {
       });
     });
   });
-  
+
   // Start observing
   observer.observe(document.documentElement, {
     childList: true,
     subtree: true
   });
-  
+
   if (DEBUG) console.log('[Toolbox] Blocked script observer initialized');
 }
 
@@ -2561,7 +2561,13 @@ setupBlockedScriptObserver();
         }
 
         .ready-highlight .tab-content,
-        .ready-highlight .tab-pane {
+        .ready-highlight .tab-pane,
+        .offcanvas.ready-highlight,
+        .card.ready-highlight,
+        .offcanvas.ready-highlight .tab-content,
+        .offcanvas.ready-highlight .tab-pane,
+        .card.ready-highlight .tab-content,
+        .card.ready-highlight .tab-pane {
             background-color: #f0fff4 !important;
         }
 
@@ -2604,16 +2610,102 @@ setupBlockedScriptObserver();
             background-color: #bbf7d0 !important;
         }
 
+        /* ===== Coordination (Teum) – Purple (strong) ===== */
+        /* סגול – כיסוי מלא באותו צבע כמו בירוק */
+        .offcanvas.coord-highlight,
+        .offcanvas.coord-highlight .tab-content,
+        .offcanvas.coord-highlight .tab-pane,
+        .card.coord-highlight,
+        .card.coord-highlight .tab-content,
+        .card.coord-highlight .tab-pane {
+          background-color: #E3D1FD !important;
+        }
+        .coord-highlight a.coord-highlight {
+          background-color: #f3e8ff !important; /* purple-100 */
+          color: #6b21a8 !important;            /* purple-800 – חד יותר */
+          padding: 2px 4px !important;
+          border-radius: 3px !important;
+          text-decoration: none !important;
+        }
+        .coord-highlight a.coord-highlight:hover {
+          background-color: #E3D1FD !important; /* purple */
+          color: #581c87 !important;            /* purple-900 */
+        }
+        .coord-highlight span.coord-highlight,
+        .coord-highlight div.coord-highlight,
+        .coord-highlight p.coord-highlight {
+          background-color: #f3e8ff !important;
+          color: #6b21a8 !important;
+          padding: 1px 3px !important;
+          border-radius: 2px !important;
+          font-weight: bold !important;
+        }
+        /* Table row purple highlighting */
+        tr.coord-row-highlight {
+          background-color: #E3D1FD !important; /* purple – בולט יותר */
+        }
+
+        /* ===== Coordination + Ready (50/50 top→bottom, hard stop) ===== */
+        /* חצי–חצי (למעלה סגול/למטה ירוק) – אותו גרדיאנט גם בפנים וגם בקונטיינר */
+        .offcanvas.coord-ready-highlight,
+        .card.coord-ready-highlight,
+        .offcanvas.coord-ready-highlight .tab-content,
+        .card.coord-ready-highlight .tab-content,
+        .offcanvas.coord-ready-highlight .tab-pane,
+        .card.coord-ready-highlight .tab-pane {
+          background-image: linear-gradient(
+            to bottom,
+            #E3D1FD 0%, #E3D1FD 50%,
+            #f0fff4 50%, #f0fff4 100%
+          ) !important;
+          background-color: transparent !important;
+          background-repeat: no-repeat !important;
+        }
+        /* Row: חצי סגול (למעלה) חצי ירוק (למטה), קו חד */
+        tr.coord-ready-row-highlight {
+          background-image: linear-gradient(
+            to bottom,
+            #f5d0fe 0 50%,
+            #dcfce7 50% 100%
+          ) !important;
+          background-color: transparent !important;
+          background-repeat: no-repeat !important;
+          background-attachment: local !important;
+        }
+
         /* Font Awesome copy icon styling */
-        .copy-icon > i.fa-light.fa-clone { 
-            font-size: 0.95em; 
-            line-height: 1; 
+        .copy-icon > i.fa-light.fa-clone {
+            font-size: 0.95em;
+            line-height: 1;
             vertical-align: middle;
             color: #3699ff;
         }
         .copy-icon { cursor: pointer; }
+
+        /* ==== Full-surface highlights for panel & full-page ==== */
+        .offcanvas.ready-highlight, .card.ready-highlight {
+          background-color: #f0fff4 !important;
+        }
+        .offcanvas.merlog-highlight, .card.merlog-highlight {
+          background-color: #fff5f5 !important;
+          border: 2px solid #fecaca !important;
+        }
+
+        /* ליתר ביטחון: להסיר כל מסגרת/צל ב־card סגול/חצי־חצי */
+        .card.coord-highlight,
+        .card.coord-ready-highlight {
+          border: none !important;
+          box-shadow: none !important;
+          outline: none !important;
+        }
+        .card.coord-highlight::before,
+        .card.coord-highlight::after,
+        .card.coord-ready-highlight::before,
+        .card.coord-ready-highlight::after {
+          content: none !important;
+        }
     `);
-    
+
     // Custom PNG cursor for copy-enabled areas (hotspot 0 0). Force on descendants to beat more specific rules.
     GM_addStyle(`
       .copy-enabled,
@@ -2624,7 +2716,7 @@ setupBlockedScriptObserver();
         cursor: url("https://raw.githubusercontent.com/AdamLee9186/anipet/957e3a08c7d518fcc5c469a2877136139ad0519f/cursor_copy_32.png") 0 0, copy !important;
       }
     `);
-    
+
     // ---[ Pick Modal: force 64×64 thumb + spacing, override inline ]---
     GM_addStyle(`
       /* 1) Enlarge the WRAP (the 50×50 div before the <img>) */
@@ -2707,7 +2799,7 @@ setupBlockedScriptObserver();
         background: transparent !important;
       }
     `);
-    
+
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
     const SCRIPT_VERSION = "13.8.30"; // Match @version
@@ -2734,12 +2826,12 @@ setupBlockedScriptObserver();
     function domBatch(readOperations, writeOperations) {
       // Execute all read operations first
       const readResults = readOperations.map(op => typeof op === 'function' ? op() : op);
-      
+
       // Then execute all write operations
       writeOperations.forEach(op => {
         if (typeof op === 'function') op();
       });
-      
+
       return readResults;
     }
     }
@@ -2860,13 +2952,13 @@ setupBlockedScriptObserver();
       function optimizeImages(container) {
         const hasHelper = typeof window.getOptimizedImageUrl === 'function';
         const imgs = container.querySelectorAll('img');
-        
+
         // TM: Batch read operations first
         const readOps = [
           () => container.clientWidth || 420
         ];
         const [containerWidth] = domBatch(readOps, []);
-        
+
         // TM: Batch write operations
         const writeOps = [];
         imgs.forEach((img, i) => {
@@ -2905,7 +2997,7 @@ setupBlockedScriptObserver();
             }
           });
         });
-        
+
         domBatch([], writeOps);
       }
 
@@ -2960,13 +3052,13 @@ setupBlockedScriptObserver();
         maxConcurrent: 1, // Only 1 prefetch at a time
         active: new Set()
       };
-      
+
       // Prefetch "אמיתי" — על hover/viewport (respects cache/backoff/dedupe)
       function prefetch(taskId) {
         if (getCached(taskId)) return; // יש קאש תקף
         if (PREFETCH_BUDGET.active.has(taskId)) return; // already prefetching
         if (PREFETCH_BUDGET.active.size >= PREFETCH_BUDGET.maxConcurrent) return; // budget full
-        
+
         PREFETCH_BUDGET.active.add(taskId);
         fetchPanelView(taskId, { prefetch: true }).finally(() => {
           PREFETCH_BUDGET.active.delete(taskId);
@@ -3133,10 +3225,10 @@ setupBlockedScriptObserver();
     function safeExecute(func, fallback = null) {
         try {
             const result = func();
-            
+
             // Fix shipment wrapping after safe execution
             // fixShipmentWrapping(); // Removed for performance - will be called by main logic
-            
+
             return result;
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error in ${func.name || 'anonymous'}:`, error);
@@ -3218,7 +3310,7 @@ setupBlockedScriptObserver();
         } catch (error) {
             return 'error getting path';
         }
-        
+
         // Fix shipment wrapping after getting element path
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3243,10 +3335,10 @@ setupBlockedScriptObserver();
         const handler = (e) => { e.preventDefault(); e.stopPropagation(); onClick?.(e); };
         wrap.addEventListener('click', handler);
         wrap.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') handler(e); }, { passive: true });
-        
+
         // Fix shipment wrapping after building copy SVG icon
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
-        
+
         return wrap;
     }
 
@@ -3275,10 +3367,10 @@ setupBlockedScriptObserver();
             const jsonString = JSON.stringify(data);
             // Use encodeURIComponent to handle special characters
             const result = encodeURIComponent(jsonString);
-            
+
             // Fix shipment wrapping after compressing cache
             // fixShipmentWrapping(); // Removed for performance - will be called by main logic
-            
+
             return result;
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error compressing cache:`, error);
@@ -3292,10 +3384,10 @@ setupBlockedScriptObserver();
             // Decode the URI component first
             const decoded = decodeURIComponent(compressed);
             const result = JSON.parse(decoded);
-            
+
             // Fix shipment wrapping after decompressing cache
             // fixShipmentWrapping(); // Removed for performance - will be called by main logic
-            
+
             return result;
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error decompressing cache:`, error);
@@ -3320,7 +3412,7 @@ setupBlockedScriptObserver();
             const savedSettings = await GM_getValue(SETTINGS_KEY, {});
             settings = { ...defaultSettings, ...savedSettings };
             updateBodyClasses();
-            
+
             // Fix shipment wrapping after loading settings
             // fixShipmentWrapping(); // Removed for performance - will be called by main logic
         } catch (error) {
@@ -3338,7 +3430,7 @@ setupBlockedScriptObserver();
         if(settings && settings.hideColumns) {
             document.body.classList.add('tampermonkey-hide-columns-enabled');
         }
-        
+
         // Fix shipment wrapping after updating body classes
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3530,7 +3622,7 @@ setupBlockedScriptObserver();
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error registering menu commands:`, error);
         }
-        
+
         // Fix shipment wrapping after registering menu commands
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3583,7 +3675,7 @@ setupBlockedScriptObserver();
         } finally {
             window.productDataLoading = false;
             if (callback) callback();
-            
+
             // Clear done flags so rows can upgrade to clickable links after catalog loads
             document.querySelectorAll('tr[data-tm-links-done]').forEach(tr => {
                 tr.removeAttribute('data-tm-links-done');
@@ -3591,7 +3683,7 @@ setupBlockedScriptObserver();
             });
             setTimeout(() => addClickableLinksToAllTables(true), 0);
             setTimeout(() => addClickableLinksToAllTables(true), 200);
-            
+
             // Fix shipment wrapping after loading product data
             // fixShipmentWrapping(); // Removed for performance - will be called by main logic
         }
@@ -3633,7 +3725,7 @@ setupBlockedScriptObserver();
             console.error(`[${SCRIPT_NAME}] Error processing image CSV text:`, error);
             return [];
         }
-        
+
         // Fix shipment wrapping after processing image CSV text
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3692,7 +3784,7 @@ setupBlockedScriptObserver();
             updateStatus('שגיאה בטעינת קובץ הברקודים.', 'red');
             if (callback) callback();
         }
-        
+
         // Fix shipment wrapping after loading barcode CSV
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3707,7 +3799,7 @@ setupBlockedScriptObserver();
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error processing barcode data:`, error);
         }
-        
+
         // Fix shipment wrapping after processing barcode data
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3767,7 +3859,7 @@ setupBlockedScriptObserver();
             console.error(`[${SCRIPT_NAME}] Error parsing barcode CSV:`, error);
             return null;
         }
-        
+
         // Fix shipment wrapping after parsing barcode CSV
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3782,7 +3874,7 @@ setupBlockedScriptObserver();
             console.error(`[${SCRIPT_NAME}] Error normalizing SKU:`, error);
             return '';
         }
-        
+
         // Fix shipment wrapping after normalizing SKU
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3817,7 +3909,7 @@ setupBlockedScriptObserver();
             console.error(`[${SCRIPT_NAME}] Error finding image match:`, error);
             return null;
         }
-        
+
         // Fix shipment wrapping after finding image match
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3870,7 +3962,7 @@ setupBlockedScriptObserver();
             console.error(`[${SCRIPT_NAME}] Error finding barcode:`, error);
             return null;
         }
-        
+
         // Fix shipment wrapping after finding barcode
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3900,7 +3992,7 @@ setupBlockedScriptObserver();
             console.warn(`[${SCRIPT_NAME}] ⚠️ Error processing thumbnail URL, returning original:`, thumbnailUrl, e);
             return thumbnailUrl;
         }
-        
+
         // Fix shipment wrapping after getting full size image URL
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -3970,7 +4062,7 @@ setupBlockedScriptObserver();
             console.warn(`[${SCRIPT_NAME}] ⚠️ Error optimizing image URL, returning original:`, originalUrl, e);
             return originalUrl;
         }
-        
+
         // Fix shipment wrapping after optimizing image URL
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -4013,7 +4105,7 @@ setupBlockedScriptObserver();
             console.error(`[${SCRIPT_NAME}] Error finding product table:`, error);
             return null;
         }
-        
+
         // Fix shipment wrapping after finding product table in scope
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -4034,7 +4126,7 @@ setupBlockedScriptObserver();
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error creating status notifier:`, error);
         }
-        
+
         // Fix shipment wrapping after creating status notifier
         // fixShipmentWrapping(); // Removed for performance - will be called by main logic
     }
@@ -4056,7 +4148,7 @@ setupBlockedScriptObserver();
   } catch (error) {
     console.error(`[${SCRIPT_NAME}] Error updating status:`, error);
   }
-  
+
   // Fix shipment wrapping after updating status
   // fixShipmentWrapping(); // Removed for performance - will be called by main logic
 }
@@ -4631,7 +4723,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         nameWrap.appendChild(nameBdi);
         nameWrap.appendChild(createCopyIcon(item.productName || ''));
         productNameElement.appendChild(nameWrap);
-        
+
         /* === FIX: אל תסמן תאי גלרייה — הם לא תאי טבלה === */
         // productNameElement is not a table cell, so no need for tm-flex-cell
         const originalSku = item.sku;
@@ -4647,7 +4739,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         skuWrap.appendChild(skuBdi);
         skuWrap.appendChild(createCopyIcon(skuBdi.textContent));
         skuElement.appendChild(skuWrap);
-        
+
         /* === FIX: אל תסמן תאי גלרייה — הם לא תאי טבלה === */
         // skuElement is not a table cell, so no need for tm-flex-cell
 
@@ -5017,7 +5109,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error showing gallery overlay:`, error);
     }
-    
+
     // Fix shipment wrapping after showing gallery overlay
     // fixShipmentWrapping(); // Removed for performance
 }
@@ -5037,15 +5129,15 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
             const img = document.createElement('img');
             img.src = match.image; img.alt = `תמונה עבור ${nameText || 'מוצר'}`; img.className = 'tampermonkey-sku-image'; img.title = 'לחץ לפתיחת הגלריה';
-            Object.assign(img.style, { 
-                width: '100%', 
-                height: '100%', 
-                objectFit: 'contain', 
+            Object.assign(img.style, {
+                width: '100%',
+                height: '100%',
+                objectFit: 'contain',
                 objectPosition: 'center',
-                borderRadius: '4px', 
-                cursor: 'pointer', 
+                borderRadius: '4px',
+                cursor: 'pointer',
                 display: 'block',
-                ...styleObject 
+                ...styleObject
             });
             img.onerror = function() { this.src = PLACEHOLDER_IMG_URL; this.onclick = null; };
             img.onclick = (e) => {
@@ -5057,7 +5149,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 // TM: robust target for composed events & non-Element targets
                 const raw = e.composedPath ? e.composedPath()[0] : e.target;
                 const targetEl = raw && raw.nodeType === 1 ? raw : null; // 1 = ELEMENT_NODE
-                
+
                 // First, try to find if we're in a modal
                 const modal = targetEl ? targetEl.closest('.modal') : null;
                 if (modal) {
@@ -5094,7 +5186,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             console.error(`[${SCRIPT_NAME}] Error creating image element:`, error);
             return null;
         }
-        
+
         // Fix shipment wrapping after creating image element
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -5259,7 +5351,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             console.error(`[${SCRIPT_NAME}] Error extracting gallery data:`, error);
             return [];
         }
-        
+
         // Fix shipment wrapping after extracting gallery data
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -5285,7 +5377,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             const clickedIndex = galleryItems.findIndex(item => normalizeSku(item.sku) === normalizeSku(sku));
             showGalleryOverlay(galleryItems, Math.max(0, clickedIndex));
         };
-        
+
         // Fix shipment wrapping after attaching gallery opener
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -5459,7 +5551,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting images and links:`, error);
         }
-        
+
         // Fix shipment wrapping after injecting images
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -5576,10 +5668,10 @@ function showGalleryOverlay(galleryItems, startIndex) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting images in regular tables:`, error);
         }
-        
+
         // Fix shipment wrapping after injecting images in regular tables
         // fixShipmentWrapping(); // Removed for performance
-        
+
         // Fix shipment wrapping after injecting images in regular tables
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -5668,7 +5760,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
 
             row.setAttribute('data-image-processed', 'true');
         });
-        
+
         // Fix shipment wrapping after injecting images in order item rows
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -5851,7 +5943,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error replacing barcodes in views:`, error);
         }
-        
+
         // Fix shipment wrapping after replacing barcodes
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -5903,8 +5995,8 @@ function showGalleryOverlay(galleryItems, startIndex) {
             // Skip adding copy icons for tables that already have proper copy functionality
             const parentTable = el.closest('table[data-columns-tagged="true"]');
             const hasProperCopyWrap = parentTd && parentTd.querySelector('.tampermonkey-copy-wrap');
-            
-            if (el.tagName !== 'INPUT' && parentTd && !parentTd.querySelector('.copy-icon') && 
+
+            if (el.tagName !== 'INPUT' && parentTd && !parentTd.querySelector('.copy-icon') &&
                 !parentTable && !hasProperCopyWrap) {
                 const barcodeCopyIcon = createCopyIcon(barcode);
                 barcodeCopyIcon.style.marginRight = '4px';
@@ -6437,11 +6529,11 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting preview functionality:`, error);
         }
-        
+
         // הפעלת Prefetch אוטומטי (hover + viewport)
         TM_PREVIEW.wireHoverPrefetch(document);
         TM_PREVIEW.wireViewportPrefetch(document);
-        
+
         // Fix shipment wrapping after injecting preview functionality
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -6482,7 +6574,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error adding responsive data attributes:`, error);
         }
-        
+
         // Fix shipment wrapping after adding responsive data attributes
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -6557,7 +6649,7 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error tagging columns for hiding:`, error);
         }
-        
+
         // Fix shipment wrapping after tagging columns for hiding
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -6625,7 +6717,7 @@ function injectWhatsAppButtons() {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting WhatsApp buttons:`, error);
         }
-        
+
         // Fix shipment wrapping after injecting WhatsApp buttons
         // fixShipmentWrapping(); // Removed for performance
 }
@@ -6667,7 +6759,7 @@ function initializeSidePanelResizeObserver() {
       function applyGapVars() {
         const gap = measurePanelWidth();
         const screenWidth = window.innerWidth;
-        
+
         // Much smaller buffer to prevent premature breaking
         let dynamicBuffer = 20; // Reduced from 50
         if (screenWidth >= 1600) {
@@ -6677,17 +6769,17 @@ function initializeSidePanelResizeObserver() {
         } else if (screenWidth >= 768) {
           dynamicBuffer = 20; // Reduced from 40
         }
-        
+
         root.style.setProperty('--map-gap', `${gap}px`);
         root.style.setProperty('--map-gap-buffered', `${gap + dynamicBuffer}px`);
       }
 
       // Initial apply
       applyGapVars();
-      
+
       // Also apply after a short delay to ensure all elements are loaded
       setTimeout(applyGapVars, 500);
-      
+
       // Apply again after DOM is fully loaded
       if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', () => {
@@ -6699,7 +6791,7 @@ function initializeSidePanelResizeObserver() {
 
       // Re-apply on window resize
       window.addEventListener('resize', applyGapVars, { passive: true });
-      
+
       // Also re-apply when screen orientation changes
       window.addEventListener('orientationchange', () => {
         setTimeout(applyGapVars, 100); // Small delay to ensure orientation change is complete
@@ -6718,11 +6810,11 @@ function initializeSidePanelResizeObserver() {
       if (document.body) {
         mo.observe(document.body, { childList: true, subtree: true });
       }
-      
+
       // Monitor for map panel visibility changes
       const mapObserver = new MutationObserver((mutations) => {
         mutations.forEach((mutation) => {
-          if (mutation.type === 'attributes' && 
+          if (mutation.type === 'attributes' &&
               (mutation.attributeName === 'class' || mutation.attributeName === 'style')) {
             const target = mutation.target;
             if (target.matches && target.matches('.offcanvas, .offcanvas-right, .offcanvas-custom')) {
@@ -6731,17 +6823,17 @@ function initializeSidePanelResizeObserver() {
           }
         });
       });
-      
+
       // Observe the map panel for class/style changes
       const mapPanel = document.querySelector(PANEL_SELECTOR) ||
                       document.getElementById('desktop-map-container')?.closest('.offcanvas');
       if (mapPanel) {
-        mapObserver.observe(mapPanel, { 
-          attributes: true, 
-          attributeFilter: ['class', 'style'] 
+        mapObserver.observe(mapPanel, {
+          attributes: true,
+          attributeFilter: ['class', 'style']
         });
       }
-      
+
       // Monitor for map toggle buttons
       document.addEventListener('click', (e) => {
         const target = e.target;
@@ -6756,11 +6848,11 @@ function initializeSidePanelResizeObserver() {
           setTimeout(applyGapVars, 100); // Delay to allow offcanvas to open/close
         }
       });
-      
+
       // Monitor for offcanvas events
       document.addEventListener('shown.bs.offcanvas', applyGapVars);
       document.addEventListener('hidden.bs.offcanvas', applyGapVars);
-      
+
       // Monitor for side panel events to add links and copy icons
       document.addEventListener('shown.bs.offcanvas', () => {
         setTimeout(() => addClickableLinksToAllTables(), 100);
@@ -6768,7 +6860,7 @@ function initializeSidePanelResizeObserver() {
       document.addEventListener('shown.bs.modal', () => {
         setTimeout(() => addClickableLinksToAllTables(), 100);
       });
-      
+
       // Periodic check for map panel changes (fallback) - using idle callback for better performance
       const debouncedPanelCheck = debounce(() => {
         scheduleIdleWork(() => {
@@ -6779,14 +6871,14 @@ function initializeSidePanelResizeObserver() {
           }
         });
       }, 2000);
-      
+
       // Start periodic checking
       const startPeriodicCheck = () => {
         debouncedPanelCheck();
         setTimeout(startPeriodicCheck, 2000);
       };
       startPeriodicCheck();
-      
+
       // Debug logging (only in development)
       if (window.DEBUG_TOOLBOX) {
         console.log('[Toolbox] Side panel resize observer initialized');
@@ -6796,7 +6888,7 @@ function initializeSidePanelResizeObserver() {
   } catch (err) {
     console.error('[Toolbox] Error initializing side panel ResizeObserver:', err);
   }
-  
+
   // Fix shipment wrapping after initializing side panel resize observer
   // fixShipmentWrapping(); // Removed for performance - will be called by main logic
 }
@@ -7968,9 +8060,17 @@ table td.merlog-highlight:hover:not(.preview-cell) {
 }
 
 /* Merlog Panel View Highlighting - Solid background */
-.panel_view.merlog-highlight {
+.panel_view.merlog-highlight,
+.offcanvas.merlog-highlight,
+.card.merlog-highlight {
     background-color: #fff5f5 !important;
     border: 2px solid #fecaca !important;
+}
+.offcanvas.merlog-highlight .tab-content,
+.offcanvas.merlog-highlight .tab-pane,
+.card.merlog-highlight .tab-content,
+.card.merlog-highlight .tab-pane {
+    background-color: #fff5f5 !important;
 }
 
 /* Merlog Panel View Row Highlighting - Darker red for specific rows */
@@ -8109,7 +8209,7 @@ tr[id^="preview-for-"] .font-weight-bold{
   tr[id^="preview-for-"] > td > div[style*="display: flex"] {
     max-width: calc(100% - var(--map-gap-buffered, 0px) - 30px) !important;
   }
-  
+
   tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
     flex: 1 1 320px !important;
     max-width: none !important;
@@ -8120,7 +8220,7 @@ tr[id^="preview-for-"] .font-weight-bold{
   tr[id^="preview-for-"] > td > div[style*="display: flex"] {
     max-width: calc(100% - var(--map-gap-buffered, 0px) - 40px) !important;
   }
-  
+
   tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
     flex: 1 1 350px !important;
     max-width: none !important;
@@ -8170,7 +8270,7 @@ tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
   tr[id^="preview-for-"] > td > div[style*="display: flex"] {
     max-width: calc(100% - var(--map-gap-buffered, 0px) - 50px) !important;
   }
-  
+
   tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
     flex: 1 1 380px !important;
     max-width: none !important;
@@ -8190,13 +8290,13 @@ tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
     width: calc(100% - var(--map-gap-buffered, 0px)) !important;
     justify-content: space-between !important;
   }
-  
+
   /* Ensure cards distribute evenly */
   tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
     flex: 1 1 auto !important;
     max-width: calc((100% - 16px) / 3) !important; /* Account for gaps */
   }
-  
+
   /* When map is wide, allow more cards per row */
   @media (min-width: 768px) {
     tr[id^="preview-for-"] > td > div[style*="display: flex"] > .d-flex {
@@ -8237,7 +8337,7 @@ tr[id^="preview-for-"] .font-weight-bold {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error injecting global styles:`, error);
         }
-        
+
         // Fix shipment wrapping after injecting global styles
         // fixShipmentWrapping(); // Removed for performance
 }
@@ -8267,7 +8367,7 @@ function enableCopyStyling(el) {
             }
         });
     }
-    
+
     // Fix shipment wrapping after enabling copy styling
     // fixShipmentWrapping(); // Removed for performance
 }
@@ -8342,7 +8442,7 @@ function prepareCopyElements() {
             if (parentCell && parentCell.querySelector('.copy-icon')) {
                 return;
             }
-            
+
             // Enable copy styling for the element and its text children
             enableCopyStyling(el);
         });
@@ -8352,7 +8452,7 @@ function prepareCopyElements() {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error preparing copy elements:`, error);
     }
-    
+
     // Fix shipment wrapping after preparing copy elements
     // fixShipmentWrapping(); // Removed for performance
 }
@@ -8464,7 +8564,7 @@ function prepareCopyElements() {
         } catch (error) {
             console.error(`[${SCRIPT_NAME}] Error highlighting Merlog rows:`, error);
         }
-        
+
         // Fix shipment wrapping after highlighting Merlog rows
         // fixShipmentWrapping(); // Removed for performance
     }
@@ -8493,18 +8593,22 @@ function prepareCopyElements() {
     let readyFetchInFlight = 0;
 
     // Advanced ephemeral cache system
-    const rowColorCache = new Map(); // taskId -> { color: 'green'|'red'|null, source: 'dom'|'panel', ts: number }
-    const TTL = { green: 20*60e3, red: 20*60e3, none: 3*60e3 }; // 20min green/red, 3min none
+    const rowColorCache = new Map(); // taskId -> { color: 'green'|'red'|'purple'|'purplegreen'|null, source: 'dom'|'panel', ts: number }
+    const TTL = { green: 20*60e3, red: 20*60e3, purple: 20*60e3, purplegreen: 20*60e3, none: 3*60e3 }; // 20min
     const MAX_CACHE_SIZE = 500;
 
     function cacheGet(taskId) {
         const e = rowColorCache.get(taskId);
         if (!e) return null;
         const age = Date.now() - e.ts;
-        const max = e.color === 'green' ? TTL.green : e.color === 'red' ? TTL.red : TTL.none;
-        if (age > max) { 
-            rowColorCache.delete(taskId); 
-            return null; 
+        const max = e.color === 'green' ? TTL.green
+                 : e.color === 'red' ? TTL.red
+                 : e.color === 'purple' ? TTL.purple
+                 : e.color === 'purplegreen' ? TTL.purplegreen
+                 : TTL.none;
+        if (age > max) {
+            rowColorCache.delete(taskId);
+            return null;
         }
         return e;
     }
@@ -8573,8 +8677,8 @@ function prepareCopyElements() {
         });
 
         // Observe table body for changes
-        const table = document.querySelector('#operator-store-visits-table') || 
-                     document.querySelector('#tasks-table') || 
+        const table = document.querySelector('#operator-store-visits-table') ||
+                     document.querySelector('#tasks-table') ||
                      document.querySelector('table');
         if (table) {
             const tbody = table.querySelector('tbody');
@@ -8590,9 +8694,9 @@ function prepareCopyElements() {
     }
 
     function cancelReadyFetches() {
-        try { 
+        try {
             if (readyFetchAbort && !readyFetchAbort.signal.aborted) {
-                readyFetchAbort.abort(); 
+                readyFetchAbort.abort();
             }
         } catch (err) {
             // Silently handle abort errors - they're expected when cancelling requests
@@ -8636,25 +8740,32 @@ function prepareCopyElements() {
             const panelViewHtml = await response.text();
             const doc = new DOMParser().parseFromString(panelViewHtml, 'text/html');
 
-            // Look for "מוכן" in likely notes containers (same logic as before)
+            // Look for "מוכן" and coordination in likely notes containers
             const notesElements = doc.querySelectorAll('.notes, [class*="note"], [class*="comment"], .hover-copy, [data-tm-notes], .panel_view');
-            let foundReady = false;
+            let foundReady = false, foundCoord = false;
+            const coordPatterns = ['לתאם','לקבוע','תיאום','תאום','תיאם','קבע','קבענו','קבעתי','נקבע','נקבעה','נקבעו','תואם','מתואם','מתואמת','מתואמים','נתאם','לתיאום הגעה','תיאום הגעה','תאום הגעה','נסגור שעה','סגירת שעה'];
             for (const el of notesElements) {
-                if (el && el.textContent && el.textContent.includes('מוכן')) {
-                    foundReady = true;
-                    break;
-                }
+                const t = el && el.textContent || '';
+                if (t.includes('מוכן')) foundReady = true;
+                if (coordPatterns.some(p => t.includes(p))) foundCoord = true;
             }
 
             // Update cache and highlight
-            if (foundReady) {
+            if (foundReady && foundCoord) {
+                row.classList.add('coord-ready-row-highlight'); // split
+                cacheSet(taskId, 'purplegreen', 'panel');
+                return true;
+            } else if (foundCoord) {
+                row.classList.add('coord-row-highlight');
+                cacheSet(taskId, 'purple', 'panel');
+                return true;
+            } else if (foundReady) {
                 row.classList.add('ready-row-highlight');
                 cacheSet(taskId, 'green', 'panel');
                 return true;
-            } else {
-                cacheSet(taskId, null, 'panel');
-                return false;
             }
+            cacheSet(taskId, null, 'panel');
+            return false;
         } catch (err) {
             // Handle AbortError gracefully - it's expected when cancelling requests
             if (err.name === 'AbortError') {
@@ -8728,7 +8839,7 @@ function prepareCopyElements() {
                 totalRows++;
 
                 // Skip rows that already have highlighting
-                if (row.classList.contains('ready-row-highlight')) {
+                if (row.classList.contains('ready-row-highlight') || row.classList.contains('coord-row-highlight') || row.classList.contains('coord-ready-row-highlight')) {
                     continue; // Skip to next row since we already highlighted it
                 }
 
@@ -8738,28 +8849,50 @@ function prepareCopyElements() {
 
                 // Check cache first (prefer DOM over cached panel results)
                 const cached = cacheGet(taskId);
-                if (cached && cached.color === 'green') {
-                        // Highlight immediately if cached as ready
+                if (cached) {
+                    if (cached.color === 'green') {
                         row.classList.add('ready-row-highlight');
                         highlightedCount++;
-                    continue;
+                        continue;
+                    } else if (cached.color === 'purple') {
+                        row.classList.add('coord-row-highlight');
+                        highlightedCount++;
+                        continue;
+                    } else if (cached.color === 'purplegreen') {
+                        row.classList.add('coord-ready-row-highlight'); // split
+                        highlightedCount++;
+                        continue;
+                    }
                 }
 
-                // First, check for any tooltip/title in the row that includes "מוכן" (DOM source)
+                // First, check for any tooltip/title in the row that includes "מוכן" (ready) or coordination (DOM source)
                 let foundInTooltip = false;
+                let seenReady = false, seenCoord = false;
                 const tooltipCells = row.querySelectorAll('[title], [data-original-title]');
+                const coordPatterns = ['לתאם','לקבוע','תיאום','תאום','תיאם','קבע','קבענו','קבעתי','נקבע','נקבעה','נקבעו','תואם','מתואם','מתואמת','מתואמים','נתאם','לתיאום הגעה','תיאום הגעה','תאום הגעה','נסגור שעה','סגירת שעה'];
 
                 for (const cell of tooltipCells) {
                     const title = cell.getAttribute('title') || cell.getAttribute('data-original-title') || '';
-                    if (title && title.includes('מוכן')) {
-                        // Highlight immediately when found
-                        row.classList.add('ready-row-highlight');
-                        highlightedCount++;
-                        foundInTooltip = true;
-                        // Cache with DOM source (preferred over panel)
-                        cacheSet(taskId, 'green', 'dom');
-                        break; // Stop searching once found
-                    }
+                    if (!title) continue;
+                    if (title.includes('מוכן')) seenReady = true;
+                    if (coordPatterns.some(p => title.includes(p))) seenCoord = true;
+                }
+
+                if (seenReady && seenCoord) {
+                    row.classList.add('coord-ready-row-highlight');
+                    highlightedCount++;
+                    foundInTooltip = true;
+                    cacheSet(taskId, 'purplegreen', 'dom');
+                } else if (seenReady) {
+                    row.classList.add('ready-row-highlight');
+                    highlightedCount++;
+                    foundInTooltip = true;
+                    cacheSet(taskId, 'green', 'dom');
+                } else if (seenCoord) {
+                    row.classList.add('coord-row-highlight');
+                    highlightedCount++;
+                    foundInTooltip = true;
+                    cacheSet(taskId, 'purple', 'dom');
                 }
 
                 if (foundInTooltip) {
@@ -8792,94 +8925,101 @@ function prepareCopyElements() {
 
     // ---< Merlog Panel View Highlighting >---
     function highlightMerlogPanelView() {
-        try {
-            if (!settings || !settings.highlightMerlog) return;
+      try {
+        if (!settings || !settings.highlightMerlog) return;
 
-            // Always prefer the specific task panel by id
-            let panelView = document.querySelector('#task_offcanvas');
-            if (!panelView) {
-                panelView = document.querySelector('.panel_view');
-            }
-            if (!panelView) {
-                panelView = document.querySelector('.offcanvas');
-            }
-            if (!panelView) return;
+        // Prefer a VISIBLE offcanvas; otherwise the task card that contains notes
+        let panelView =
+          document.querySelector('.offcanvas.offcanvas-custom-right.show, .offcanvas.show') ||
+          document.querySelector('.card:has(.row[data-name="notes"])') ||
+          document.querySelector('#task_offcanvas') ||
+          document.querySelector('.panel_view') ||
+          document.querySelector('.offcanvas.offcanvas-custom-right') ||
+          document.querySelector('.offcanvas') ||
+          document.querySelector('.card');
 
-            // Clear all previous highlighting from this panel
-            panelView.classList.remove('merlog-highlight', 'merlog-row-highlight', 'ready-highlight');
+        if (!panelView) return;
 
-            // Remove highlighting from all child elements
-            panelView.querySelectorAll('.merlog-highlight, .ready-highlight').forEach(el => {
-                el.classList.remove('merlog-highlight', 'ready-highlight');
-            });
+        // ---------- Signals ----------
+        const panelText = (panelView.textContent || '').replace(/\s+/g, ' ');
 
-            // Check for specific Merlog indicators
-            const panelText = panelView.textContent || panelView.innerText || '';
+        // Notes – prefer the explicit notes cell if present
+        const notesNode =
+          panelView.querySelector('.row[data-name="notes"] .hover-copy') ||
+          panelView.querySelector('.row[data-name="notes"]') ||
+          null;
+        const notesText = (notesNode ? notesNode.textContent : '').replace(/\s+/g, ' ');
 
-            // ONLY highlight if we have SPECIFIC Merlog indicators
-            const merlogPatterns = [
-              'שיגור למרלוג',
-              "מרלוג צור יגאל",
-              "מרלוג צ'יטה"
-            ];
-            let shouldHighlight = false;
+        // במסך מלא: מזהים אך ורק מתוך ההערות כדי למנוע False Positive (למשל "נקבע" בשדות אחרים)
+        const isFullPageCard = panelView.classList.contains('card');
+        const sourceForReady  = isFullPageCard ? notesText : (notesText + ' ' + panelText);
+        const sourceForCoord  = isFullPageCard ? notesText : (notesText + ' ' + panelText);
 
-            // בדיקת נהג בפועל
-            const driverSelect = panelView.querySelector('.select2-selection__rendered');
-            if (driverSelect && merlogPatterns.some(pattern => driverSelect.textContent.trim().includes(pattern))) {
-              shouldHighlight = true;
-            }
+        const readyFound = sourceForReady.includes('מוכן');
+        const COORD_TERMS = [
+          'לתאם','תיאום','תיאם','תואם','מתואם','מתואמת','מתואמים',
+          'קבע','קביעת', /* זה יזוהה רק אם מופיע בהערות במסך מלא */
+          'נקבע','נקבעה','נקבעו',
+          'לתאם הגעה','תיאום הגעה','לתאם מסירה','תיאום מסירה'
+        ];
+        const coordFound = COORD_TERMS.some(t => sourceForCoord.includes(t));
 
-            // בדיקת select אמיתי (אם יש)
-            const selectElement = panelView.querySelector('select.visit-drivers-select2');
-            if (selectElement) {
-              const selectedOption = selectElement.options[selectElement.selectedIndex];
-              if (selectedOption && merlogPatterns.some(pattern => selectedOption.textContent.includes(pattern))) {
-                shouldHighlight = true;
-              }
-            }
+        // Merlog (existing logic kept)
+        const merlogPatterns = ['שיגור למרלוג', 'מרלוג צור יגאל', "מרלוג צ'יטה"];
+        let merlogFound = false;
 
-            // בדיקת איזור חלוקה בפועל
-            const areaSections = panelView.querySelectorAll('.col-xxl-5.col-6');
-            areaSections.forEach(section => {
-              const labelSpan = section.querySelector('span');
-              if (labelSpan && labelSpan.textContent.trim() === 'איזור חלוקה') {
-                const valueSection = section.nextElementSibling;
-                if (valueSection && merlogPatterns.some(pattern => valueSection.textContent.trim().includes(pattern))) {
-                  shouldHighlight = true;
-                }
-              }
-            });
-
-            // (Removed Client field highlighting – no longer highlight by client name)
-
-            // Check for "מוכן" in הערות (notes)
-            let shouldHighlightReady = false;
-            const notesElements = panelView.querySelectorAll('.bg-yellow .hover-copy, .notes, [class*="note"], [class*="comment"]');
-            notesElements.forEach(notesEl => {
-                if (notesEl && notesEl.textContent.includes('מוכן')) {
-                    shouldHighlightReady = true;
-                }
-            });
-
-            // Debug logging and apply highlighting
-            if (shouldHighlight) {
-                // Removed excessive logging to reduce console noise
-                panelView.classList.add('merlog-highlight');
-                panelView.classList.add('merlog-row-highlight');
-            } else if (shouldHighlightReady) {
-                // Removed excessive logging to reduce console noise
-                panelView.classList.add('ready-highlight');
-            } else {
-                // Removed excessive logging to reduce console noise
-            }
-
-        } catch (error) {
-            console.error(`[${SCRIPT_NAME}] Error highlighting Merlog panel view:`, error);
+        const driverSelect = panelView.querySelector('.select2-selection__rendered');
+        if (driverSelect && merlogPatterns.some(p => driverSelect.textContent.trim().includes(p))) {
+          merlogFound = true;
         }
-        
-        // Fix shipment wrapping after highlighting Merlog panel view
-        // fixShipmentWrapping(); // Removed for performance - will be called by main logic
+        const selectElement = panelView.querySelector('select.visit-drivers-select2');
+        if (selectElement) {
+          const opt = selectElement.options[selectElement.selectedIndex];
+          if (opt && merlogPatterns.some(p => opt.textContent.includes(p))) merlogFound = true;
+        }
+        panelView.querySelectorAll('.col-xxl-5.col-6').forEach(section => {
+          const labelSpan = section.querySelector('span');
+          if (labelSpan && labelSpan.textContent.trim() === 'איזור חלוקה') {
+            const valueSection = section.nextElementSibling;
+            if (valueSection && merlogPatterns.some(p => valueSection.textContent.trim().includes(p))) {
+              merlogFound = true;
+            }
+          }
+        });
+
+        // ---------- Apply classes with stable state to avoid flicker ----------
+        const nextState =
+          coordFound && readyFound ? 'purplegreen' :
+          coordFound               ? 'purple'      :
+          readyFound               ? 'green'       :
+          merlogFound              ? 'red'         : 'none';
+
+        if (panelView.dataset.tmcHighlightState === nextState) return; // אין שינוי – אין נגיעה ב־DOM
+
+        // Clear previous highlights on the chosen container
+        panelView.classList.remove(
+          'merlog-highlight', 'merlog-row-highlight',
+          'ready-highlight', 'coord-highlight', 'coord-ready-highlight'
+        );
+        panelView.querySelectorAll('.merlog-highlight, .ready-highlight, .coord-highlight')
+          .forEach(el => el.classList.remove('merlog-highlight', 'ready-highlight', 'coord-highlight'));
+
+        panelView.dataset.tmcHighlightState = nextState;
+
+        if (nextState === 'purplegreen') {
+          panelView.classList.add('coord-ready-highlight');
+        } else if (nextState === 'purple') {
+          panelView.classList.add('coord-highlight');
+        } else if (nextState === 'green') {
+          panelView.classList.add('ready-highlight');
+        }
+
+        if (merlogFound) {
+          panelView.classList.add('merlog-highlight');
+        }
+      } catch (e) {
+        console.error(`[${SCRIPT_NAME}] Error in highlightMerlogPanelView:`, e);
+      }
     }
 
     // ---< Main Execution & Control Flow >---
@@ -9035,6 +9175,33 @@ function prepareCopyElements() {
                 }
             }, { passive: true });
 
+            // --- Full-page task view observer (.card) ---
+            const fullPageCard = document.querySelector('.card');
+            if (fullPageCard && !fullPageCard.hasAttribute('data-task-highlights-observer-active')) {
+              // First pass after initial render
+              setTimeout(() => {
+                highlightMerlogPanelView();
+                if (settings && settings.replaceBarcodes) replaceBarcodesInViews(fullPageCard);
+              }, 150);
+
+              const cardObserver = new MutationObserver((mutations) => {
+                // skip while copy feedback is active / ignore copy icon area (same guards as panel)
+                if (window._tmCopying) return;
+                if (mutations.some(m => {
+                  const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
+                  return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
+                })) return;
+
+                clearTimeout(cardObserver.debounceTimer);
+                cardObserver.debounceTimer = setTimeout(() => {
+                  highlightMerlogPanelView();
+                  if (settings && settings.replaceBarcodes) replaceBarcodesInViews(fullPageCard);
+                }, 200);
+              });
+              cardObserver.observe(fullPageCard, { childList: true, subtree: true });
+              fullPageCard.setAttribute('data-task-highlights-observer-active', 'true');
+            }
+
             // Add event listener for when table data is loaded/updated
             let readyHighlightTimeout = null;
             let tableObserverActive = false;
@@ -9150,7 +9317,7 @@ function highlightPickQuantities() {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error highlighting pick quantities:`, error);
     }
-    
+
     // Fix shipment wrapping after highlighting pick quantities
     // fixShipmentWrapping(); // Removed for performance - will be called by main logic
 }
@@ -9181,14 +9348,14 @@ function hookDataTablesDraw() {
 
           const tb = table.tBodies && table.tBodies[0];
           if (!tb) return;
-          
+
           // הפונקציה אידמפוטנטית (מתוך התיקון הקודם): מוסיפה רק לשורות שחסר להן
           injectPreviewFunctionality(tb);
 
           // NEW: Re-apply row highlighting after every redraw/filter/search
           // Invalidate cache on table changes to ensure fresh data
           cacheInvalidateAll();
-          
+
           // Red (Merlog) rows
           if (typeof highlightMerlogRows === 'function') {
             highlightMerlogRows();
@@ -9238,7 +9405,7 @@ async function initialize() {
 
     // Setup cache invalidation system
     setupCacheInvalidation();
-    
+
     // Setup jQuery-dependent cache invalidation after jQuery loads
     if (typeof $ === 'undefined') {
         // Wait for jQuery to load
@@ -9255,7 +9422,7 @@ async function initialize() {
                 });
             }
         }, 100);
-        
+
         // Stop checking after 10 seconds
         setTimeout(() => clearInterval(checkJQuery), 10000);
     }
@@ -9298,7 +9465,7 @@ async function initialize() {
           }
           return false;
         });
-        
+
         if (hasShipmentCells) {
           setTimeout(fixShipmentWrapping, 50); // Small delay to ensure DOM is updated
         }
@@ -9308,9 +9475,9 @@ async function initialize() {
 
   // Observe the entire document for table changes
   if (document.body) {
-    shipmentObserver.observe(document.body, { 
-      childList: true, 
-      subtree: true 
+    shipmentObserver.observe(document.body, {
+      childList: true,
+      subtree: true
     });
   }
 
@@ -9610,7 +9777,7 @@ function cleanupDropdownCells() {
       stripCopyFrom(cell);
     }
   });
-  
+
   // Also check any other cells that might contain dropdowns
   const allCells = document.querySelectorAll('td');
   allCells.forEach(cell => {
@@ -9636,7 +9803,7 @@ const dropdownCleanupObserver = new MutationObserver((mutations) => {
     if (mutation.type === 'childList') {
       mutation.addedNodes.forEach(node => {
         if (node.nodeType === Node.ELEMENT_NODE) {
-          if (node.matches && (node.matches('td[data-label="סטטוס"], td[data-label="ליקוט"]') || 
+          if (node.matches && (node.matches('td[data-label="סטטוס"], td[data-label="ליקוט"]') ||
               node.querySelector('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container'))) {
             needsCleanup = true;
           }
@@ -9649,7 +9816,7 @@ const dropdownCleanupObserver = new MutationObserver((mutations) => {
       });
     }
   });
-  
+
   if (needsCleanup) {
     // Debounce cleanup to avoid excessive calls
     clearTimeout(window._dropdownCleanupTimeout);
@@ -9658,9 +9825,9 @@ const dropdownCleanupObserver = new MutationObserver((mutations) => {
 });
 
 // Start observing
-dropdownCleanupObserver.observe(document.documentElement, { 
-  childList: true, 
-  subtree: true 
+dropdownCleanupObserver.observe(document.documentElement, {
+  childList: true,
+  subtree: true
 });
 
 function spawnRipple(container, evt) {
@@ -9672,7 +9839,7 @@ function spawnRipple(container, evt) {
     // ארח את ה-ripple על תא הטבלה כדי לקלף בתוך גבולות התא
     const cell = container.closest('td,th');
     const host = cell || container.closest('.tampermonkey-copy-wrap') || container;
-    
+
     // Avoid clipping/UX issues: disable ripple on dropdown/select2 cells
     const dropdownHost = cell && (
       cell.matches('[data-label="סטטוס"], [data-label="ליקוט"]') ||
@@ -9726,7 +9893,7 @@ if (document.body) {
     if (targetEl && targetEl.closest('[data-tm-no-copy-ui]')) {
       return;
     }
-    
+
     // Never trigger copy/ripple inside dropdown/select2 areas or their host cells
     if (
         (targetEl ? targetEl.closest('.dropdown-menu, [data-toggle="dropdown"], .select2, .select2-container') : null) ||
@@ -9737,7 +9904,7 @@ if (document.body) {
     ) {
         return;
     }
-    
+
     // Ignore clicks on buttons, links, inputs, or media
     if (targetEl ? targetEl.closest('button, a, input, textarea, svg, img') : null) return;
 
@@ -9804,7 +9971,7 @@ if (document.body) {
     .tampermonkey-copy-wrap{display:inline-flex;align-items:center;gap:4px;unicode-bidi:plaintext}
     /* NEW: allow ripple to sit inside without clipping */
     .tampermonkey-copy-wrap{position:relative;overflow:visible}
-    
+
     /* === NEW: סדר מבוסס כיוון (LTR/RTL) + מרווח לוגי === */
     /* ברירת מחדל LTR: [Copy][Name][Google] */
     html[dir="ltr"] .tampermonkey-copy-wrap > .copy-icon { order:1 }
@@ -9845,7 +10012,7 @@ if (document.body) {
     table[data-columns-tagged="true"] td { cursor:text; }
     /* No visible focus border on focused tables */
     table.tm-focusable:focus { outline:none !important; }
-    
+
     /* === Force visible link styling for product names === */
     td[data-label="שם"] a.tm-name-link {
       color: #3699ff !important;
@@ -9904,7 +10071,7 @@ function applyCopyIconFix(root = document){
       while (td.firstChild) wrap.appendChild(td.firstChild);
       td.appendChild(wrap);
     }
-    
+
     /* === FIX: סמן רק את תא "שם" — לא עמודות אחרות === */
     if (td) {
       const isNameCell =
@@ -9914,7 +10081,7 @@ function applyCopyIconFix(root = document){
         td.classList.add('tm-flex-cell');
       }
     }
-    
+
     return wrap;
   }
 
@@ -10023,7 +10190,7 @@ function applyCopyIconFix(root = document){
       const isEl = node.nodeType === 1;
       const isCopyIcon = isEl && node.classList.contains('copy-icon');
       const isGoogleIcon = isEl && node.classList.contains('google-image-icon');
-      
+
       // מכניסים לתוך ה-BDI טקסטים ואלמנטים שאינם אייקון גוגל/העתקה
       if (node.nodeType === Node.TEXT_NODE || (isEl && !isGoogleIcon && !isCopyIcon)) {
         bdi.appendChild(node);
@@ -10068,10 +10235,10 @@ function applyCopyIconFix(root = document){
       stripCopyFrom(td);
     }
   }
-  
+
   // Fix shipment wrapping after applying copy icon fix
           // fixShipmentWrapping(); // Removed for performance
-  
+
   // Also clean up any dropdown cells that might have copy styling
   cleanupDropdownCells();
 }
@@ -10090,10 +10257,10 @@ function createCopyIcon(textToCopy, { title='העתק' } = {}){
     if (!t) return;
     navigator.clipboard.writeText(t).then(()=> tmToast('הועתק!', svg)).catch(console.warn);
   }));
-  
+
   // Fix shipment wrapping after creating copy icon
           // fixShipmentWrapping(); // Removed for performance
-  
+
   return svg;
 }
 
@@ -10106,7 +10273,7 @@ function addClickableLinksToAllTables(force = false) {
             // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
             if (table.classList && table.classList.contains('pick-order-item-table')) return;
             if (table.closest && table.closest('#missing-table-container')) return;
-            
+
             // Skip store visits table - don't add copy icons for names there
             if (table.id === 'operator-store-visits-table' ||
                 table.closest('#operator-store-visits-table_wrapper')) {
@@ -10122,7 +10289,7 @@ function addClickableLinksToAllTables(force = false) {
                 const THROTTLE_MS = 500; // was 1500
                 if (!force && (now - last < THROTTLE_MS)) return;
                 row.setAttribute('data-tm-last-scan', now);
-                
+
                 let didNameLink = false;
                 let didOtherWork = false;
 
@@ -10164,7 +10331,7 @@ function addClickableLinksToAllTables(force = false) {
                         // Clear the cell content
                         nameCell.innerHTML = '';
                         if (googleIcon) nameCell.appendChild(googleIcon);
-                        
+
                         // Create copy icon with enhanced feedback
                         const copyIcon = createCopyIcon(productName);
 
@@ -10234,10 +10401,10 @@ function addClickableLinksToAllTables(force = false) {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error in addClickableLinksToAllTables:`, error);
     }
-    
+
     // Fix shipment wrapping after adding clickable links
     // fixShipmentWrapping(); // Removed for performance
-    
+
     return true; // Return success indicator
 }
 
@@ -10258,17 +10425,16 @@ function validatePhonesEverywhere(root = document){
     const cells = scope.querySelectorAll('td[data-label="טלפון"]');
     cells.forEach(td => {
       const raw = (td.textContent || '').trim();
-      
-      // Skip cells that haven't fully loaded yet
-      if (!td.textContent && td.children.length === 0) return; // Empty, not loaded
+
+      // Skip only truly loading/skeleton cells; allow empty cells to be validated (so len===0 ⇒ blink)
       if (td.classList.contains('loading') || td.classList.contains('skeleton')) return;
-      
+
       const digits = raw.replace(/\D/g, ''); // מנקים כל מה שלא ספרה
       const len = digits.length;
       const internationalOK = __tmcIsILInternational(digits);
       const tr = td.closest('tr');
       if (!tr) return;
-      
+
       // Skip rows that are still loading
       if (tr.classList.contains('loading') || tr.classList.contains('skeleton')) return;
 
@@ -10295,8 +10461,7 @@ function validatePhonesEverywhere(root = document){
       }
 
       // כלל עדיפות עליונה כללי: ≤8 ספרות (כולל ריק) ⇒ להבהב
-      // Skip completely empty cells (likely still loading) - don't mark as invalid yet
-      if (len === 0 && raw === '') return; // Wait for content to load
+      if (len === 0) { __tmcSetRowBlink(tr, true); return; }
       if (len > 0 && len <= 8) { __tmcSetRowBlink(tr, true); return; }
 
       let invalid = false;
@@ -10430,7 +10595,7 @@ try {
     }
     // Also attach a plain global so you can call it directly in the page console
     unsafeWindow.addClickableLinksToAllTables_alias = unsafeWindow.addClickableLinksToAllTables;
-    
+
     console.log('[Toolbox] Function exposed to page context successfully');
   }
 } catch (e) {
@@ -10444,11 +10609,11 @@ function copyWithFeedback(element, text) {
         navigator.clipboard.writeText(text).then(() => {
             // Add visual feedback
             element.classList.add('cell-copied');
-            
+
             // Change text color to #3699ff for 1 second
             const originalColor = element.style.color || getComputedStyle(element).color;
             element.style.color = '#3699ff !important';
-            
+
             // Show toast notification
             tmToast('הועתק!', element);
 
@@ -10469,7 +10634,7 @@ function copyWithFeedback(element, text) {
     } catch (error) {
         console.error(`[${SCRIPT_NAME}] Error in copyWithFeedback:`, error);
     }
-    
+
     // Fix shipment wrapping after copy feedback
     // fixShipmentWrapping(); // Removed for performance
 }
@@ -10872,7 +11037,7 @@ function showCopyToastNearNode(anchor, msg='הועתק!'){
     el.textContent = msg;
     const cell = anchor && anchor.closest ? (anchor.closest('td,th') || anchor.closest('.tm-ripple-host')) : null;
     const host = cell || anchor || document.body;
-    
+
     // Separate DOM reads from writes to avoid forced reflow
     const rect = host.getBoundingClientRect(); // READ first
     requestAnimationFrame(() => {             // WRITE in rAF
@@ -10995,7 +11160,7 @@ function cleanupFlexCells() {
       const isNameCell =
         (cell.getAttribute('data-label') === 'שם') ||
         (cell.tagName === 'TH' && /^\s*שם\s*$/.test(cell.textContent || ''));
-      
+
       if (!isNameCell) {
         cell.classList.remove('tm-flex-cell');
       }
@@ -11076,7 +11241,7 @@ function isBarcodeTable(table){
   // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
   if (table.classList && table.classList.contains('pick-order-item-table')) return false;
   if (table.closest && table.closest('#missing-table-container')) return false;
-  
+
   const ths = Array.from(table.querySelectorAll('thead th'));
   const headers = ths.map(th => _normalizeHeb(th.textContent));
   if (headers.includes('ברקוד') || headers.includes('מק״ט')) return true;
@@ -11123,7 +11288,7 @@ function ensureBarcodeCopyIconForRow(tr){
             if (t.classList && t.classList.contains('pick-order-item-table')) return;
             if (t.closest && t.closest('#missing-table-container')) return;
         }
-        
+
         const skuCell = findBarcodeCell(tr);
         if (!skuCell) return;
         const span = ensureBarcodeHighlightSpan(skuCell);
@@ -11170,7 +11335,7 @@ function enhanceTablesBarcodeCopyIcons(root=document){
       // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
       if (table.classList && table.classList.contains('pick-order-item-table')) return;
       if (table.closest && table.closest('#missing-table-container')) return;
-      
+
       if (!isBarcodeTable(table)) return;
       table.querySelectorAll('tbody tr').forEach(tr => ensureBarcodeCopyIconForRow(tr));
     });
@@ -11545,10 +11710,10 @@ function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
     s.id = 'tmc-spacer-css';
     s.textContent = `
       /* ה-spacer לא נראה ולא תופס גובה, רק רוחב בשורה הראשונה */
-      #map-first-row-spacer { 
-        flex: 0 0 0; 
-        height: 1px; 
-        pointer-events: none; 
+      #map-first-row-spacer {
+        flex: 0 0 0;
+        height: 1px;
+        pointer-events: none;
         visibility: hidden;
       }
     `;
@@ -11563,7 +11728,7 @@ function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
   } = {}) {
     const map = document.querySelector(mapSelector);
     if (!map) return;
-    
+
     // אם לא סופק list, נחפש אותו
     if (!list) {
       list = document.querySelector('div[data-tmc-wrap-row="1"]');
@@ -11587,9 +11752,9 @@ function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
 
       // אם המפה לא חופפת אנכית את תחילת הכרטיסים – אין צורך במרווח
       const overlapsVertically = mapRect.bottom > listRect.top && mapRect.top < listRect.bottom;
-      if (!overlapsVertically) { 
-        spacer.style.flexBasis = '0px'; 
-        return; 
+      if (!overlapsVertically) {
+        spacer.style.flexBasis = '0px';
+        return;
       }
 
       // רוחב השטח שצריך לפנות בשורה הראשונה
@@ -11607,7 +11772,7 @@ function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
 
     // להתעדכן בשינויים (ריסייז, זום דפדפן, שינוי פריסה)
     const ro = new ResizeObserver(update);
-    ro.observe(map); 
+    ro.observe(map);
     ro.observe(list);
     window.addEventListener('resize', update, { passive:true });
     window.addEventListener('scroll', update, { passive:true });
