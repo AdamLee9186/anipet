@@ -393,6 +393,29 @@ function __tmcSetRowBlink(tr, shouldBlink){
   else tr.classList.remove('tmc-phone-blink');
 }
 
+// -------- Branch (סניף) detection helpers --------
+function __tmcNormalizeText(t) {
+  return (t || '').replace(/[\s,.;:/()|"'{}\[\]\-\\]+/g, ' ').trim();
+}
+
+// זיהוי "סניף" כולל שגיאות: ססניף/סנניף/סניפ/סניףף/סניפפ, בלי י' ("סנף"), רבים ("סניפים"),
+// ועם תחיליות ל/ב/מ/ו/ה/מה/וכו'. מאפשר גם רווחים/תווי מפריד בין אותיות.
+// דפוס בסיס: ס{1,2} נ{1,2} י{0,2} ף|פ{1,3} [+ "ים" לאופציית רבים]
+const __tmcBRANCH_RE = new RegExp(
+  '(?:^|[\\s,.;:/()|\"\\\'\\[\\]{}\\-])' +              // גבול "מילה"
+  '(?:[לבמוה]{0,2}ה?)' +                              // תחיליות: ל/ב/מ/ו/ה (כולל ה"א הידיעה אחרי מ/ל/ב)
+  '(?:' +
+    'ס{1,2}\\s*נ{1,2}\\s*(?:י{0,2})\\s*(?:ף{1,3}|פ{1,3})' + // סניף/סניפ/סנף, כפילויות
+  ')' +
+  '(?:ים)?' +                                         // רבים: סניפים
+  '(?=$|[\\s,.;:/()|\"\\\'\\[\\]{}\\-])'              // גבול "מילה"
+);
+
+function __tmcContainsBranch(t) {
+  const s = __tmcNormalizeText(t);
+  return __tmcBRANCH_RE.test(s);
+}
+
 // מזהה פורמט בינלאומי ישראלי (+972 או 00972) ללא ה-0 המוביל
 function __tmcIsILInternational(digits){
   if (!digits) return false;
@@ -2555,6 +2578,31 @@ setupBlockedScriptObserver();
         /* Offcanvas highlighting disabled - only panel_view will be highlighted */
 
         /* Green highlighting for "מוכן" status */
+        /* ===== Branch (סניף) – Brown ===== */
+        /* Row highlight (tables) */
+        tr.branch-row-highlight {
+          background-color: #EBD9C3 !important; /* brown-ish, עדין ובולט */
+        }
+
+        /* Panel & Fullscreen (cover the whole container like green/red/purple) */
+        .offcanvas.branch-highlight,
+        .card.branch-highlight,
+        .offcanvas.branch-highlight .tab-content,
+        .offcanvas.branch-highlight .tab-pane,
+        .card.branch-highlight .tab-content,
+        .card.branch-highlight .tab-pane {
+          background-color: #EBD9C3 !important;
+          background-image: none !important;
+          box-shadow: none !important;
+          border: none !important;
+        }
+
+        /* Make sure there is no inherited frame on fullscreen when brown is active */
+        .card.branch-highlight::before,
+        .card.branch-highlight::after {
+          content: none !important;
+        }
+
         .ready-highlight {
             background-color: #f0fff4 !important;
             border: 2px solid #9ae6b4 !important;
@@ -8593,8 +8641,8 @@ function prepareCopyElements() {
     let readyFetchInFlight = 0;
 
     // Advanced ephemeral cache system
-    const rowColorCache = new Map(); // taskId -> { color: 'green'|'red'|'purple'|'purplegreen'|null, source: 'dom'|'panel', ts: number }
-    const TTL = { green: 20*60e3, red: 20*60e3, purple: 20*60e3, purplegreen: 20*60e3, none: 3*60e3 }; // 20min
+    const rowColorCache = new Map(); // taskId -> { color: 'green'|'red'|'purple'|'purplegreen'|'brown'|null, source: 'dom'|'panel', ts: number }
+    const TTL = { green: 20*60e3, red: 20*60e3, purple: 20*60e3, purplegreen: 20*60e3, brown: 20*60e3, none: 3*60e3 }; // 20min
     const MAX_CACHE_SIZE = 500;
 
     function cacheGet(taskId) {
@@ -8605,6 +8653,7 @@ function prepareCopyElements() {
                  : e.color === 'red' ? TTL.red
                  : e.color === 'purple' ? TTL.purple
                  : e.color === 'purplegreen' ? TTL.purplegreen
+                 : e.color === 'brown' ? TTL.brown
                  : TTL.none;
         if (age > max) {
             rowColorCache.delete(taskId);
@@ -8740,20 +8789,25 @@ function prepareCopyElements() {
             const panelViewHtml = await response.text();
             const doc = new DOMParser().parseFromString(panelViewHtml, 'text/html');
 
-            // Look for "מוכן" and coordination in likely notes containers
-            const notesElements = doc.querySelectorAll('.notes, [class*="note"], [class*="comment"], .hover-copy, [data-tm-notes], .panel_view');
-            let foundReady = false, foundCoord = false;
+            // Look for "מוכן" / coordination / branch across the whole doc
+            const notesElements = doc.querySelectorAll('.notes, [class*="note"], [class*="comment"], .hover-copy, [data-tm-notes], .panel_view, .offcanvas, .card, [data-name]');
+            let foundReady = false, foundCoord = false, foundBranch = false;
             const coordPatterns = ['לתאם','לקבוע','תיאום','תאום','תיאם','קבע','קבענו','קבעתי','נקבע','נקבעה','נקבעו','תואם','מתואם','מתואמת','מתואמים','נתאם','לתיאום הגעה','תיאום הגעה','תאום הגעה','נסגור שעה','סגירת שעה'];
             for (const el of notesElements) {
                 const t = el && el.textContent || '';
                 if (t.includes('מוכן')) foundReady = true;
                 if (coordPatterns.some(p => t.includes(p))) foundCoord = true;
+                if (!foundBranch && __tmcContainsBranch(t)) foundBranch = true;
             }
 
             // Update cache and highlight
             if (foundReady && foundCoord) {
                 row.classList.add('coord-ready-row-highlight'); // split
                 cacheSet(taskId, 'purplegreen', 'panel');
+                return true;
+            } else if (foundBranch) {
+                row.classList.add('branch-row-highlight');
+                cacheSet(taskId, 'brown', 'panel');
                 return true;
             } else if (foundCoord) {
                 row.classList.add('coord-row-highlight');
@@ -8839,7 +8893,7 @@ function prepareCopyElements() {
                 totalRows++;
 
                 // Skip rows that already have highlighting
-                if (row.classList.contains('ready-row-highlight') || row.classList.contains('coord-row-highlight') || row.classList.contains('coord-ready-row-highlight')) {
+                if (row.classList.contains('ready-row-highlight') || row.classList.contains('coord-row-highlight') || row.classList.contains('coord-ready-row-highlight') || row.classList.contains('branch-row-highlight')) {
                     continue; // Skip to next row since we already highlighted it
                 }
 
@@ -8862,12 +8916,17 @@ function prepareCopyElements() {
                         row.classList.add('coord-ready-row-highlight'); // split
                         highlightedCount++;
                         continue;
+                    } else if (cached.color === 'brown') {
+                        row.classList.add('branch-row-highlight');
+                        highlightedCount++;
+                        continue;
                     }
                 }
 
                 // First, check for any tooltip/title in the row that includes "מוכן" (ready) or coordination (DOM source)
                 let foundInTooltip = false;
                 let seenReady = false, seenCoord = false;
+                let foundBranchInRow = false;
                 const tooltipCells = row.querySelectorAll('[title], [data-original-title]');
                 const coordPatterns = ['לתאם','לקבוע','תיאום','תאום','תיאם','קבע','קבענו','קבעתי','נקבע','נקבעה','נקבעו','תואם','מתואם','מתואמת','מתואמים','נתאם','לתיאום הגעה','תיאום הגעה','תאום הגעה','נסגור שעה','סגירת שעה'];
 
@@ -8876,6 +8935,13 @@ function prepareCopyElements() {
                     if (!title) continue;
                     if (title.includes('מוכן')) seenReady = true;
                     if (coordPatterns.some(p => title.includes(p))) seenCoord = true;
+                    if (!foundBranchInRow && __tmcContainsBranch(title)) foundBranchInRow = true;
+                }
+
+                // Fast path: check the whole row text once (covers any column)
+                if (!foundBranchInRow) {
+                    const rowText = row.textContent || '';
+                    if (__tmcContainsBranch(rowText)) foundBranchInRow = true;
                 }
 
                 if (seenReady && seenCoord) {
@@ -8883,16 +8949,21 @@ function prepareCopyElements() {
                     highlightedCount++;
                     foundInTooltip = true;
                     cacheSet(taskId, 'purplegreen', 'dom');
-                } else if (seenReady) {
-                    row.classList.add('ready-row-highlight');
+                } else if (foundBranchInRow) {
+                    row.classList.add('branch-row-highlight');
                     highlightedCount++;
                     foundInTooltip = true;
-                    cacheSet(taskId, 'green', 'dom');
+                    cacheSet(taskId, 'brown', 'dom'); // prefer DOM over panel
                 } else if (seenCoord) {
                     row.classList.add('coord-row-highlight');
                     highlightedCount++;
                     foundInTooltip = true;
                     cacheSet(taskId, 'purple', 'dom');
+                } else if (seenReady) {
+                    row.classList.add('ready-row-highlight');
+                    highlightedCount++;
+                    foundInTooltip = true;
+                    cacheSet(taskId, 'green', 'dom');
                 }
 
                 if (foundInTooltip) {
@@ -8963,6 +9034,7 @@ function prepareCopyElements() {
           'לתאם הגעה','תיאום הגעה','לתאם מסירה','תיאום מסירה'
         ];
         const coordFound = COORD_TERMS.some(t => sourceForCoord.includes(t));
+        const hasBranch = __tmcContainsBranch(panelText);
 
         // Merlog (existing logic kept)
         const merlogPatterns = ['שיגור למרלוג', 'מרלוג צור יגאל', "מרלוג צ'יטה"];
@@ -8989,20 +9061,22 @@ function prepareCopyElements() {
 
         // ---------- Apply classes with stable state to avoid flicker ----------
         const nextState =
-          coordFound && readyFound ? 'purplegreen' :
+          merlogFound              ? 'red'         :
+          (coordFound && readyFound) ? 'purplegreen' :
+          hasBranch                ? 'brown'       :
           coordFound               ? 'purple'      :
-          readyFound               ? 'green'       :
-          merlogFound              ? 'red'         : 'none';
+          readyFound               ? 'green'       : 'none';
 
         if (panelView.dataset.tmcHighlightState === nextState) return; // אין שינוי – אין נגיעה ב־DOM
 
         // Clear previous highlights on the chosen container
         panelView.classList.remove(
           'merlog-highlight', 'merlog-row-highlight',
-          'ready-highlight', 'coord-highlight', 'coord-ready-highlight'
+          'ready-highlight', 'coord-highlight', 'coord-ready-highlight',
+          'branch-highlight'
         );
-        panelView.querySelectorAll('.merlog-highlight, .ready-highlight, .coord-highlight')
-          .forEach(el => el.classList.remove('merlog-highlight', 'ready-highlight', 'coord-highlight'));
+        panelView.querySelectorAll('.merlog-highlight, .ready-highlight, .coord-highlight, .coord-ready-highlight, .branch-highlight')
+          .forEach(el => el.classList.remove('merlog-highlight', 'ready-highlight', 'coord-highlight', 'coord-ready-highlight', 'branch-highlight'));
 
         panelView.dataset.tmcHighlightState = nextState;
 
@@ -9012,6 +9086,8 @@ function prepareCopyElements() {
           panelView.classList.add('coord-highlight');
         } else if (nextState === 'green') {
           panelView.classList.add('ready-highlight');
+        } else if (nextState === 'brown') {
+          panelView.classList.add('branch-highlight');
         }
 
         if (merlogFound) {
