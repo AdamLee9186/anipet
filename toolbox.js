@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.55
+// @version      13.8.60
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -366,14 +366,14 @@ function __tmcEnsurePreviewCSS(){
 function __tmcEnsurePhoneCSS(){
   try{
     const css = `
-      @keyframes tmcPhoneBlink {
-        0%, 100% { background-color: transparent; }
-        50% { background-color: #ff0; } /* row blink color */
+      @keyframes tmcPhonePulse {
+        0%, 100% { box-shadow: inset 0 0 0 0 rgba(255,255,0,0.00); }
+        50%      { box-shadow: inset 0 0 0 9999px rgb(255, 255, 0); }
       }
-      /* Blink the entire row (and ensure visibility even if TDs have own bg) - infinite */
-      tr.tmc-phone-blink,
-      tr.tmc-phone-blink > td {
-        animation: tmcPhoneBlink 1.2s ease-in-out infinite;
+      tr.tmc-phone-blink { animation: tmcPhonePulse 1.2s ease-in-out infinite; }
+      tr.tmc-phone-blink > td { animation: inherit; }
+      tr[id^="visit-row-"]:has(td[data-label="טלפון"]:empty) {
+        animation: tmcPhonePulse 1.2s ease-in-out infinite;
       }
     `;
     let st = document.getElementById('tmc-phone-css');
@@ -384,6 +384,139 @@ function __tmcEnsurePhoneCSS(){
     }
     if (st.textContent !== css) st.textContent = css;
   }catch(_){}
+}
+
+/* =========================
+   COLOR LEGEND CSS (aside bottom, sticky)
+   ========================= */
+function __tmcEnsureLegendCSS(){
+  try{
+    const css = `
+      /* Hard clamp: prevent any horizontal overflow from the aside scroll root */
+      #kt_aside_menu{
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+      }
+      /* Legend container anchored inside the scrollable aside menu */
+      #kt_aside_menu .tmc-color-legend{
+        position: sticky !important;
+        bottom: 0 !important;
+        z-index: 2 !important;
+        background: #fff !important;
+        padding: 6px 8px !important;                    /* פחות גובה כולל */
+        border-top: 1px solid rgba(0,0,0,.08) !important;
+        box-shadow: 0 -4px 8px rgba(0,0,0,.02) !important;  /* צל עדין יותר */
+        direction: rtl !important;
+        font-size: 11px !important;   /* פונט קטן כנדרש */
+        line-height: 1.25 !important;
+        /* Full inline anchoring + clamp painting area */
+        inset-inline-start: 0 !important;
+        inset-inline-end: 0 !important;
+        width: auto !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        box-sizing: border-box !important;
+        overflow: clip !important;    /* חותך ציור בתוך הגבול של המקרא */
+      }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-title{
+        font-weight: 600 !important;
+        margin-bottom: 6px !important;
+        color: #444 !important;
+        font-size: 11px !important;
+      }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-list{
+        display: grid !important;
+        grid-template-columns: 1fr !important; /* טור אחד: שורה-תגית מלאה */
+        gap: 4px 8px !important;               /* פחות ריווח בין שורות */
+        margin: 0 !important;
+        padding: 0 2px !important;             /* מיקרו־ריווח פנימי כדי למנוע נגיעה בקצה */
+        list-style: none !important;
+        box-sizing: border-box !important;
+      }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-item{
+        display: block !important;             /* כל פריט הוא בלוק */
+        /* אפשר לתת לטקסט להישבר אם צריך, חיתוך אמיתי יתבצע בתוך ה-chip */
+        white-space: normal !important;
+        box-sizing: border-box !important;
+      }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip{
+        display: block !important;             /* שורה מלאה ברקע צבעוני */
+        width: 100% !important;
+        max-width: 100% !important;            /* ודא שאין גלישה אופקית */
+        min-width: 0 !important;
+        padding: 4px 6px !important;           /* פחות גובה לכל שורה */
+        border-radius: 4px !important;         /* עיגול עדין יותר */
+        border: 1px solid rgba(0,0,0,.08) !important;
+        font-weight: 500 !important;
+        font-size: 10.5px !important;          /* טיפוס קטן לשורה קומפקטית */
+        line-height: 1.15 !important;          /* מוריד גובה שורה */
+        color: #222 !important;                /* טקסט כהה על רקע בהיר */
+        text-align: right !important;
+        box-sizing: border-box !important;
+        overflow: clip !important;             /* חיתוך בתוך ה-chip עצמו */
+        text-overflow: ellipsis !important;
+        white-space: nowrap !important;        /* אליפסיס יעבוד ללא גלישה */
+      }
+      /* צבעים לפי משמעות */
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip--merlog  { background: #ffcaca !important; }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip--phone   { background: #ff0 !important;   }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip--ready   { background: #dfffe5 !important; }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip--coord   { background: #E3D1FD !important; }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip--branch  { background: #EBD9C3 !important; }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip--mission { background: #FCE7F3 !important; }
+    `;
+    let st = document.getElementById('tmc-legend-css');
+    if (!st){
+      st = document.createElement('style');
+      st.id = 'tmc-legend-css';
+      document.head.appendChild(st);
+    }
+    if (st.textContent !== css) st.textContent = css;
+  }catch(_){}
+}
+
+/* =========================
+   Insert the color legend once into #kt_aside_menu
+   ========================= */
+function __tmcInsertColorLegend(){
+  try{
+    const menu = document.getElementById('kt_aside_menu');
+    if (!menu) return;
+    if (menu.querySelector('#tmc-color-legend')) return; // already inserted
+
+    const legend = document.createElement('div');
+    legend.id = 'tmc-color-legend';
+    legend.className = 'tmc-color-legend';
+    legend.innerHTML = `
+      <div class="tmc-legend-title">מקרא צבעים</div>
+      <ul class="tmc-legend-list">
+        <li class="tmc-legend-item">
+          <span class="tmc-legend-chip tmc-legend-chip--merlog">מרלוג</span>
+        </li>
+        <li class="tmc-legend-item">
+          <span class="tmc-legend-chip tmc-legend-chip--phone">טלפון חסר\\שגוי</span>
+        </li>
+        <li class="tmc-legend-item">
+          <span class="tmc-legend-chip tmc-legend-chip--ready">מוכן</span>
+        </li>
+        <li class="tmc-legend-item">
+          <span class="tmc-legend-chip tmc-legend-chip--coord">לתאם</span>
+        </li>
+        <li class="tmc-legend-item">
+          <span class="tmc-legend-chip tmc-legend-chip--branch">לסניף</span>
+        </li>
+        <li class="tmc-legend-item">
+          <span class="tmc-legend-chip tmc-legend-chip--mission">משימה</span>
+        </li>
+      </ul>
+    `;
+    // Place legend before Perfect Scrollbar rails if they exist, so it stays visible
+    const railX = menu.querySelector('.ps__rail-x');
+    if (railX) menu.insertBefore(legend, railX);
+    else menu.appendChild(legend);
+  }catch(e){
+    try{ console.warn('Legend insert failed', e); }catch(_){}
+  }
 }
 
 // Helper: toggle infinite row blink class
@@ -643,11 +776,22 @@ function __tmcIsILInternational(digits){
 
   // Install phone blink CSS early so it's ready everywhere
   try{ __tmcEnsurePhoneCSS(); }catch(_){}
+  // Install legend CSS so the aside legend renders correctly
+  try{ __tmcEnsureLegendCSS(); }catch(_){}
 
   // אם יש לך טריגר פנימי אחרי רינדור/עדכון DOM (למשל אחרי פתיחת/סגירת PREVIEW, או אחרי טעינה חלקית של טבלה):
   window.addEventListener('tm:dom-updated', installPassiveFixForPerfectScrollbar);
   // וכך גם לבדיקת טלפונים
   window.addEventListener('tm:dom-updated', () => validatePhonesEverywhere());
+
+  // Insert legend once DOM exists; run both on DOMContentLoaded and on load, plus an immediate attempt
+  const tryLegend = () => { try{ __tmcInsertColorLegend(); }catch(_){ } };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', tryLegend, { once: true });
+    window.addEventListener('load', tryLegend, { once: true });
+  } else {
+    tryLegend();
+  }
 
   // Install map state tracker early so layout reacts as soon as the map opens/resizes
   installMapStateTracker();
@@ -2584,7 +2728,7 @@ setupBlockedScriptObserver();
           background-color: #EBD9C3 !important; /* brown-ish, עדין ובולט */
         }
 
-        /* Panel & Fullscreen (cover the whole container like green/red/purple) */
+        /* Panel & Fullscreen (cover the whole container like green/red/purple/pink) */
         .offcanvas.branch-highlight,
         .card.branch-highlight,
         .offcanvas.branch-highlight .tab-content,
@@ -2604,7 +2748,7 @@ setupBlockedScriptObserver();
         }
 
         .ready-highlight {
-            background-color: #f0fff4 !important;
+            background-color: #dfffe5 !important;
             border: 2px solid #9ae6b4 !important;
         }
 
@@ -2616,7 +2760,7 @@ setupBlockedScriptObserver();
         .offcanvas.ready-highlight .tab-pane,
         .card.ready-highlight .tab-content,
         .card.ready-highlight .tab-pane {
-            background-color: #f0fff4 !important;
+            background-color: #dfffe5 !important;
         }
 
         .ready-highlight a.ready-highlight {
@@ -2644,7 +2788,7 @@ setupBlockedScriptObserver();
 
         /* Table row green highlighting */
         tr.ready-row-highlight {
-            background-color: #f0fff4 !important;
+            background-color: #dfffe5 !important;
         }
 
         td.ready-highlight {
@@ -2704,7 +2848,7 @@ setupBlockedScriptObserver();
           background-image: linear-gradient(
             to bottom,
             #E3D1FD 0%, #E3D1FD 50%,
-            #f0fff4 50%, #f0fff4 100%
+            #dfffe5 50%, #dfffe5 100%
           ) !important;
           background-color: transparent !important;
           background-repeat: no-repeat !important;
@@ -2732,11 +2876,41 @@ setupBlockedScriptObserver();
 
         /* ==== Full-surface highlights for panel & full-page ==== */
         .offcanvas.ready-highlight, .card.ready-highlight {
-          background-color: #f0fff4 !important;
+          background-color: #dfffe5 !important;
         }
         .offcanvas.merlog-highlight, .card.merlog-highlight {
-          background-color: #fff5f5 !important;
+          background-color: #ffdada !important;
           border: 2px solid #fecaca !important;
+        }
+
+        /* ===== Mission (Pink) — ורוד עבור שם המכיל "משימה/משימת" ===== */
+        .offcanvas.mission-highlight,
+        .card.mission-highlight,
+        .offcanvas.mission-highlight .tab-content,
+        .offcanvas.mission-highlight .tab-pane,
+        .card.mission-highlight .tab-content,
+        .card.mission-highlight .tab-pane {
+          background-color: #FCE7F3 !important; /* pink-100 */
+          background-image: none !important;
+          box-shadow: none !important;
+        }
+
+        /* Table row pink highlighting */
+        tr.mission-row-highlight { /* Pink */
+          background-color: #FCE7F3 !important;
+        }
+
+        /* Inline pink chips inside a pink container if needed */
+        .mission-highlight a.mission-highlight,
+        .mission-highlight span.mission-highlight,
+        .mission-highlight div.mission-highlight,
+        .mission-highlight p.mission-highlight {
+          background-color: #FCE7F3 !important;
+          color: #9D174D !important; /* deep pink */
+          padding: 1px 3px !important;
+          border-radius: 2px !important;
+          font-weight: bold !important;
+          text-decoration: none !important;
         }
 
         /* ליתר ביטחון: להסיר כל מסגרת/צל ב־card סגול/חצי־חצי */
@@ -8111,14 +8285,14 @@ table td.merlog-highlight:hover:not(.preview-cell) {
 .panel_view.merlog-highlight,
 .offcanvas.merlog-highlight,
 .card.merlog-highlight {
-    background-color: #fff5f5 !important;
+    background-color: #ffdada !important;
     border: 2px solid #fecaca !important;
 }
 .offcanvas.merlog-highlight .tab-content,
 .offcanvas.merlog-highlight .tab-pane,
 .card.merlog-highlight .tab-content,
 .card.merlog-highlight .tab-pane {
-    background-color: #fff5f5 !important;
+    background-color: #ffdada !important;
 }
 
 /* Merlog Panel View Row Highlighting - Darker red for specific rows */
@@ -8141,21 +8315,21 @@ table td.merlog-highlight:hover:not(.preview-cell) {
 
 /* Merlog Table Row Highlighting - Red background for entire row */
 tr.merlog-row-highlight {
-    background-color: #fff5f5 !important;
+    background-color: #ffdada !important;
 }
 
 /* Merlog Panel View Row Highlighting - Red background for entire row */
 .panel_view.merlog-row-highlight {
-    background-color: #fff5f5 !important;
+    background-color: #ffdada !important;
 }
 
 /* Merlog Panel View Content Highlighting */
 .panel_view.merlog-highlight .tab-content {
-    background-color: #fff5f5 !important;
+    background-color: #ffdada !important;
 }
 
 .panel_view.merlog-highlight .tab-pane {
-    background-color: #fff5f5 !important;
+    background-color: #ffdada !important;
 }
 
 /* Merlog Panel View Link Highlighting */
@@ -8641,8 +8815,8 @@ function prepareCopyElements() {
     let readyFetchInFlight = 0;
 
     // Advanced ephemeral cache system
-    const rowColorCache = new Map(); // taskId -> { color: 'green'|'red'|'purple'|'purplegreen'|'brown'|null, source: 'dom'|'panel', ts: number }
-    const TTL = { green: 20*60e3, red: 20*60e3, purple: 20*60e3, purplegreen: 20*60e3, brown: 20*60e3, none: 3*60e3 }; // 20min
+    const rowColorCache = new Map(); // taskId -> { color: 'green'|'red'|'purple'|'purplegreen'|'brown'|'pink'|null, source: 'dom'|'panel', ts: number }
+    const TTL = { green: 20*60e3, red: 20*60e3, purple: 20*60e3, purplegreen: 20*60e3, brown: 20*60e3, pink: 20*60e3, none: 3*60e3 }; // 20min
     const MAX_CACHE_SIZE = 500;
 
     function cacheGet(taskId) {
@@ -8654,6 +8828,7 @@ function prepareCopyElements() {
                  : e.color === 'purple' ? TTL.purple
                  : e.color === 'purplegreen' ? TTL.purplegreen
                  : e.color === 'brown' ? TTL.brown
+                 : e.color === 'pink' ? TTL.pink
                  : TTL.none;
         if (age > max) {
             rowColorCache.delete(taskId);
@@ -8893,7 +9068,7 @@ function prepareCopyElements() {
                 totalRows++;
 
                 // Skip rows that already have highlighting
-                if (row.classList.contains('ready-row-highlight') || row.classList.contains('coord-row-highlight') || row.classList.contains('coord-ready-row-highlight') || row.classList.contains('branch-row-highlight')) {
+                if (row.classList.contains('ready-row-highlight') || row.classList.contains('coord-row-highlight') || row.classList.contains('coord-ready-row-highlight') || row.classList.contains('branch-row-highlight') || row.classList.contains('mission-row-highlight')) {
                     continue; // Skip to next row since we already highlighted it
                 }
 
@@ -8919,6 +9094,27 @@ function prepareCopyElements() {
                     } else if (cached.color === 'brown') {
                         row.classList.add('branch-row-highlight');
                         highlightedCount++;
+                        continue;
+                    } else if (cached.color === 'pink') {
+                        row.classList.add('mission-row-highlight');
+                        highlightedCount++;
+                        continue;
+                    }
+                }
+
+                // New: mission name detection in the row's "שם" column (store visits/tasks tables)
+                const nameCell = row.querySelector('td[data-label="שם"]');
+                if (nameCell) {
+                    const nameSpan = nameCell.querySelector('[data-original-title], [title]') || nameCell.querySelector('span');
+                    const rawName = (nameSpan?.getAttribute?.('data-original-title') ||
+                                     nameSpan?.getAttribute?.('title') ||
+                                     nameSpan?.textContent ||
+                                     nameCell.textContent ||
+                                     '').trim();
+                    if (/משימ(ה|ת)/.test(rawName)) {
+                        row.classList.add('mission-row-highlight');
+                        highlightedCount++;
+                        cacheSet(taskId, 'pink', 'dom');
                         continue;
                     }
                 }
@@ -9021,6 +9217,14 @@ function prepareCopyElements() {
           null;
         const notesText = (notesNode ? notesNode.textContent : '').replace(/\s+/g, ' ');
 
+        // Mission name (customer title) — detect specifically from the contact name field
+        const nameNode =
+          panelView.querySelector('.row[data-name="destination_recipient_name"] .hover-copy') ||
+          panelView.querySelector('.row[data-name="destination_recipient_name"]') ||
+          null;
+        const nameText = (nameNode ? nameNode.textContent : '').replace(/\s+/g, ' ');
+        const missionFound = /משימ(ה|ת)/.test(nameText);
+
         // במסך מלא: מזהים אך ורק מתוך ההערות כדי למנוע False Positive (למשל "נקבע" בשדות אחרים)
         const isFullPageCard = panelView.classList.contains('card');
         const sourceForReady  = isFullPageCard ? notesText : (notesText + ' ' + panelText);
@@ -9062,6 +9266,7 @@ function prepareCopyElements() {
         // ---------- Apply classes with stable state to avoid flicker ----------
         const nextState =
           merlogFound              ? 'red'         :
+          missionFound             ? 'pink'        :
           (coordFound && readyFound) ? 'purplegreen' :
           hasBranch                ? 'brown'       :
           coordFound               ? 'purple'      :
@@ -9073,10 +9278,10 @@ function prepareCopyElements() {
         panelView.classList.remove(
           'merlog-highlight', 'merlog-row-highlight',
           'ready-highlight', 'coord-highlight', 'coord-ready-highlight',
-          'branch-highlight'
+          'branch-highlight', 'mission-highlight'
         );
-        panelView.querySelectorAll('.merlog-highlight, .ready-highlight, .coord-highlight, .coord-ready-highlight, .branch-highlight')
-          .forEach(el => el.classList.remove('merlog-highlight', 'ready-highlight', 'coord-highlight', 'coord-ready-highlight', 'branch-highlight'));
+        panelView.querySelectorAll('.merlog-highlight, .ready-highlight, .coord-highlight, .coord-ready-highlight, .branch-highlight, .mission-highlight')
+          .forEach(el => el.classList.remove('merlog-highlight', 'ready-highlight', 'coord-highlight', 'coord-ready-highlight', 'branch-highlight', 'mission-highlight'));
 
         panelView.dataset.tmcHighlightState = nextState;
 
@@ -9088,6 +9293,8 @@ function prepareCopyElements() {
           panelView.classList.add('ready-highlight');
         } else if (nextState === 'brown') {
           panelView.classList.add('branch-highlight');
+        } else if (nextState === 'pink') {
+          panelView.classList.add('mission-highlight');
         }
 
         if (merlogFound) {
@@ -10497,85 +10704,24 @@ function addClickableLinksToAllTables(force = false) {
 // - חדש: כל מספר חייב להתחיל ב-0, למעט חריג מפורש – אם הוא בן 9 ספרות והספרה הראשונה אינה 0: לא מהבהב
 function validatePhonesEverywhere(root = document){
   try{
+    __tmcEnsurePhoneCSS();
     const scope = root || document;
     const cells = scope.querySelectorAll('td[data-label="טלפון"]');
     cells.forEach(td => {
-      const raw = (td.textContent || '').trim();
-
-      // Skip only truly loading/skeleton cells; allow empty cells to be validated (so len===0 ⇒ blink)
-      if (td.classList.contains('loading') || td.classList.contains('skeleton')) return;
-
-      const digits = raw.replace(/\D/g, ''); // מנקים כל מה שלא ספרה
-      const len = digits.length;
-      const internationalOK = __tmcIsILInternational(digits);
-      const tr = td.closest('tr');
+      const tr = td.closest('tr[id^="visit-row-"]');
       if (!tr) return;
-
-      // Skip rows that are still loading
+      if (td.classList.contains('loading') || td.classList.contains('skeleton')) return;
       if (tr.classList.contains('loading') || tr.classList.contains('skeleton')) return;
 
-      // Landline area-code prefixes that MUST be exactly 9 digits total (including leading 0)
-      // Examples: 02/03/04/08/09 + 7 digits  => 9 digits total
-      const isLandline9Prefix =
-        digits.startsWith('02') ||
-        digits.startsWith('03') ||
-        digits.startsWith('04') ||
-        digits.startsWith('08') ||
-        digits.startsWith('09');
-      const isMobilePrefix = digits.startsWith('05'); // 05X must be exactly 10 digits
+      const raw = String(td.innerText || td.textContent || '').replace(/\u00A0/g, ' ').trim();
+      const digits = raw.replace(/[^\d]/g, '');
+      const isEmptyCell = !td.firstElementChild && raw.length === 0;
 
-      // טיפול מיוחד במספרים שמתחילים ב־'4' (חסר 0 לקידומת 04):
-      // - אם אורך < 8 ⇒ להבהב
-      // - אם אורך = 8 ⇒ הוספת '0' נותנת 9 ספרות עם '04' ⇒ תקין (לא מהבהב)
-      // - אם אורך = 9 ⇒ הוספת '0' נותנת 10 ספרות ⇒ שגוי (מהבהב)
-      if (digits.startsWith('4')) {
-        const candidate = '0' + digits;
-        if (len < 8) { __tmcSetRowBlink(tr, true); return; }
-        if (len === 8 && candidate.startsWith('04') && candidate.length === 9) { __tmcSetRowBlink(tr, false); return; }
-        if (len === 9) { __tmcSetRowBlink(tr, true); return; }
-        // לשאר האורכים נמשיך לכללי הברירות הכלליים למטה
+      if (isEmptyCell || digits.length < 9) {
+        __tmcSetRowBlink(tr, true);
+      } else {
+        __tmcSetRowBlink(tr, false);
       }
-
-      // כלל עדיפות עליונה כללי: ≤8 ספרות (כולל ריק) ⇒ להבהב
-      if (len === 0) { __tmcSetRowBlink(tr, true); return; }
-      if (len > 0 && len <= 8) { __tmcSetRowBlink(tr, true); return; }
-
-      let invalid = false;
-      if (len >= 11 && !internationalOK) {
-        // 11+ ספרות לא תקין, אלא אם כן זה בפורמט בינלאומי ישראלי חוקי
-        invalid = true;
-      } else if (len === 10) {
-        // 10 digits:
-        // - Mobile 05X => valid
-        // - Landline 02/03/04/08/09 should NOT be 10 => invalid
-        // - Otherwise: must start with 0
-        if (isMobilePrefix) {
-          invalid = false;
-        } else if (isLandline9Prefix) {
-          invalid = true; // e.g., 0475415877 should blink (landline must be 9)
-        } else if (digits[0] !== '0') {
-          invalid = true;
-        } else {
-          invalid = false;
-        }
-      } else if (len === 9) {
-        // 9 digits:
-        // - Landline 02/03/04/08/09 => valid (correct length for these prefixes)
-        // - Mobile 05X => invalid (mobile must be 10)
-        // - If first digit is 0 but not a known 9-digit landline => invalid
-        if (isLandline9Prefix) {
-          invalid = false;
-        } else if (isMobilePrefix) {
-          invalid = true;
-        } else if (digits[0] === '0') {
-          invalid = true;
-        } else {
-          invalid = false;
-        }
-      }
-
-      // החל מ־9 ספרות ומעלה – הפעלה/כיבוי בהתאם לחישוב
-      __tmcSetRowBlink(tr, invalid);
     });
   }catch(e){
     if (typeof DEBUG!=='undefined' && DEBUG) console.warn('[Toolbox] validatePhonesEverywhere error:', e);
@@ -10613,14 +10759,26 @@ setTimeout(() => {
   const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
   if (panel) validatePhonesEverywhere(panel);
 }, 600);
+setTimeout(() => {
+  addClickableLinksToAllTables();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) addClickableLinksToAllTables();
+}, 1500);
+setTimeout(() => {
+  validatePhonesEverywhere();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) validatePhonesEverywhere(panel);
+}, 1500);
 
-// MutationObserver hook for dynamically added rows (including side panels)
+// MutationObserver hook for dynamically added/updated rows (including side panels)
 (function observeTablesEverywhere(){
   const runFor = oncePerAnimationFrame(() => addClickableLinksToAllTables());
-  const runPhones = oncePerAnimationFrame(() => validatePhonesEverywhere());
+  const runPhones = oncePerAnimationFrame((target = document) => validatePhonesEverywhere(target));
 
   const mo = new MutationObserver(muts => {
-    let touched = false, touchedPanel = false;
+    let touched = false;
+    let touchedPanel = false;
+    let touchedPhonesPanel = false;
     for (const m of muts) {
       if (m.addedNodes && m.addedNodes.length) {
         touched = true;
@@ -10630,20 +10788,52 @@ setTimeout(() => {
           touchedPanel = true;
         }
       }
+      if (m.type === 'characterData') {
+        const el = m.target?.parentElement;
+        if (el && el.closest) {
+          if (el.closest('td[data-label="טלפון"]')) {
+            touched = true;
+            if (el.closest('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view')) {
+              touchedPanel = true;
+              touchedPhonesPanel = true;
+            }
+          }
+        }
+      }
+      if (m.type === 'attributes') {
+        const el = m.target?.closest ? m.target.closest('td[data-label="טלפון"]') : null;
+        if (el) {
+          touched = true;
+          if (el.closest('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view')) {
+            touchedPanel = true;
+            touchedPhonesPanel = true;
+          }
+        }
+      }
     }
     if (touched) {
       runFor(document);
       runPhones(document);
       const panel = document.querySelector('.offcanvas.show, .offcanvas-right.show, .offcanvas-custom.show, #panel_view');
-      if (panel && touchedPanel) {
+      if (panel && (touchedPanel || touchedPhonesPanel)) {
         runFor(panel);
-        validatePhonesEverywhere(panel);
+        if (touchedPhonesPanel) {
+          validatePhonesEverywhere(panel);
+        } else {
+          runPhones(panel);
+        }
       }
     }
   });
 
   if (document.body) {
-    mo.observe(document.body, { childList: true, subtree: true });
+    mo.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['data-label','title']
+    });
   }
 
   // Bootstrap offcanvas events – כשנפתח/נסגר, תריץ על הפאנל
@@ -10655,6 +10845,13 @@ setTimeout(() => {
     }
   });
 })();
+
+if (window.jQuery && jQuery.fn && jQuery.fn.dataTable && !window.__tmcPhonesBound){
+  window.__tmcPhonesBound = true;
+  jQuery(document).on('draw.dt', () => {
+    try{ validatePhonesEverywhere(document); }catch(_){}
+  });
+}
 
 // Expose function immediately for console access
 window.addClickableLinksToAllTables = addClickableLinksToAllTables;
