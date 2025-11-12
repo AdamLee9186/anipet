@@ -88,6 +88,115 @@
   }catch(_){}
 })();
 
+// --- Merlog chip filter (rows marked in red / "מרלוג") ---
+(function merlogChipFilter() {
+  const TBL = '#operator-store-visits-table';
+  const APPLIED_CONTAINER = '#filters-applied-box .applied-filters-container';
+  const FILTER_KEY = 'chip-merlog-only';
+  let active = false;
+
+  const hasDT = () => $.fn.dataTable && $.fn.dataTable.isDataTable(TBL);
+  const dt = () => (hasDT() ? $(TBL).DataTable() : null);
+
+  function rowIsMerlog(tr) {
+    if (!tr) return false;
+    if (tr.classList && tr.classList.contains('merlog-row-highlight')) return true;
+    const areaCell = tr.querySelector('[data-label="איזור"]');
+    if (areaCell && /מרלוג/.test(areaCell.textContent)) return true;
+    const driverCell = tr.querySelector('[data-label="נהג"]');
+    if (driverCell && /מרלוג/.test(driverCell.textContent)) return true;
+    return false;
+  }
+
+  const dtPredicate = function (settings, data, dataIndex) {
+    const tableEl = $(TBL)[0];
+    if (!tableEl || settings.nTable !== tableEl) return true;
+    const table = dt();
+    const node = table ? table.row(dataIndex).node() : null;
+    return node ? rowIsMerlog(node) : true;
+  };
+  dtPredicate._toolbox = FILTER_KEY;
+
+  function applyDT() {
+    $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(
+      (fn) => fn._toolbox !== FILTER_KEY
+    );
+    if (active) $.fn.dataTable.ext.search.push(dtPredicate);
+    const table = dt();
+    if (table) table.draw(false);
+  }
+
+  function applyVanilla() {
+    const body = document.querySelector(`${TBL} tbody`);
+    if (!body) return;
+    body.querySelectorAll('tr').forEach((tr) => {
+      tr.style.display = !active || rowIsMerlog(tr) ? '' : 'none';
+    });
+  }
+
+  function updateAppliedChip() {
+    const box = document.querySelector(APPLIED_CONTAINER);
+    if (!box) return;
+    let chip = box.querySelector(`.filter-badge[data-toolbox="${FILTER_KEY}"]`);
+    if (active && !chip) {
+      chip = document.createElement('div');
+      chip.className = 'filter-badge filter-badge-btn mb-1 mr-2';
+      chip.dataset.toolbox = FILTER_KEY;
+      chip.innerHTML =
+        '<span>מרלוג</span><i class="ki ki-close icon-xs text-primary cursor-pointer"></i>';
+      box.prepend(chip);
+    } else if (!active && chip) {
+      chip.remove();
+    }
+  }
+
+  function refresh() {
+    if (hasDT()) applyDT();
+    else applyVanilla();
+    updateAppliedChip();
+  }
+
+  document.addEventListener('click', (e) => {
+    const el = e.target.closest('.filter-badge, [data-chip], [data-filter-value]');
+    if (!el) return;
+    const val = (el.dataset.filterValue || el.dataset.chip || el.textContent || '').trim();
+    if (val !== 'מרלוג') return;
+    active = !active;
+    refresh();
+  });
+
+  document.addEventListener('click', (e) => {
+    const x = e.target.closest(
+      `.filter-badge[data-toolbox="${FILTER_KEY}"] .ki-close, .filter-badge[data-toolbox="${FILTER_KEY}"] .fa-times`
+    );
+    if (!x) return;
+    active = false;
+    refresh();
+  });
+
+  const body = document.querySelector(`${TBL} tbody`);
+  if (body) {
+    new MutationObserver(() => {
+      if (active) refresh();
+    }).observe(body, { childList: true });
+  }
+
+  window.toolboxMerlogFilter = {
+    enable: () => {
+      active = true;
+      refresh();
+    },
+    disable: () => {
+      active = false;
+      refresh();
+    },
+    toggle: () => {
+      active = !active;
+      refresh();
+    },
+  };
+})();
+
 /* global jQuery */
 /* global Papa */ // ENSURING PAPA IS GLOBAL
 
@@ -401,9 +510,9 @@ function __tmcEnsureLegendCSS(){
       #kt_aside_menu .tmc-color-legend{
         position: sticky !important;
         bottom: 0 !important;
-        z-index: 2 !important;
+        z-index: 3 !important;
         background: #fff !important;
-        padding: 6px 8px !important;                    /* פחות גובה כולל */
+        padding: 6px 8px !important;                    /* קומפקטי */
         border-top: 1px solid rgba(0,0,0,.08) !important;
         box-shadow: 0 -4px 8px rgba(0,0,0,.02) !important;  /* צל עדין יותר */
         direction: rtl !important;
@@ -416,7 +525,13 @@ function __tmcEnsureLegendCSS(){
         max-width: 100% !important;
         min-width: 0 !important;
         box-sizing: border-box !important;
-        overflow: clip !important;    /* חותך ציור בתוך הגבול של המקרא */
+        /* אל תחתוך את התוכן אנכית: אפשר גלילה פנימית כשצריך */
+        overflow-x: hidden !important;
+        overflow-y: auto !important;
+        /* ברזולוציות/חלונות נמוכים: גבול גובה חכם עם גלילה */
+        max-height: clamp(120px, 28vh, 220px) !important;
+        overscroll-behavior: contain !important;
+        -webkit-overflow-scrolling: touch !important;
       }
       #kt_aside_menu .tmc-color-legend .tmc-legend-title{
         font-weight: 600 !important;
@@ -444,22 +559,36 @@ function __tmcEnsureLegendCSS(){
         width: 100% !important;
         max-width: 100% !important;            /* ודא שאין גלישה אופקית */
         min-width: 0 !important;
-        padding: 4px 6px !important;           /* פחות גובה לכל שורה */
-        border-radius: 4px !important;         /* עיגול עדין יותר */
+        padding: 3px 6px !important;           /* עוד פחות גובה לשורה */
+        border-radius: 4px !important;
         border: 1px solid rgba(0,0,0,.08) !important;
         font-weight: 500 !important;
-        font-size: 10.5px !important;          /* טיפוס קטן לשורה קומפקטית */
-        line-height: 1.15 !important;          /* מוריד גובה שורה */
+        font-size: 10.5px !important;
+        line-height: 1.12 !important;
         color: #222 !important;                /* טקסט כהה על רקע בהיר */
         text-align: right !important;
         box-sizing: border-box !important;
-        overflow: clip !important;             /* חיתוך בתוך ה-chip עצמו */
+        overflow: hidden !important;           /* אליפסיס רך */
         text-overflow: ellipsis !important;
         white-space: nowrap !important;        /* אליפסיס יעבוד ללא גלישה */
+      }
+      /* עוד כיווץ במסכים נמוכים מאוד */
+      @media (max-height: 900px){
+        #kt_aside_menu .tmc-color-legend{ font-size: 10px !important; }
+        #kt_aside_menu .tmc-color-legend .tmc-legend-chip{
+          padding: 3px 5px !important;
+          font-size: 10px !important;
+          line-height: 1.1 !important;
+        }
       }
       /* צבעים לפי משמעות */
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip--merlog  { background: #ffcaca !important; }
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip--phone   { background: #ff0 !important;   }
+      /* Active/selected state for legend chips */
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip.is-active {
+        outline: 2px solid rgba(0,0,0,.45) !important;
+        box-shadow: 0 0 0 2px rgba(0,0,0,.10) inset !important;
+      }
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip--ready   { background: #dfffe5 !important; }
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip--coord   { background: #E3D1FD !important; }
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip--branch  { background: #EBD9C3 !important; }
@@ -491,22 +620,22 @@ function __tmcInsertColorLegend(){
       <div class="tmc-legend-title">מקרא צבעים</div>
       <ul class="tmc-legend-list">
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--merlog">מרלוג</span>
+          <span class="tmc-legend-chip tmc-legend-chip--merlog" data-legend-key="merlog" data-key="merlog">מרלוג</span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--phone">טלפון חסר\\שגוי</span>
+          <span class="tmc-legend-chip tmc-legend-chip--phone" data-legend-key="phone" data-key="phone">אין טלפון</span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--ready">מוכן</span>
+          <span class="tmc-legend-chip tmc-legend-chip--ready" data-legend-key="ready" data-key="ready">מוכן</span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--coord">לתאם</span>
+          <span class="tmc-legend-chip tmc-legend-chip--coord" data-legend-key="coord" data-key="coord">לתאם</span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--branch">לסניף</span>
+          <span class="tmc-legend-chip tmc-legend-chip--branch" data-legend-key="branch" data-key="branch">לסניף</span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--mission">משימה</span>
+          <span class="tmc-legend-chip tmc-legend-chip--mission" data-legend-key="mission" data-key="mission">משימה</span>
         </li>
       </ul>
     `;
@@ -514,10 +643,25 @@ function __tmcInsertColorLegend(){
     const railX = menu.querySelector('.ps__rail-x');
     if (railX) menu.insertBefore(legend, railX);
     else menu.appendChild(legend);
+
+    // Reserve bottom space so nothing נחתך מאחורי המקרא גם במסכים נמוכים
+    try{
+      const menuNav = menu.querySelector('ul.menu-nav');
+      const pad = () => {
+        const h = legend.getBoundingClientRect().height || 0;
+        if (menuNav) menuNav.style.paddingBottom = Math.max(12, Math.ceil(h + 8)) + 'px';
+      };
+      pad();
+      // עדכן בעת שינוי גודל חלון או רינדור דינמי
+      window.addEventListener('resize', pad);
+      document.addEventListener('tm:dom-updated', pad);
+      setTimeout(pad, 300);
+    }catch(_){}
   }catch(e){
     try{ console.warn('Legend insert failed', e); }catch(_){}
   }
 }
+
 
 // Helper: toggle infinite row blink class
 function __tmcSetRowBlink(tr, shouldBlink){
@@ -9609,7 +9753,102 @@ function highlightPickQuantities() {
 
 
 // --- DataTables draw hook (אופציונלי, פועל רק אם יש jQuery+DataTables) ---
-function hookDataTablesDraw() {
+let __tmcLegendFilterTable = null;
+
+function __tmcFindActiveVisitsDataTable() {
+  if (!window.jQuery || !jQuery.fn.DataTable) return { dt: null, node: null };
+  const $cand = jQuery('table.dataTable:visible')
+    .not('.pick-order-item-table')
+    .filter(function(){ return !jQuery(this).closest('#missing-table-container').length; })
+    .first();
+  if ($cand.length) {
+    const dt = $cand.DataTable();
+    return { dt, node: dt.table().node() };
+  }
+  const $fallback = jQuery('#operator-store-visits-table');
+  if ($fallback.length) {
+    const dt = $fallback.DataTable();
+    return { dt, node: dt.table().node() };
+  }
+  return { dt: null, node: null };
+}
+
+// === Legend filtering (click-to-filter) =====================================
+(function(){
+  let __tmcLegendFilterInstalled = false;
+  let __tmcActiveLegendKey = null;
+  let __tmcActiveLegendRowClass = null;
+
+  const KEY_TO_ROW_CLASS = {
+    merlog: 'merlog-row-highlight',
+    ready:  'ready-row-highlight',
+    coord:  'coord-row-highlight',
+    branch: 'branch-row-highlight',
+    mission:'mission-row-highlight',
+    phone:  'phone-missing-row-highlight'
+  };
+
+  function ensureLegendFilterInstalled(dt){
+    if (__tmcLegendFilterInstalled) return;
+    if (!window.jQuery || !jQuery.fn.dataTable) return;
+    jQuery.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
+      try{
+        const tbl = settings && settings.nTable;
+        if (!tbl) return true;
+        if (__tmcLegendFilterTable && tbl !== __tmcLegendFilterTable) return true;
+        if (!__tmcActiveLegendRowClass) return true;
+        const row = settings.aoData && settings.aoData[dataIndex] && settings.aoData[dataIndex].nTr;
+        if (!row) return true;
+        return row.classList.contains(__tmcActiveLegendRowClass);
+      }catch(e){ return true; }
+    });
+    __tmcLegendFilterInstalled = true;
+  }
+
+  function setLegendActiveChip(nextKey){
+    const root = document.getElementById('tmc-color-legend');
+    if (!root) return;
+    root.querySelectorAll('.tmc-legend-chip').forEach(ch => ch.classList.remove('is-active'));
+    if (!nextKey) return;
+    const target = root.querySelector('.tmc-legend-chip--' + nextKey);
+    if (target) target.classList.add('is-active');
+  }
+
+  function toggleLegendFilter(key){
+    if (__tmcActiveLegendKey === key){
+      __tmcActiveLegendKey = null;
+      __tmcActiveLegendRowClass = null;
+    } else {
+      __tmcActiveLegendKey = key;
+      __tmcActiveLegendRowClass = KEY_TO_ROW_CLASS[key] || null;
+    }
+    setLegendActiveChip(__tmcActiveLegendKey);
+    let { dt, node } = __tmcFindActiveVisitsDataTable();
+    __tmcLegendFilterTable = node;
+    if (dt){
+      ensureLegendFilterInstalled(dt);
+      dt.draw(false);
+    }
+  }
+
+  // Delegate: click on legend chips
+  document.addEventListener('click', function(ev){
+    const el = ev.target.closest && ev.target.closest('#tmc-color-legend .tmc-legend-chip');
+    if (!el) return;
+    const classes = el.className || '';
+    const key = ['merlog','phone','ready','coord','branch','mission']
+      .find(k => classes.indexOf('tmc-legend-chip--' + k) > -1);
+    if (!key) return;
+    toggleLegendFilter(key);
+  });
+
+  // Expose tiny API if needed elsewhere
+  window.__tmcToggleLegendFilter = toggleLegendFilter;
+  window.__tmcEnsureLegendFilterInstalled = ensureLegendFilterInstalled;
+})();
+// === End Legend filtering ====================================================
+function hookDataTablesDraw(dt) {
+  try { window.__tmcEnsureLegendFilterInstalled && window.__tmcEnsureLegendFilterInstalled(dt); } catch(e) {}
   try {
     const $ = window.jQuery || window.$;
     // בדיקה סלחנית: גם dataTable (ישן) וגם DataTable (חדש)
@@ -12086,5 +12325,288 @@ function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
         });
       }
     });
+  };
+})();
+
+// ========== HOTFIX: Legend Chips Filtering + Debug Logs ==========
+
+// 0) עוזר: jQuery של העמוד, לא של הסנדבוקס
+function __lwGetPageJQ() {
+  try {
+    if (typeof unsafeWindow !== 'undefined') {
+      return unsafeWindow.jQuery || unsafeWindow.$ || window.jQuery || window.$ || null;
+    }
+  } catch (e) {}
+  return window.jQuery || window.$ || null;
+}
+
+// 1) לוג מאוחד
+function __lwLegendLog(...args) {
+  if (window.DEBUG_TOOLBOX) {
+    console.info('[Toolbox:Legend]', ...args);
+  }
+}
+
+// 2) מפה בין צ'יפ לקלאס שורה
+const __LW_LEGEND_KEY_TO_ROW_CLASS = {
+  merlog: 'merlog-row-highlight',
+  phone:  'phone-missing-row-highlight',
+  ready:  'ready-row-highlight',
+  coord:  'coord-row-highlight',
+  branch: 'branch-row-highlight',
+  mission:'mission-row-highlight'
+};
+
+// 3) סינון fallback ב־CSS אם אין DataTables
+(function __lwEnsureCssLegendStyles() {
+  if (document.getElementById('lw-legend-css-filter-style')) return;
+  const css = `
+    #operator-store-visits-table.lw-css-filter-active tbody tr { display: table-row; }
+    #operator-store-visits-table.lw-css-filter-merlog  tbody tr:not(.${__LW_LEGEND_KEY_TO_ROW_CLASS.merlog})  { display: none !important; }
+    #operator-store-visits-table.lw-css-filter-phone   tbody tr:not(.${__LW_LEGEND_KEY_TO_ROW_CLASS.phone})   { display: none !important; }
+    #operator-store-visits-table.lw-css-filter-ready   tbody tr:not(.${__LW_LEGEND_KEY_TO_ROW_CLASS.ready})   { display: none !important; }
+    #operator-store-visits-table.lw-css-filter-coord   tbody tr:not(.${__LW_LEGEND_KEY_TO_ROW_CLASS.coord})   { display: none !important; }
+    #operator-store-visits-table.lw-css-filter-branch  tbody tr:not(.${__LW_LEGEND_KEY_TO_ROW_CLASS.branch})  { display: none !important; }
+    #operator-store-visits-table.lw-css-filter-mission tbody tr:not(.${__LW_LEGEND_KEY_TO_ROW_CLASS.mission}) { display: none !important; }
+  `;
+  const style = document.createElement('style');
+  style.id = 'lw-legend-css-filter-style';
+  style.textContent = css;
+  document.head.appendChild(style);
+})();
+
+function __lwApplyCssLegendFilter(key) {
+  const table = document.querySelector('#operator-store-visits-table');
+  if (!table) {
+    __lwLegendLog('CSS fallback: table not found');
+    return;
+  }
+  const all = ['merlog','phone','ready','coord','branch','mission'];
+  table.classList.remove('lw-css-filter-active', ...all.map(k => `lw-css-filter-${k}`));
+  if (!key) {
+    __lwLegendLog('CSS fallback: cleared filter');
+    return;
+  }
+  table.classList.add('lw-css-filter-active', `lw-css-filter-${key}`);
+  // עדכון אינפו בסיסי
+  try {
+    const info = document.querySelector('#operator-store-visits-table_info');
+    const total = table.querySelectorAll('tbody tr[id^="visit-row-"]').length;
+    const shown = table.querySelectorAll('tbody tr[id^="visit-row-"]:not([style*="display: none"])').length;
+    if (info && total) {
+      info.textContent = `מציג ${shown} מסוננות מתוך ${total}`;
+    }
+  } catch(e) {}
+  __lwLegendLog('CSS fallback: applied', key);
+}
+
+// 4) מציאת DataTable אמיתי מתוך העמוד
+function __tmcFindActiveVisitsDataTable() {
+  const $ = __lwGetPageJQ();
+  const tableNode = document.querySelector('#operator-store-visits-table');
+  if (!$ || !$.fn || !$.fn.dataTable) {
+    __lwLegendLog('DataTables not found on page, will use CSS fallback');
+    return { dt: null, node: tableNode };
+  }
+
+  let dt = null;
+
+  try {
+    if ($.fn.dataTable.isDataTable && tableNode) {
+      dt = $(tableNode).DataTable();
+    }
+    if (!dt || typeof dt.draw !== 'function') {
+      const apis = $.fn.dataTable.tables({ visible: true, api: true });
+      if (apis && apis.length) dt = apis[0];
+    }
+  } catch (e) {
+    __lwLegendLog('Error locating DataTable:', e);
+  }
+
+  if (dt && typeof dt.draw === 'function') {
+    __lwLegendLog('Found DataTable');
+    return { dt, node: dt.table ? dt.table().node() : tableNode };
+  }
+
+  __lwLegendLog('DataTable API missing, will use CSS fallback');
+  return { dt: null, node: tableNode };
+}
+
+// 5) התקנת פילטר DataTables עם לוגים ו־unsafeWindow jQuery
+let __tmcLegendFilterInstalled = false;
+let __tmcLegendFilterTable = null;
+
+function ensureLegendFilterInstalled(dt) {
+  if (__tmcLegendFilterInstalled) return;
+  const $ = __lwGetPageJQ();
+  if (!$ || !$.fn || !$.fn.dataTable) {
+    __lwLegendLog('ensureLegendFilterInstalled: DataTables not present');
+    return;
+  }
+  $.fn.dataTable.ext.search.push(function legendFilter(settings, data, dataIndex, rowData, counter) {
+    if (!__tmcLegendFilterInstalled || !__tmcLegendFilterTable) return true;
+    if (__tmcLegendFilterTable !== settings.nTable) return true;
+
+    const activeKey = document.body.getAttribute('data-legend-filter') || null;
+    if (!activeKey) return true;
+
+    const row = settings.aoData[dataIndex] && settings.aoData[dataIndex].nTr;
+    if (!row) return true;
+
+    if (activeKey === 'phone') {
+      const blink =
+        row.classList?.contains('tmc-phone-blink') ||
+        row.classList?.contains('phone-missing-row-highlight') ||
+        (row.dataset && row.dataset.phoneBlink === '1');
+      return !!blink;
+    }
+
+    const cls = __LW_LEGEND_KEY_TO_ROW_CLASS[activeKey];
+    if (!cls) return true;
+
+    return row.classList.contains(cls);
+  });
+  __tmcLegendFilterInstalled = true;
+  __lwLegendLog('DataTables legend filter installed');
+}
+
+// 6) טוגל הסינון עם לוגים ונפילה ל־CSS
+function toggleLegendFilter(key) {
+  const { dt, node } = __tmcFindActiveVisitsDataTable();
+  __tmcLegendFilterTable = node || null;
+
+  // עדכון מצב ה־UI של הצ'יפים
+  try {
+    document.querySelectorAll('#tmc-color-legend .tmc-legend-chip').forEach(ch => ch.classList.remove('is-active'));
+    if (key) {
+      const chip = document.querySelector(`#tmc-color-legend .tmc-legend-chip[data-key="${key}"]`);
+      if (chip) chip.classList.add('is-active');
+    }
+  } catch(e){}
+
+  // מצב גלובלי
+  if (key) document.body.setAttribute('data-legend-filter', key);
+  else     document.body.removeAttribute('data-legend-filter');
+
+  // אם יש DataTables: התקן פילטר ותבצע draw
+  if (dt && typeof dt.draw === 'function') {
+    ensureLegendFilterInstalled(dt);
+    __lwLegendLog('Toggling via DataTables:', key);
+    try { dt.draw(false); } catch(e) { __lwLegendLog('draw error:', e); }
+    return;
+  }
+
+  // אין DataTables: CSS fallback
+  __lwLegendLog('Toggling via CSS fallback:', key);
+  __lwApplyCssLegendFilter(key);
+}
+
+// 7) לוג על קליק בצ'יפ + טיפול בבחירה כפולה לביטול
+(function installLegendClickDebug() {
+  if (window.__lwLegendClickDebugInstalled) return;
+  window.__lwLegendClickDebugInstalled = true;
+
+  document.addEventListener('click', function(e) {
+    const chip = e.target.closest && e.target.closest('#tmc-color-legend .tmc-legend-chip');
+    if (!chip) return;
+    e.preventDefault();
+
+    const key = chip.getAttribute('data-key') || chip.getAttribute('data-legend-key');
+    const alreadyActive = chip.classList.contains('is-active');
+    const next = alreadyActive ? null : key;
+
+    __lwLegendLog('Chip click:', { key, alreadyActive, next });
+    toggleLegendFilter(next);
+  }, true);
+
+  // אם DataTables מרנדר מחדש: נרענן
+  const tbl = document.querySelector('#operator-store-visits-table tbody');
+  if (tbl) {
+    const mo = new MutationObserver(() => {
+      const activeKey = document.body.getAttribute('data-legend-filter') || null;
+      if (activeKey) {
+        __lwLegendLog('MutationObserver re-apply filter after redraw:', activeKey);
+        toggleLegendFilter(activeKey);
+      }
+    });
+    mo.observe(tbl, { childList: true, subtree: false });
+  }
+
+  __lwLegendLog('Legend click debug installed');
+})();
+
+// ========== HOTFIX EXT: Yellow phone blink tagging ==========
+function __lwLegendLog(...args){ if (window.DEBUG_TOOLBOX) console.info('[Toolbox:Legend]', ...args); }
+
+function __lwHasYellowBgTree(root){
+  if (!root) return false;
+  const nodes = [root, ...root.querySelectorAll('*')];
+  for (const n of nodes){
+    try {
+      const inline = (n.getAttribute && n.getAttribute('style')) || '';
+      if (/#ff0\b|#ffff00\b/i.test(inline)) return true;
+      const cs = window.getComputedStyle(n);
+      const bg = cs && cs.backgroundColor;
+      if (bg === 'rgb(255, 255, 0)' || bg === 'rgba(255, 255, 0, 1)') return true;
+    } catch(e){}
+  }
+  return false;
+}
+
+function __lwTagPhoneYellowRows(){
+  const rows = document.querySelectorAll('#operator-store-visits-table tbody tr[id^="visit-row-"]');
+  let tagged = 0;
+  rows.forEach(row=>{
+    const phoneTd = row.querySelector('td[data-label="טלפון"]');
+    const trStyle = row ? getComputedStyle(row) : null;
+    const tdStyle = phoneTd ? getComputedStyle(phoneTd) : null;
+    const isBlink =
+      row.classList.contains('tmc-phone-blink') ||
+      (trStyle && typeof trStyle.animationName === 'string' && trStyle.animationName.includes('tmcPhonePulse')) ||
+      (tdStyle && typeof tdStyle.animationName === 'string' && tdStyle.animationName.includes('tmcPhonePulse')) ||
+      (trStyle && trStyle.backgroundColor === 'rgb(255, 255, 0)') ||
+      (tdStyle && tdStyle.backgroundColor === 'rgb(255, 255, 0)') ||
+      __lwHasYellowBgTree(phoneTd);
+    if (isBlink) {
+      row.dataset.phoneBlink = '1';
+      row.classList.add('phone-missing-row-highlight');
+      tagged++;
+    } else {
+      if (row.dataset) delete row.dataset.phoneBlink;
+      row.classList.remove('phone-missing-row-highlight');
+    }
+  });
+  __lwLegendLog('Yellow phone scan:', { tagged, total: rows.length });
+}
+
+function __lwBurstScanPhoneYellow(times=4, delay=180){
+  // לתפוס אנימציית הבהוב גם אם כרגע שקופה
+  let left = times;
+  const tick = () => {
+    __lwTagPhoneYellowRows();
+    if (--left > 0) setTimeout(tick, delay);
+  };
+  tick();
+}
+
+// קריאה בעת עלייה
+try { if (typeof __tmcEnsurePhoneCSS === 'function') __tmcEnsurePhoneCSS(); } catch(_){}
+__lwBurstScanPhoneYellow();
+setInterval(__lwTagPhoneYellowRows, 1500);
+
+// חיבור ל־MutationObserver הקיים אם יש, או יצירה קלילה
+(function(){
+  const tbody = document.querySelector('#operator-store-visits-table tbody');
+  if (!tbody) return;
+  const mo = new MutationObserver(()=>{ __lwBurstScanPhoneYellow(); });
+  mo.observe(tbody, { childList: true });
+})();
+
+// חיבור ללג׳נד: בכל טוגל פילטר נוודא שהתיוג עדכני
+(function(){
+  const _origToggle = window.toggleLegendFilter;
+  window.toggleLegendFilter = function(nextKey){
+    __lwBurstScanPhoneYellow();
+    return _origToggle ? _origToggle(nextKey) : void 0;
   };
 })();
