@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.61
+// @version      13.8.65
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -510,28 +510,33 @@ function __tmcEnsureLegendCSS(){
       #kt_aside_menu .tmc-color-legend{
         position: sticky !important;
         bottom: 0 !important;
-        z-index: 3 !important;
-        background: #fff !important;
-        padding: 6px 8px !important;                    /* קומפקטי */
+        z-index: 4 !important;                  /* keep above PS rails */
         border-top: 1px solid rgba(0,0,0,.08) !important;
         box-shadow: 0 -4px 8px rgba(0,0,0,.02) !important;  /* צל עדין יותר */
         direction: rtl !important;
         font-size: 11px !important;   /* פונט קטן כנדרש */
         line-height: 1.25 !important;
-        /* Full inline anchoring + clamp painting area */
-        inset-inline-start: 0 !important;
-        inset-inline-end: 0 !important;
-        width: auto !important;
+        background: #fff !important;
+        padding: 6px 8px !important;
         max-width: 100% !important;
         min-width: 0 !important;
         box-sizing: border-box !important;
         /* אל תחתוך את התוכן אנכית: אפשר גלילה פנימית כשצריך */
         overflow-x: hidden !important;
         overflow-y: auto !important;
-        /* ברזולוציות/חלונות נמוכים: גבול גובה חכם עם גלילה */
-        max-height: clamp(120px, 28vh, 220px) !important;
+        /* ברזולוציות/חלונות נמוכים: גבול גובה חכם עם גלילה (קצת יותר נדיב לטאבלט) */
+        max-height: clamp(120px, 34vh, 240px) !important;
         overscroll-behavior: contain !important;
         -webkit-overflow-scrolling: touch !important;
+      }
+      /* Spacer that reserves scrollable room above the sticky legend */
+      #kt_aside_menu #tmc-legend-spacer{
+        display: block !important;
+        height: 0 !important;          /* sized dynamically by JS */
+        margin: 0 !important;
+        padding: 0 !important;
+        pointer-events: none !important;
+        border: 0 !important;
       }
       #kt_aside_menu .tmc-color-legend .tmc-legend-title{
         font-weight: 600 !important;
@@ -555,7 +560,9 @@ function __tmcEnsureLegendCSS(){
         box-sizing: border-box !important;
       }
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip{
-        display: block !important;             /* שורה מלאה ברקע צבעוני */
+        display: flex !important;
+        align-items: center !important;
+        gap: 6px !important;
         width: 100% !important;
         max-width: 100% !important;            /* ודא שאין גלישה אופקית */
         min-width: 0 !important;
@@ -568,9 +575,15 @@ function __tmcEnsureLegendCSS(){
         color: #222 !important;                /* טקסט כהה על רקע בהיר */
         text-align: right !important;
         box-sizing: border-box !important;
+      }
+      /* Checkbox hidden - using ::before pseudo-element instead (CSS-only solution) */
+      #kt_aside_menu .tmc-color-legend .tmc-legend-checkbox {
+        display: none !important;
+      }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-label {
+        box-sizing: border-box !important;
         overflow: hidden !important;           /* אליפסיס רך */
         text-overflow: ellipsis !important;
-        white-space: nowrap !important;        /* אליפסיס יעבוד ללא גלישה */
       }
       /* עוד כיווץ במסכים נמוכים מאוד */
       @media (max-height: 900px){
@@ -592,7 +605,7 @@ function __tmcEnsureLegendCSS(){
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip--ready   { background: #dfffe5 !important; }
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip--coord   { background: #E3D1FD !important; }
       #kt_aside_menu .tmc-color-legend .tmc-legend-chip--branch  { background: #EBD9C3 !important; }
-      #kt_aside_menu .tmc-color-legend .tmc-legend-chip--mission { background: #FCE7F3 !important; }
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip--mission { background: #ffadeb !important; }
     `;
     let st = document.getElementById('tmc-legend-css');
     if (!st){
@@ -613,6 +626,11 @@ function __tmcInsertColorLegend(){
     if (!menu) return;
     if (menu.querySelector('#tmc-color-legend')) return; // already inserted
 
+    // Create (idempotent) spacer that will reserve room above the sticky legend
+    const spacer = document.createElement('div');
+    spacer.id = 'tmc-legend-spacer';
+    spacer.setAttribute('aria-hidden','true');
+
     const legend = document.createElement('div');
     legend.id = 'tmc-color-legend';
     legend.className = 'tmc-color-legend';
@@ -620,48 +638,81 @@ function __tmcInsertColorLegend(){
       <div class="tmc-legend-title">מקרא צבעים</div>
       <ul class="tmc-legend-list">
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--merlog" data-legend-key="merlog" data-key="merlog">מרלוג</span>
+          <span class="tmc-legend-chip tmc-legend-chip--merlog" data-legend-key="merlog" data-key="merlog">
+            <span class="tmc-legend-checkbox">☐</span><span class="tmc-legend-label">מרלוג</span>
+          </span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--phone" data-legend-key="phone" data-key="phone">אין טלפון</span>
+          <span class="tmc-legend-chip tmc-legend-chip--phone" data-legend-key="phone" data-key="phone">
+            <span class="tmc-legend-checkbox">☐</span><span class="tmc-legend-label">אין טלפון</span>
+          </span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--ready" data-legend-key="ready" data-key="ready">מוכן</span>
+          <span class="tmc-legend-chip tmc-legend-chip--ready" data-legend-key="ready" data-key="ready">
+            <span class="tmc-legend-checkbox">☐</span><span class="tmc-legend-label">מוכן</span>
+          </span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--coord" data-legend-key="coord" data-key="coord">לתאם</span>
+          <span class="tmc-legend-chip tmc-legend-chip--coord" data-legend-key="coord" data-key="coord">
+            <span class="tmc-legend-checkbox">☐</span><span class="tmc-legend-label">לתאם</span>
+          </span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--branch" data-legend-key="branch" data-key="branch">לסניף</span>
+          <span class="tmc-legend-chip tmc-legend-chip--branch" data-legend-key="branch" data-key="branch">
+            <span class="tmc-legend-checkbox">☐</span><span class="tmc-legend-label">לסניף</span>
+          </span>
         </li>
         <li class="tmc-legend-item">
-          <span class="tmc-legend-chip tmc-legend-chip--mission" data-legend-key="mission" data-key="mission">משימה</span>
+          <span class="tmc-legend-chip tmc-legend-chip--mission" data-legend-key="mission" data-key="mission">
+            <span class="tmc-legend-checkbox">☐</span><span class="tmc-legend-label">משימה</span>
+          </span>
         </li>
       </ul>
     `;
-    // Place legend before Perfect Scrollbar rails if they exist, so it stays visible
+    // Place spacer + legend before Perfect Scrollbar rails so both remain visible and correct
     const railX = menu.querySelector('.ps__rail-x');
-    if (railX) menu.insertBefore(legend, railX);
-    else menu.appendChild(legend);
+    if (railX){
+      menu.insertBefore(spacer, railX);
+      menu.insertBefore(legend, railX);
+    } else {
+      menu.appendChild(spacer);
+      menu.appendChild(legend);
+    }
 
-    // Reserve bottom space so nothing נחתך מאחורי המקרא גם במסכים נמוכים
+    // After legend exists, reserve just-enough space inside the aside
+    __tmcReserveLegendSpace();
+
+    // Keep it accurate on any layout change
     try{
-      const menuNav = menu.querySelector('ul.menu-nav');
-      const pad = () => {
-        const h = legend.getBoundingClientRect().height || 0;
-        if (menuNav) menuNav.style.paddingBottom = Math.max(12, Math.ceil(h + 8)) + 'px';
-      };
-      pad();
-      // עדכן בעת שינוי גודל חלון או רינדור דינמי
-      window.addEventListener('resize', pad);
-      document.addEventListener('tm:dom-updated', pad);
-      setTimeout(pad, 300);
-    }catch(_){}
+      const ro = new ResizeObserver(() => __tmcReserveLegendSpace());
+      ro.observe(legend);
+      ro.observe(menu);
+    }catch(_e){}
+    window.addEventListener('resize', __tmcReserveLegendSpace, { passive: true });
+    window.addEventListener('orientationchange', __tmcReserveLegendSpace, { passive: true });
   }catch(e){
     try{ console.warn('Legend insert failed', e); }catch(_){}
   }
 }
 
+// Compute and set the bottom reserve ONLY for the aside menu
+function __tmcReserveLegendSpace(){
+  const legend = document.getElementById('tmc-color-legend');
+  const aside  = document.getElementById('kt_aside_menu');
+  const spacer = document.getElementById('tmc-legend-spacer');
+  if (!legend || !aside || !spacer) return;
+  const cs = getComputedStyle(legend);
+  const h  = legend.offsetHeight
+           + parseFloat(cs.marginTop || '0')
+           + parseFloat(cs.marginBottom || '0');
+  // Size the spacer (not the container padding) to avoid sticky+padding gap
+  spacer.style.height = (Math.ceil(h) + 8) + 'px';
+  // Ensure the scroll container has no bottom padding that could lift sticky
+  try{
+    aside.style.paddingBottom = '0px';
+    aside.style.removeProperty('--tmc-legend-reserve');
+  }catch(_){}
+}
 
 // Helper: toggle infinite row blink class
 function __tmcSetRowBlink(tr, shouldBlink){
@@ -3034,14 +3085,14 @@ setupBlockedScriptObserver();
         .offcanvas.mission-highlight .tab-pane,
         .card.mission-highlight .tab-content,
         .card.mission-highlight .tab-pane {
-          background-color: #FCE7F3 !important; /* pink-100 */
+          background-color: #ffadeb !important; /* pink-100 */
           background-image: none !important;
           box-shadow: none !important;
         }
 
         /* Table row pink highlighting */
         tr.mission-row-highlight { /* Pink */
-          background-color: #FCE7F3 !important;
+          background-color: #ffadeb !important;
         }
 
         /* Inline pink chips inside a pink container if needed */
@@ -3049,7 +3100,7 @@ setupBlockedScriptObserver();
         .mission-highlight span.mission-highlight,
         .mission-highlight div.mission-highlight,
         .mission-highlight p.mission-highlight {
-          background-color: #FCE7F3 !important;
+          background-color: #ffadeb !important;
           color: #9D174D !important; /* deep pink */
           padding: 1px 3px !important;
           border-radius: 2px !important;
@@ -9831,16 +9882,7 @@ function __tmcFindActiveVisitsDataTable() {
     }
   }
 
-  // Delegate: click on legend chips
-  document.addEventListener('click', function(ev){
-    const el = ev.target.closest && ev.target.closest('#tmc-color-legend .tmc-legend-chip');
-    if (!el) return;
-    const classes = el.className || '';
-    const key = ['merlog','phone','ready','coord','branch','mission']
-      .find(k => classes.indexOf('tmc-legend-chip--' + k) > -1);
-    if (!key) return;
-    toggleLegendFilter(key);
-  });
+  // Click handler removed - using new handler with toggle behavior (see installLegendClickDebug below)
 
   // Expose tiny API if needed elsewhere
   window.__tmcToggleLegendFilter = toggleLegendFilter;
@@ -12340,13 +12382,6 @@ function __lwGetPageJQ() {
   return window.jQuery || window.$ || null;
 }
 
-// 1) לוג מאוחד
-function __lwLegendLog(...args) {
-  if (window.DEBUG_TOOLBOX) {
-    console.info('[Toolbox:Legend]', ...args);
-  }
-}
-
 // 2) מפה בין צ'יפ לקלאס שורה
 const __LW_LEGEND_KEY_TO_ROW_CLASS = {
   merlog: 'merlog-row-highlight',
@@ -12361,6 +12396,29 @@ const __LW_LEGEND_KEY_TO_ROW_CLASS = {
 (function __lwEnsureCssLegendStyles() {
   if (document.getElementById('lw-legend-css-filter-style')) return;
   const css = `
+    /* checkbox glyphs using ::before pseudo-element (CSS-only solution) */
+    #kt_aside_menu .tmc-color-legend .tmc-legend-chip::before { content:'☐'; margin-inline-start:4px; }
+    #kt_aside_menu .tmc-color-legend .tmc-legend-chip.is-active::before { content:'☑'; }
+
+    /* Pink → #FFADEB override kept */
+    #kt_aside_menu .tmc-color-legend .tmc-legend-chip--mission,
+    #operator-store-visits-table .mission-row-highlight,
+    .mission-row-highlight {
+      background: #FFADEB !important;
+    }
+
+    /* Better fit on narrow/tablet viewports (also "un-pin" if theme forced anchoring) */
+    #kt_aside_menu .tmc-color-legend {
+      inset-inline-start: auto !important;
+      inset-inline-end:   auto !important;
+      width: auto !important;
+      max-width: calc(100% - 8px);
+      margin-inline: 4px;
+    }
+    @media (max-width: 1024px) {
+      #kt_aside_menu .tmc-color-legend .tmc-legend-chip { padding: 4px 6px; font-size: 11px; }
+    }
+
     #operator-store-visits-table.lw-css-filter-active tbody tr { display: table-row; }
     #operator-store-visits-table.lw-css-filter-merlog  tbody tr:not(.${__LW_LEGEND_KEY_TO_ROW_CLASS.merlog})  { display: none !important; }
     #operator-store-visits-table.lw-css-filter-phone   tbody tr:not(.${__LW_LEGEND_KEY_TO_ROW_CLASS.phone})   { display: none !important; }
@@ -12378,13 +12436,11 @@ const __LW_LEGEND_KEY_TO_ROW_CLASS = {
 function __lwApplyCssLegendFilter(key) {
   const table = document.querySelector('#operator-store-visits-table');
   if (!table) {
-    __lwLegendLog('CSS fallback: table not found');
     return;
   }
   const all = ['merlog','phone','ready','coord','branch','mission'];
   table.classList.remove('lw-css-filter-active', ...all.map(k => `lw-css-filter-${k}`));
   if (!key) {
-    __lwLegendLog('CSS fallback: cleared filter');
     return;
   }
   table.classList.add('lw-css-filter-active', `lw-css-filter-${key}`);
@@ -12397,7 +12453,6 @@ function __lwApplyCssLegendFilter(key) {
       info.textContent = `מציג ${shown} מסוננות מתוך ${total}`;
     }
   } catch(e) {}
-  __lwLegendLog('CSS fallback: applied', key);
 }
 
 // 4) מציאת DataTable אמיתי מתוך העמוד
@@ -12405,7 +12460,6 @@ function __tmcFindActiveVisitsDataTable() {
   const $ = __lwGetPageJQ();
   const tableNode = document.querySelector('#operator-store-visits-table');
   if (!$ || !$.fn || !$.fn.dataTable) {
-    __lwLegendLog('DataTables not found on page, will use CSS fallback');
     return { dt: null, node: tableNode };
   }
 
@@ -12420,15 +12474,12 @@ function __tmcFindActiveVisitsDataTable() {
       if (apis && apis.length) dt = apis[0];
     }
   } catch (e) {
-    __lwLegendLog('Error locating DataTable:', e);
   }
 
   if (dt && typeof dt.draw === 'function') {
-    __lwLegendLog('Found DataTable');
     return { dt, node: dt.table ? dt.table().node() : tableNode };
   }
 
-  __lwLegendLog('DataTable API missing, will use CSS fallback');
   return { dt: null, node: tableNode };
 }
 
@@ -12440,7 +12491,6 @@ function ensureLegendFilterInstalled(dt) {
   if (__tmcLegendFilterInstalled) return;
   const $ = __lwGetPageJQ();
   if (!$ || !$.fn || !$.fn.dataTable) {
-    __lwLegendLog('ensureLegendFilterInstalled: DataTables not present');
     return;
   }
   $.fn.dataTable.ext.search.push(function legendFilter(settings, data, dataIndex, rowData, counter) {
@@ -12467,7 +12517,6 @@ function ensureLegendFilterInstalled(dt) {
     return row.classList.contains(cls);
   });
   __tmcLegendFilterInstalled = true;
-  __lwLegendLog('DataTables legend filter installed');
 }
 
 // 6) טוגל הסינון עם לוגים ונפילה ל־CSS
@@ -12477,27 +12526,38 @@ function toggleLegendFilter(key) {
 
   // עדכון מצב ה־UI של הצ'יפים
   try {
-    document.querySelectorAll('#tmc-color-legend .tmc-legend-chip').forEach(ch => ch.classList.remove('is-active'));
+    document.querySelectorAll('#tmc-color-legend .tmc-legend-chip').forEach(ch => {
+      ch.classList.remove('is-active');
+      if (!ch.hasAttribute('role')) ch.setAttribute('role','checkbox');
+      ch.setAttribute('aria-checked','false');
+    });
     if (key) {
       const chip = document.querySelector(`#tmc-color-legend .tmc-legend-chip[data-key="${key}"]`);
-      if (chip) chip.classList.add('is-active');
+      if (chip) {
+        chip.classList.add('is-active');
+        chip.setAttribute('aria-checked','true');
+      }
     }
-  } catch(e){}
+  } catch(e) {}
 
   // מצב גלובלי
   if (key) document.body.setAttribute('data-legend-filter', key);
   else     document.body.removeAttribute('data-legend-filter');
 
+  // Fail-safe: if user chose yellow and no rows tagged yet—run a quick scan then proceed
+  if (key === 'phone') {
+    const hasTagged = document.querySelector('#operator-store-visits-table tbody tr.phone-missing-row-highlight, #operator-store-visits-table tbody tr.tmc-phone-blink, #operator-store-visits-table tbody tr[data-phone-blink="1"]');
+    if (!hasTagged) { try { __lwBurstScanPhoneYellow(3,160); } catch(_){} }
+  }
+
   // אם יש DataTables: התקן פילטר ותבצע draw
   if (dt && typeof dt.draw === 'function') {
     ensureLegendFilterInstalled(dt);
-    __lwLegendLog('Toggling via DataTables:', key);
-    try { dt.draw(false); } catch(e) { __lwLegendLog('draw error:', e); }
+    try { dt.draw(false); } catch(e) { }
     return;
   }
 
   // אין DataTables: CSS fallback
-  __lwLegendLog('Toggling via CSS fallback:', key);
   __lwApplyCssLegendFilter(key);
 }
 
@@ -12515,7 +12575,6 @@ function toggleLegendFilter(key) {
     const alreadyActive = chip.classList.contains('is-active');
     const next = alreadyActive ? null : key;
 
-    __lwLegendLog('Chip click:', { key, alreadyActive, next });
     toggleLegendFilter(next);
   }, true);
 
@@ -12525,19 +12584,14 @@ function toggleLegendFilter(key) {
     const mo = new MutationObserver(() => {
       const activeKey = document.body.getAttribute('data-legend-filter') || null;
       if (activeKey) {
-        __lwLegendLog('MutationObserver re-apply filter after redraw:', activeKey);
         toggleLegendFilter(activeKey);
       }
     });
     mo.observe(tbl, { childList: true, subtree: false });
   }
-
-  __lwLegendLog('Legend click debug installed');
 })();
 
 // ========== HOTFIX EXT: Yellow phone blink tagging ==========
-function __lwLegendLog(...args){ if (window.DEBUG_TOOLBOX) console.info('[Toolbox:Legend]', ...args); }
-
 function __lwHasYellowBgTree(root){
   if (!root) return false;
   const nodes = [root, ...root.querySelectorAll('*')];
@@ -12576,7 +12630,6 @@ function __lwTagPhoneYellowRows(){
       row.classList.remove('phone-missing-row-highlight');
     }
   });
-  __lwLegendLog('Yellow phone scan:', { tagged, total: rows.length });
 }
 
 function __lwBurstScanPhoneYellow(times=4, delay=180){
