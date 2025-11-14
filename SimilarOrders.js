@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Lionwheel - חיפוש משלוחים דומים
 // @namespace    http://tampermonkey.net/
-// @version      3.2
-// @description  מוסיף כפתור חיפוש, תצוגת פריטים, ואפשרות לשיוך נהג ישירות ממודאל החיפוש. כולל תיקון לנהגים ישנים ואייקוני שותפים.
+// @version      3.6
+// @description  [מבצע אופטימיזציה] מאחד בקשות רשת (items+drivers), מוסיף טעינה אסינכרונית לפריטים, ומשפר עיצוב אייקונים.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -254,6 +254,50 @@
         .lw-search-modal .font-weight-bold { font-weight: 600 !important; }
         .lw-search-modal .mb-1 { margin-bottom: 0.25rem !important; }
         .lw-search-modal .font-size-xs { font-size: 0.8rem !important; }
+        /* [חדש] עיצוב Placeholder לטלפון */
+        .lw-phone-placeholder {
+            min-height: 1.2em; /* שומר גובה בזמן טעינה */
+            color: #6c757d; /* צבע טקסט אפור */
+        }
+        .lw-phone-placeholder i.fa-spinner {
+            color: #ccc;
+            font-size: 0.8em;
+        }
+        /* [שונה] עיצוב אחיד לאייקונים ברשימת התוצאות */
+        .lw-search-result-item .fa-user,
+        .lw-search-result-item .fa-location-dot,
+        .lw-search-result-item .fa-phone {
+            margin-left: 4px;  /* רווח באנגלית */
+            margin-right: 5px; /* רווח בעברית */
+            min-width: 14px;   /* רוחב אחיד */
+            text-align: center;
+            font-size: 0.9em;  /* גודל אחיד */
+        }
+        /* [חדש] עיצוב "לחץ להעתקה" */
+        .lw-copy-enabled {
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .lw-copy-enabled:hover {
+            color: #007bff !important; /* הדגשת צבע בכחול */
+        }
+
+        /* [חדש] עיצוב משוב "הועתק" */
+        .lw-copy-toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #28a745; /* רקע ירוק להצלחה */
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 5px;
+            z-index: 10001; /* מעל המודאל */
+            opacity: 0;
+            transition: opacity 0.3s;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
         .lw-search-modal .text-dark-50 { color: #6c757d !important; }
         .lw-search-modal .ml-2 { margin-left: 0.5rem !important; }
         .lw-search-modal .ml-3 { margin-left: 1rem !important; }
@@ -517,12 +561,20 @@
 
         // --- לוגיקת קליקים (כולל טיפול בנהגים) ---
         modalContent.addEventListener('click', (e) => {
+            const copyTarget = e.target.closest('.lw-copy-enabled');
             const previewToggle = e.target.closest('.lw-preview-toggle');
             const driverBtn = e.target.closest('.lw-driver-btn');
             const driverListItem = e.target.closest('.lw-driver-list li');
             const itemLink = e.target.closest('.lw-search-result-item');
 
-            if (driverListItem) {
+            if (copyTarget) {
+                // [חדש] לחיצה על אלמנט להעתקה
+                e.preventDefault();
+                e.stopPropagation();
+                const textToCopy = copyTarget.dataset.copyText || copyTarget.textContent.trim();
+                copyToClipboard(textToCopy);
+
+            } else if (driverListItem) {
                 // לחיצה על בחירת נהג
                 e.preventDefault();
                 e.stopPropagation();
@@ -689,8 +741,15 @@
                         </div>
 
                         <div class="d-flex flex-column ml-3 flex-grow-1">
-                            <span class="text-dark font-weight-bold mb-1">${task.name || 'לא צוין שם'}</span>
-                            <span class="font-size-xs font-weight-bold text-dark-50">${task.address || 'לא צוינה כתובת'}</span>
+                            <span class="text-dark font-weight-bold mb-1 lw-copy-enabled" data-copy-text="${task.name || ''}" title="העתק שם">
+                                <i class="fa-light fa-user"></i>&nbsp;${task.name || 'לא צוין שם'}
+                            </span>
+                            <span class="font-size-xs font-weight-bold text-dark-50 lw-copy-enabled" data-copy-text="${task.address || ''}" title="העתק כתובת">
+                                <i class="fa-light fa-location-dot"></i>&nbsp;${task.address || 'לא צוינה כתובת'}
+                            </span>
+                            <span class="font-size-xs font-weight-bold text-dark-50 lw-phone-placeholder" id="lw-phone-placeholder-${task.id}">
+                                <i class="fa-light fa-spinner fa-spin"></i>
+                            </span>
                         </div>
 
                         <div class="lw-result-bottom-left">
@@ -719,6 +778,49 @@
 
         const title = `נמצאו ${uniqueResults.length} תוצאות עבור "${searchTerm}"`;
         showModal(title, html);
+
+        uniqueResults.forEach(task => {
+            loadAndRenderExtraData(task.id);
+        });
+    }
+
+    async function loadAndRenderExtraData(taskId) {
+        const placeholder = document.getElementById(`lw-driver-placeholder-${taskId}`);
+        const phonePlaceholder = document.getElementById(`lw-phone-placeholder-${taskId}`);
+
+        if (!placeholder && !phonePlaceholder) return;
+
+        try {
+            if (placeholder) {
+                placeholder.innerHTML = `<div class="text-muted font-size-12" style="font-size: 0.7rem; margin-top: 4px;"><i class="fa-light fa-spinner fa-spin" style="margin-left: 4px;"></i>טוען נהגים...</div>`;
+            }
+
+            const driverData = await fetchTaskDriverData(taskId);
+            const { items, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc, phoneNumber } = driverData;
+            const dropdownHtml = buildDriverDropdownHTML(taskId, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc);
+
+            if (placeholder) {
+                placeholder.innerHTML = dropdownHtml;
+            }
+
+            if (driverData && Array.isArray(items)) {
+                previewCache.set(taskId, driverData);
+            }
+
+            if (phonePlaceholder) {
+                if (phoneNumber) {
+                    phonePlaceholder.innerHTML = `<i class="fa-light fa-phone"></i>&nbsp;<span class="lw-copy-enabled" data-copy-text="${phoneNumber}" title="העתק טלפון">${phoneNumber}</span>`;
+                } else {
+                    phonePlaceholder.innerHTML = '';
+                }
+            }
+        } catch (error) {
+            console.error(`[Extra Data Error] Task ${taskId}:`, error);
+            if (placeholder) {
+                placeholder.innerHTML = `<div class="text-danger font-size-12" style="font-size: 0.7rem; margin-top: 4px;">טעינת נהג נכשלה</div>`;
+            }
+            if (phonePlaceholder) phonePlaceholder.innerHTML = '';
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -813,31 +915,33 @@
 
             try {
                 let cachedData = previewCache.get(taskId);
+                
                 if (!cachedData) {
-                    const [itemsHtml, driverData] = await Promise.all([
-                        fetchTaskPreview(taskId),
-                        fetchTaskDriverData(taskId)    // <-- עכשיו שולף גם את תמונת השותף
-                    ]);
-
-                    const items = parsePreviewHTML(itemsHtml);
-                    cachedData = { items, ...driverData };
-
-                    if (cachedData.items.length > 0 || (cachedData.availableDrivers && cachedData.availableDrivers.length > 0)) {
+                    cachedData = await fetchTaskDriverData(taskId);
+                    
+                    if ((cachedData.items && cachedData.items.length > 0) || (cachedData.availableDrivers && cachedData.availableDrivers.length > 0)) {
                         previewCache.set(taskId, cachedData);
                     } else {
-                         console.warn(`No items or drivers found for task ${taskId}`);
+                        console.warn(`No items or drivers found for task ${taskId}`);
                     }
                 }
-
-                // [שונה] הוספת currentDriverImageSrc
-                const { items, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc } = cachedData;
+                
+                const { items, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc, phoneNumber } = cachedData;
 
                 const cardsHtml = buildPreviewCards(items);
                 container.innerHTML = `<div class="lw-preview-content">${cardsHtml}</div>`;
 
-                // [שונה] העברת currentDriverImageSrc לבניית ה-Dropdown
                 const driverDropdownHtml = buildDriverDropdownHTML(taskId, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc);
                 driverPlaceholder.innerHTML = driverDropdownHtml;
+                
+                const phonePlaceholder = resultRow.querySelector(`#lw-phone-placeholder-${taskId}`);
+                if (phonePlaceholder && phonePlaceholder.innerHTML.includes('fa-spinner')) {
+                     if (phoneNumber) {
+                        phonePlaceholder.innerHTML = `<i class="fa-light fa-phone"></i>&nbsp;<span class="lw-copy-enabled" data-copy-text="${phoneNumber}" title="העתק טלפון">${phoneNumber}</span>`;
+                    } else {
+                        phonePlaceholder.innerHTML = '';
+                    }
+                }
 
                 icon.classList.remove('fa-spinner', 'fa-spin');
                 icon.classList.add('fa-chevron-left');
@@ -850,29 +954,6 @@
                 icon.classList.add('fa-exclamation-triangle');
             }
         }
-    }
-
-    /**
-     * שולף רק את ה-HTML של ה-panel_view עבור *פריטים*.
-     */
-    function fetchTaskPreview(taskId) {
-        return new Promise((resolve, reject) => {
-            const token = getCSRFToken();
-            if (!token) return reject(new Error('CSRF token not found'));
-
-            GM_xmlhttpRequest({
-                method: "POST",
-                url: `https://members.lionwheel.com/tasks/${taskId}/panel_view`,
-                headers: {
-                    'accept': '*/*',
-                    'content-type': 'application/json',
-                    'x-csrf-token': token
-                },
-                data: JSON.stringify({}),
-                onload: (response) => response.status >= 200 && response.status < 300 ? resolve(response.responseText) : reject(new Error(`Fetch (panel_view) failed: ${response.status}`)),
-                onerror: (error) => reject(new Error(`Network error (panel_view): ${error.statusText}`))
-            });
-        });
     }
 
     /**
@@ -899,6 +980,8 @@
                         let availableDrivers = [];
                         let currentDriverName = null;
                         let currentDriverImageSrc = null; // <-- [חדש]
+                        let phoneNumber = null; // <-- [חדש] טלפון
+                        let items = [];
 
                         if (driverDropdown) {
                             try {
@@ -922,11 +1005,24 @@
                             }
                             // --- [סוף חדש] ---
 
+                            // --- [חדש] חילוץ מספר טלפון ---
+                            const phoneSpan = doc.querySelector('div[data-name="destination_phone"] .hover-copy');
+                            if (phoneSpan) {
+                                const phoneClone = phoneSpan.cloneNode(true);
+                                phoneClone.querySelectorAll('i, span.whatsapp-injected').forEach(el => el.remove());
+                                phoneNumber = phoneClone.textContent.trim();
+                            }
+                            // --- [סוף חדש] ---
+
                         } else {
                             console.warn(`Could not find driver dropdown in task page HTML for ${taskId}`);
                         }
+                        // --- [חדש] חילוץ פריטי הזמנה (מתוך אותו HTML) ---
+                        items = parsePreviewHTML(doc);
+                        // --- [סוף חדש] ---
+
                         // [שונה] מחזיר גם את currentDriverImageSrc
-                        resolve({ currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc });
+                        resolve({ items, currentDriverId, availableDrivers, currentDriverName, currentDriverImageSrc, phoneNumber }); // <-- [שונה]
 
                     } else {
                         reject(new Error(`Fetch (task page) failed: ${response.status}`));
@@ -941,8 +1037,8 @@
     /**
      * מפענח HTML ומחזיר רק { items }
      */
-    function parsePreviewHTML(htmlString) {
-        const doc = new DOMParser().parseFromString(htmlString, 'text/html');
+    function parsePreviewHTML(doc) { // [שונה] מקבל doc, לא htmlString
+        if (!doc) return [];
         const table = doc.querySelector('.table-responsive .table');
         if (!table) return [];
 
@@ -996,9 +1092,9 @@
                 <div class="d-flex align-items-center border rounded p-2 m-1 bg-white tmc-preview-card">
                     <img src="${imgSrc}" style="width: 60px !important; height: 60px !important; object-fit: contain !important; margin-left: 10px;" class="tmc-preview-img" onerror="this.src='${PLACEHOLDER_IMG_URL}'">
                     <div>
-                        <div class="font-weight-bold copy-enabled" style="font-size:0.9rem;">${item.name}</div>
+                        <div class="font-weight-bold lw-copy-enabled" data-copy-text="${item.name}" title="העתק שם מוצר" style="font-size:0.9rem;">${item.name}</div>
                         <div class="text-muted tmc-preview-meta" style="font-size: 0.8rem; white-space: normal !important;">
-                            <div><b>ברקוד:</b> <span class="barcode-highlight">${barcodeHtml}</span></div>
+                            <div><b>ברקוד:</b> <span class="barcode-highlight lw-copy-enabled" data-copy-text="${item.sku}" title="העתק ברקוד">${barcodeHtml}</span></div>
                             <div><b>מחיר:</b> ₪${item.price}</div>
                             <div><b>כמות:</b> ${coloredQuantity}</div>
                         </div>
@@ -1308,6 +1404,43 @@
         } catch (_) {
             return raw;
         }
+    }
+
+    /**
+     * [חדש] פונקציית עזר להעתקה ללוח
+     */
+    function copyToClipboard(text) {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            showCopyToast();
+        }).catch(err => {
+            console.error("Failed to copy text: ", err);
+        });
+    }
+
+    /**
+     * [חדש] פונקציית עזר להצגת משוב "הועתק"
+     */
+    let toastTimeout;
+    function showCopyToast() {
+        let toast = document.getElementById('lw-copy-toast');
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = 'lw-copy-toast';
+            toast.className = 'lw-copy-toast';
+            toast.textContent = 'הועתק ללוח';
+            document.body.appendChild(toast);
+        }
+
+        clearTimeout(toastTimeout);
+
+        requestAnimationFrame(() => {
+            toast.style.opacity = '1';
+        });
+
+        toastTimeout = setTimeout(() => {
+            toast.style.opacity = '0';
+        }, 1500);
     }
 
     // -------------------------------------------------------------------------
