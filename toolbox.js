@@ -1052,12 +1052,17 @@ function __tmcIsILInternational(digits){
   }
   /* Hard removal of highlight classes on /tasks/ to defeat dynamic redraws */
   function __tmcStartTaskPageStripper(){
+    // Lightweight stripper: runs only when there is actually something to clean,
+    // with a few scheduled passes. No global MutationObserver.
     const STRIP = () => {
       if (!document.body.classList.contains('tmc-task-page')) return;
+      const nodes = document.querySelectorAll('[class*="-highlight"]');
+      if (!nodes || nodes.length === 0) return;           // fast exit
       const re = /\b(?:merlog|mission|coord|branch|ready|phone)(?:-row)?-highlight\b/g;
-      document.querySelectorAll('[class*="-highlight"]').forEach(el=>{
+      nodes.forEach(el => {
         const before = el.className;
-        el.className = before.replace(re,'').replace(/\s{2,}/g,' ').trim();
+        const after  = before.replace(re, ' ').replace(/\s{2,}/g, ' ').trim();
+        if (after !== before) el.className = after;
         if (el.style){
           el.style.backgroundColor = '';
           el.style.background = '';
@@ -1066,15 +1071,12 @@ function __tmcIsILInternational(digits){
         }
       });
     };
-    // initial and delayed passes
+    // initial + a couple of delayed passes to catch late paints
     STRIP();
-    setTimeout(STRIP, 50);
-    setTimeout(STRIP, 250);
-    // keep stripping on mutations
-    if (!window.__tmcTaskStripMo){
-      window.__tmcTaskStripMo = new MutationObserver(()=>STRIP());
-      window.__tmcTaskStripMo.observe(document.body, {subtree:true, childList:true, attributes:true});
-    }
+    setTimeout(STRIP, 80);
+    setTimeout(STRIP, 400);
+    // hook into the app’s redraw signal instead of attribute-churn
+    document.addEventListener('tm:dom-updated', STRIP, { passive: true });
   }
   // mark immediately and install kill CSS
   __tmcMarkPageType();
