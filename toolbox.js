@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.65
+// @version      13.8.66
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -969,6 +969,116 @@ function __tmcIsILInternational(digits){
   document.addEventListener('DOMContentLoaded', installPassiveFixForPerfectScrollbar, { once: true });
   window.addEventListener('load', installPassiveFixForPerfectScrollbar, { once: true });
 
+  /* ===== TASK PAGE DETECTION + KILL SWITCH ===== */
+  function __tmcIsTaskPage(url){
+    try{
+      const u = String(url || location.href);
+      // match /tasks/, /tasks/123, /tasks/123?... — conservative and fast
+      return /\/tasks\/(\d+)?(\b|[/?#])/.test(u);
+    }catch(_){ return false; }
+  }
+  function __tmcMarkPageType(){
+    const isTask = __tmcIsTaskPage();
+    try{
+      document.documentElement.classList.toggle('tmc-task-page', isTask);
+      if (document.body) document.body.classList.toggle('tmc-task-page', isTask);
+    }catch(_){}
+    __tmcEnsureTaskPageKillCSS();
+    if (isTask){
+      __tmcStartTaskPageStripper();
+    }
+  }
+  function __tmcEnsureTaskPageKillCSS(){
+    const css = `
+      /* Kill all legend UI on full screen task pages */
+      body.tmc-task-page #tmc-color-legend{ display:none !important; }
+      body.tmc-task-page #tmc-legend-spacer{ display:none !important; height:0 !important; }
+
+      /* Nuke ANY container that uses a *-highlight class on task pages */
+      body.tmc-task-page .panel_view[class*="-highlight"],
+      body.tmc-task-page .offcanvas[class*="-highlight"],
+      body.tmc-task-page .card[class*="-highlight"],
+      body.tmc-task-page .modal[class*="-highlight"],
+      body.tmc-task-page [class*="-highlight"] > .tab-content,
+      body.tmc-task-page [class*="-highlight"] > .tab-pane,
+      body.tmc-task-page [class*="-row-highlight"]{
+        background: transparent !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        border-color: transparent !important;
+      }
+
+      /* Inline tokens that sometimes get background on detail pages */
+      body.tmc-task-page a[class$="-highlight"],
+      body.tmc-task-page span[class$="-highlight"],
+      body.tmc-task-page div[class$="-highlight"],
+      body.tmc-task-page p[class$="-highlight"],
+      body.tmc-task-page td[class$="-highlight"]{
+        background: transparent !important;
+        background-color: transparent !important;
+        color: inherit !important;
+        box-shadow: none !important;
+        border-color: transparent !important;
+      }
+
+      /* Kill phone yellow blink on task pages */
+      body.tmc-task-page tr.tmc-phone-blink,
+      body.tmc-task-page tr[id^="visit-row-"]:has(td[data-label="טלפון"]:empty){
+        animation: none !important;
+        box-shadow: none !important;
+      }
+    `;
+    let st = document.getElementById('tmc-taskpage-kill');
+    if (!st){
+      st = document.createElement('style');
+      st.id = 'tmc-taskpage-kill';
+      document.head.appendChild(st);
+    }
+    if (st.textContent !== css) st.textContent = css;
+  }
+  function __tmcRemoveLegendIfTaskPage(){
+    if (!__tmcIsTaskPage()) return;
+    try{
+      const menu   = document.getElementById('kt_aside_menu');
+      const legend = document.getElementById('tmc-color-legend');
+      const spacer = document.getElementById('tmc-legend-spacer');
+      if (legend) legend.remove();
+      if (spacer) spacer.remove();
+      if (menu){
+        menu.style.paddingBottom = '0px';
+        try{ menu.style.removeProperty('--tmc-legend-reserve'); }catch(_){}
+      }
+    }catch(_){}
+  }
+  /* Hard removal of highlight classes on /tasks/ to defeat dynamic redraws */
+  function __tmcStartTaskPageStripper(){
+    const STRIP = () => {
+      if (!document.body.classList.contains('tmc-task-page')) return;
+      const re = /\b(?:merlog|mission|coord|branch|ready|phone)(?:-row)?-highlight\b/g;
+      document.querySelectorAll('[class*="-highlight"]').forEach(el=>{
+        const before = el.className;
+        el.className = before.replace(re,'').replace(/\s{2,}/g,' ').trim();
+        if (el.style){
+          el.style.backgroundColor = '';
+          el.style.background = '';
+          el.style.boxShadow = '';
+          el.style.borderColor = '';
+        }
+      });
+    };
+    // initial and delayed passes
+    STRIP();
+    setTimeout(STRIP, 50);
+    setTimeout(STRIP, 250);
+    // keep stripping on mutations
+    if (!window.__tmcTaskStripMo){
+      window.__tmcTaskStripMo = new MutationObserver(()=>STRIP());
+      window.__tmcTaskStripMo.observe(document.body, {subtree:true, childList:true, attributes:true});
+    }
+  }
+  // mark immediately and install kill CSS
+  __tmcMarkPageType();
+
   // Install phone blink CSS early so it's ready everywhere
   try{ __tmcEnsurePhoneCSS(); }catch(_){}
   // Install legend CSS so the aside legend renders correctly
@@ -979,14 +1089,27 @@ function __tmcIsILInternational(digits){
   // וכך גם לבדיקת טלפונים
   window.addEventListener('tm:dom-updated', () => validatePhonesEverywhere());
 
-  // Insert legend once DOM exists; run both on DOMContentLoaded and on load, plus an immediate attempt
-  const tryLegend = () => { try{ __tmcInsertColorLegend(); }catch(_){ } };
+  // Insert legend only on non-task pages. Also remove it if we navigated into /tasks/.
+  const tryLegend = () => {
+    try{
+      __tmcMarkPageType();
+      if (__tmcIsTaskPage()){
+        __tmcRemoveLegendIfTaskPage();
+        return;
+      }
+      __tmcInsertColorLegend();
+    }catch(_){}
+  };
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', tryLegend, { once: true });
     window.addEventListener('load', tryLegend, { once: true });
   } else {
     tryLegend();
   }
+  // SPA-safe: re-evaluate on client-side navigations or app redraws
+  window.addEventListener('popstate', tryLegend);
+  window.addEventListener('hashchange', tryLegend);
+  document.addEventListener('tm:dom-updated', tryLegend);
 
   // Install map state tracker early so layout reacts as soon as the map opens/resizes
   installMapStateTracker();
