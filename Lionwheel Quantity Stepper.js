@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.1.9
+// @version      2.2.0
 // @description  Touch-friendly quantity input with smart animation and accessibility
 // @author       Adam Lee
 // @license      MIT
@@ -23,7 +23,7 @@
 
   // Configuration
   const CONFIG = {
-    VERSION: '2.1.9',
+    VERSION: '2.2.0',
     MIN_VALUE: -999,
     MAX_VALUE: 999999,
     HOLD_DELAY: 400,
@@ -364,6 +364,36 @@
     return CONFIG.DEFAULT_VALUE;
   };
 
+  // Keep the visual overlay (lwq-display-value) in sync with programmatic .value changes
+  // This prevents "phantom" numbers when the site does input.value / $(...).val(...)
+  function attachProgrammaticValueSync(input, displaySpan) {
+    if (!input || !displaySpan || input.__lwqValueWrapped) return;
+    try {
+      const proto = Object.getPrototypeOf(input) || HTMLInputElement.prototype;
+      const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+      if (!desc || typeof desc.get !== 'function' || typeof desc.set !== 'function') return;
+
+      const originalGet = desc.get;
+      const originalSet = desc.set;
+
+      Object.defineProperty(input, 'value', {
+        get() {
+          return originalGet.call(this);
+        },
+        set(v) {
+          originalSet.call(this, v);
+          // Mirror the real value into the overlay; empty => "0" for consistency
+          displaySpan.textContent = (v === '' || v == null) ? '0' : String(v);
+          return v;
+        }
+      });
+
+      input.__lwqValueWrapped = true;
+    } catch (err) {
+      console.warn('[Lionwheel Stepper] Programmatic value sync failed', err);
+    }
+  }
+
   const snapTo = (val, step, base) => {
     if (!Number.isFinite(step) || step <= 0) return val;
     const b = Number.isFinite(base) ? base : 0;
@@ -429,13 +459,13 @@
     input.value = String(value);
     input.defaultValue = input.value;
     input.setAttribute('value', input.value);
-    
+
     // Update the display overlay
     const displaySpan = input.closest('.lwq-display-wrapper')?.querySelector('.lwq-display-value');
     if (displaySpan) {
       displaySpan.textContent = input.value;
     }
-    
+
     // Fire events to notify the site's logic
     if (oldValue !== input.value) {
       fire(input);
@@ -594,6 +624,9 @@
     const displaySpan = displayWrapper.querySelector('.lwq-display-value');
     const syncDisplay = () => { if (displaySpan) displaySpan.textContent = input.value || '0'; };
     syncDisplay();
+
+    // Also keep overlay in sync when the site changes input.value via JS (e.g. between orders)
+    attachProgrammaticValueSync(input, displaySpan);
 
     // Immediate sync and short early watch to catch late programmatic value sets
     const watchUntil = performance.now() + 1500;
@@ -853,7 +886,7 @@
     setTimeout(() => scan(), 0);
   }
   console.log(`[Lionwheel Stepper] v${CONFIG.VERSION} initialized`);
-  
+
   // Install checkmark sync functionality
   installCheckmarkSync();
 
@@ -1009,8 +1042,8 @@
       if (modal && modal.matches('.modal')) {
         // After enhancement + reset, lift
         waitForInputsInModal(modal)
-          .then(() => { 
-            resetAllQtyToDefault(modal); 
+          .then(() => {
+            resetAllQtyToDefault(modal);
             installCheckmarkSync(modal);
           })
           .finally(() => { setModalBooting(modal, false); });
