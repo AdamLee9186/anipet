@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.67
+// @version      13.8.70
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -1055,7 +1055,8 @@ function __tmcIsILInternational(digits){
     // Lightweight stripper: runs only when there is actually something to clean,
     // with a few scheduled passes. No global MutationObserver.
     const STRIP = () => {
-      if (!document.body.classList.contains('tmc-task-page')) return;
+      const body = document.body;
+      if (!body || !body.classList || !body.classList.contains('tmc-task-page')) return;
       const nodes = document.querySelectorAll('[class*="-highlight"]');
       if (!nodes || nodes.length === 0) return;           // fast exit
       const re = /\b(?:merlog|mission|coord|branch|ready|phone)(?:-row)?-highlight\b/g;
@@ -6143,6 +6144,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     const match = findImageMatch(sku, name);
 
                     if (match) {
+                        // Don't modify cells with data-anipet-icon attribute
+                        if (targetCell && targetCell.getAttribute('data-anipet-icon') === 'true') {
+                            return; // Skip this row to preserve anipet icon
+                        }
+                        
                         if (match.image && !targetCell.querySelector('.tampermonkey-sku-image')) {
                             targetCell.innerHTML = '';
                             targetCell.style.cssText = 'width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; padding: 4px;';
@@ -6182,6 +6188,11 @@ function showGalleryOverlay(galleryItems, startIndex) {
                             }
                         }
                     } else {
+                        // Don't modify cells with data-anipet-icon attribute
+                        if (targetCell && targetCell.getAttribute('data-anipet-icon') === 'true') {
+                            return; // Skip this row to preserve anipet icon
+                        }
+                        
                         if (targetCell && !targetCell.querySelector('img')) {
                             targetCell.innerHTML = '';
                             targetCell.style.cssText = 'width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; padding: 4px;';
@@ -7088,11 +7099,13 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             // Clear old labels
             table.querySelectorAll('tbody td[data-label]').forEach(td => td.removeAttribute('data-label'));
 
-            // קח את כל הכותרות כולל preview, ריקים ומוסתרים
-            const allHeaders = Array.from(table.querySelectorAll('thead th'));
+            // קח את כל הכותרות, אך התעלם מעמודת Anipet כדי למנוע הזחת אינדקסים
+            const allHeaders = Array.from(table.querySelectorAll('thead th')).filter(th => !th.classList.contains('anipet-header'));
 
             table.querySelectorAll('tbody tr').forEach((row) => {
-                const allCells = Array.from(row.querySelectorAll('td'));
+                // קח את כל התאים, אך התעלם מתא Anipet כדי לשמור על סנכרון עם הכותרות המקוריות
+                const allCells = Array.from(row.querySelectorAll('td')).filter(td => !td.classList.contains('anipet-cell'));
+                
                 allCells.forEach((cell, i) => {
                     const header = allHeaders[i];
                     if (header) {
@@ -7143,12 +7156,30 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                 if (table.hasAttribute('data-columns-tagged')) return; // Skip if main table already processed
 
                 const headersToHide = ['סוג', 'משקל', 'נפח', 'הערות'];
-                Array.from(table.querySelectorAll('thead th')).forEach((th, index) => {
+                
+                // 1. סמן כותרות להסתרה
+                Array.from(table.querySelectorAll('thead th')).forEach((th) => {
                     if (headersToHide.includes(th.textContent.trim())) {
                         th.classList.add('tm-hideable-column');
-                        table.querySelectorAll(`tbody tr td:nth-child(${index + 1})`).forEach(td => td.classList.add('tm-hideable-column'));
                     }
                 });
+
+                // 2. סמן תאים להסתרה - שימוש ב-data-label במקום nth-child למניעת בעיות אינדקסים עם LionWheel
+                headersToHide.forEach(headerName => {
+                    table.querySelectorAll(`tbody td[data-label="${headerName}"]`).forEach(td => {
+                        td.classList.add('tm-hideable-column');
+                    });
+                });
+
+                // Fallback למקרה שאין data-label (גיבוי לוגיקה ישנה)
+                if (!table.hasAttribute('data-responsive-labels-added')) {
+                     Array.from(table.querySelectorAll('thead th')).forEach((th, index) => {
+                        if (headersToHide.includes(th.textContent.trim())) {
+                            table.querySelectorAll(`tbody tr td:nth-child(${index + 1})`).forEach(td => td.classList.add('tm-hideable-column'));
+                        }
+                    });
+                }
+
                 const historyHeader = table.querySelector('thead th:has(i.fa-history), thead th.w-50px');
                 if(historyHeader) historyHeader.classList.add('tm-hideable-column');
                 table.querySelectorAll('tbody td:has(i.order-item-history-json)').forEach(cell => cell.classList.add('tm-hideable-column'));
@@ -9633,9 +9664,12 @@ function prepareCopyElements() {
 
         safeExecute(async () => {
 
+            // שינוי סדר: קודם הוסף תוויות (data-label) ורק אז הסתר עמודות לפיהן
+            document.querySelectorAll('.table-responsive > .table, #operator-store-visits-table').forEach(addResponsiveDataAttributes);
+            
             // MODIFICATION: Call tagColumnsForHiding initially with default scope (document)
             tagColumnsForHiding();
-            document.querySelectorAll('.table-responsive > .table, #operator-store-visits-table').forEach(addResponsiveDataAttributes);
+            
             document.querySelectorAll('td.text-nowrap, span.text-muted.font-weight-bold, input.order-item-sku').forEach(el => {
                 if (!el.hasAttribute('data-original-sku')) el.setAttribute('data-original-sku', el.tagName === 'INPUT' ? el.value.trim() : el.textContent.trim());
             });
