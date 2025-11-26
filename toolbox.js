@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.70
+// @version      13.8.71
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -3345,7 +3345,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.8.30"; // Match @version
+    const SCRIPT_VERSION = "13.8.71"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -11157,10 +11157,34 @@ function validatePhonesEverywhere(root = document){
       const digits = raw.replace(/[^\d]/g, '');
       const isEmptyCell = !td.firstElementChild && raw.length === 0;
 
-      if (isEmptyCell || digits.length < 9) {
+      if (isEmptyCell) {
         __tmcSetRowBlink(tr, true);
       } else {
-        __tmcSetRowBlink(tr, false);
+        // בדיקת פורמט בינלאומי
+        const isIntl = __tmcIsILInternational(digits);
+        
+        let shouldBlink = false;
+        
+        if (!isIntl) {
+          // חוקים להבהוב שגיאה:
+          // 1. בדיקת אורך (חייב להיות 9 או 10 ספרות).
+          if (digits.length < 9 || digits.length > 10) {
+            shouldBlink = true;
+          } 
+          // 2. בדיקת ספרה פותחת (אם האורך תקין):
+          else {
+            const startsWithZero = digits.startsWith('0');
+            // חריג: מספר בן 9 ספרות שמתחיל ב-5 (נייד שחסר לו 0) - נחשב תקין
+            const isForgivableMobile = (digits.length === 9 && digits.startsWith('5'));
+
+            // אם לא מתחיל ב-0, וגם לא החריג של הנייד -> שגיאה (תופס 1, 2, וכו')
+            if (!startsWithZero && !isForgivableMobile) {
+              shouldBlink = true;
+            }
+          }
+        }
+        
+        __tmcSetRowBlink(tr, shouldBlink);
       }
     });
   }catch(e){
