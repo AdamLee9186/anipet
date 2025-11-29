@@ -9,6 +9,9 @@
 // @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/AnipetAlternatives.js
 // @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/AnipetAlternatives.js
 // @grant        GM_xmlhttpRequest
+// @grant        GM_registerMenuCommand
+// @grant        GM_getValue
+// @grant        GM_setValue
 // ==/UserScript==
 
 (function() {
@@ -22,7 +25,33 @@
     const RETRY_INTERVAL = 1000;
     const RECHECK_INTERVAL = 5000;
     const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
-    const MAX_RESULTS = 10;
+
+    // Get settings from GM_getValue or use defaults
+    let MAX_RESULTS = typeof GM_getValue !== 'undefined' ? GM_getValue('max_results', 10) : 10;
+    let DEBUG = typeof GM_getValue !== 'undefined' ? GM_getValue('debug_mode', false) : false;
+
+    // Register menu commands
+    if (typeof GM_registerMenuCommand !== 'undefined') {
+        GM_registerMenuCommand(`הגדר מספר תוצאות (נוכחי: ${MAX_RESULTS})`, () => {
+            const input = prompt('הכנס את מספר התוצאות המקסימלי להצגה (ברירת מחדל: 10):', MAX_RESULTS);
+            if (input !== null) {
+                const num = parseInt(input, 10);
+                if (!isNaN(num) && num > 0) {
+                    MAX_RESULTS = num;
+                    GM_setValue('max_results', num);
+                    alert(`מספר התוצאות הוגדר ל-${num}. רענן את הדף כדי שהשינוי ייכנס לתוקף.`);
+                } else {
+                    alert('אנא הכנס מספר חיובי תקין.');
+                }
+            }
+        });
+
+        GM_registerMenuCommand(`מצב DEBUG (נוכחי: ${DEBUG ? 'פעיל' : 'כבוי'})`, () => {
+            DEBUG = !DEBUG;
+            GM_setValue('debug_mode', DEBUG);
+            alert(`מצב DEBUG ${DEBUG ? 'הופעל' : 'כובה'}. רענן את הדף כדי שהשינוי ייכנס לתוקף.`);
+        });
+    }
 
     // Performance tracking
     let isInitialized = false;
@@ -152,9 +181,12 @@
                 event.preventDefault();
 
                 // Show popup with search results instead of opening new tab
-                // Pass productName, searchTerm, and barcode (if available)
+                // Pass productName, searchTerm, barcode, and LionWheel price (if available)
                 const buttonBarcode = button.getAttribute('data-barcode');
-                showSearchPopup(productName, searchTerm, buttonBarcode);
+                const lionwheelPriceAttr = button.getAttribute('data-lionwheel-price');
+                const lionwheelPrice = lionwheelPriceAttr ? parseFloat(lionwheelPriceAttr) : null;
+                
+                showSearchPopup(productName, searchTerm, buttonBarcode, lionwheelPrice);
 
                 return false;
             }, true); // Use capture phase to intercept early
@@ -205,64 +237,71 @@
         try {
             const table = row.closest('table');
             const thead = table.querySelector('thead tr');
+            let barcodeCell, nameCell, priceCell;
 
-            // First, try to find barcode cell by data-label or data-original-sku (most reliable)
-            let barcodeCell = row.querySelector('td[data-label="ברקוד"], td[data-label="מק״ט"], td[data-original-sku]');
+            // 1. Try to find cells by data-label (most reliable)
+            barcodeCell = row.querySelector('td[data-label="ברקוד"], td[data-label="מק״ט"]');
+            nameCell = row.querySelector('td[data-label="שם"]');
+            priceCell = row.querySelector('td[data-label="מחיר ליחידה"], td[data-label="מחיר"]');
 
-            // If not found, try to find by header content
-            if (!barcodeCell && thead) {
+            // 2. If not found, try to find by header content (if header exists)
+            if (thead && (!barcodeCell || !nameCell || !priceCell)) {
                 const headers = Array.from(thead.querySelectorAll('th')).map(th => th.textContent.trim());
-                const barcodeIndex = headers.findIndex(header => header === 'מק״ט' || header === 'ברקוד');
-
-                if (barcodeIndex !== -1) {
-                    barcodeCell = row.cells[barcodeIndex];
+                
+                if (!barcodeCell) {
+                    const barcodeIndex = headers.findIndex(header => header === 'מק״ט' || header === 'ברקוד');
+                    if (barcodeIndex !== -1) barcodeCell = row.cells[barcodeIndex];
+                }
+                if (!nameCell) {
+                    const nameIndex = headers.findIndex(header => header === 'שם');
+                    if (nameIndex !== -1) nameCell = row.cells[nameIndex];
+                }
+                if (!priceCell) {
+                    const priceIndex = headers.findIndex(header => header.includes('מחיר'));
+                    if (priceIndex !== -1) priceCell = row.cells[priceIndex];
                 }
             }
 
-            // Find name cell by data-label first
-            let nameCell = row.querySelector('td[data-label="שם"]');
+            // 3. Fallback: Try to find based on cell content or specific attributes
+            if (!barcodeCell) {
+                // Barcode often has 'data-original-sku' attribute or 'text-nowrap' class
+                barcodeCell = row.querySelector('td[data-original-sku]') || 
+                              row.querySelector('td.text-nowrap:not([data-label])');
+            }
 
-            // If not found, try to find by header content
-            if (!nameCell && thead) {
-                const headers = Array.from(thead.querySelectorAll('th')).map(th => th.textContent.trim());
-                const nameIndex = headers.findIndex(header => header === 'שם');
-
-                if (nameIndex !== -1) {
-                    nameCell = row.cells[nameIndex];
+            if (!nameCell) {
+                // Name often contains a link to the product
+                nameCell = row.querySelector('td:has(a[href*="/product/"])') ||
+                           row.querySelector('td:has(.order-item-name)');
+            }
+            
+            if (!priceCell) {
+                // Price usually looks like a number, possibly with 2 decimal places
+                const potentialPriceCells = Array.from(row.cells).filter(cell => {
+                    const text = cell.textContent.trim();
+                    // Regex for a number, optionally with 2 decimal places (e.g., "315.00" or "45")
+                    return /^\d+(\.\d{2})?$/.test(text) && !cell.hasAttribute('data-original-sku');
+                });
+                // If multiple columns match, the price is usually further to the right than barcode/name
+                if (potentialPriceCells.length > 0) {
+                    priceCell = potentialPriceCells[potentialPriceCells.length - 1];
                 }
             }
 
-            // Fallback selectors for name cell
-            if (!nameCell) {
-                nameCell = row.querySelector('td:has(.order-item-name), td:has(.text-dark-75), td:has(a[href*="/products/"])');
-            }
+            // 4. Ultimate Fallback: Positional (least reliable, used as last resort)
+            if (!barcodeCell) barcodeCell = row.querySelector('td:nth-child(2)');
+            if (!nameCell) nameCell = row.querySelector('td:nth-child(4)') || row.querySelector('td:nth-child(3)');
+            // Price is typically around the 6th or 7th column
+            if (!priceCell) priceCell = row.querySelector('td:nth-child(6)') || row.querySelector('td:nth-child(7)');
 
-            // Fallback selectors for barcode cell
-            if (!barcodeCell) {
-                // Try to find cell with barcode-highlight class or data-original-sku
-                barcodeCell = row.querySelector('td .barcode-highlight')?.closest('td') ||
-                             row.querySelector('td[data-original-sku]') ||
-                             row.querySelector('td.text-nowrap, td:has(span.text-muted)');
-            }
-
-            // Ultimate fallback - try to find by position (but be aware toolbox.js may have shifted cells)
-            if (!nameCell) {
-                // Try multiple positions since toolbox.js may have added an image cell
-                nameCell = row.querySelector('td:nth-child(4)') || row.querySelector('td:nth-child(3)');
-            }
-
-            if (!barcodeCell) {
-                // Try multiple positions since toolbox.js may have added an image cell
-                barcodeCell = row.querySelector('td:nth-child(2)') || row.querySelector('td:nth-child(3)');
-            }
-
-            return { nameCell, barcodeCell };
+            return { nameCell, barcodeCell, priceCell };
         } catch (error) {
-            console.error('Error finding cells by header:', error);
-            // Ultimate fallback
+            if (DEBUG) console.error('Error finding cells by header:', error);
+            // Return whatever we found, or fallback to positional assumptions
             return {
                 nameCell: row.querySelector('td:nth-child(4)'),
-                barcodeCell: row.querySelector('td:nth-child(2)')
+                barcodeCell: row.querySelector('td:nth-child(2)'),
+                priceCell: row.querySelector('td:nth-child(6)')
             };
         }
     }
@@ -380,12 +419,23 @@
                     // Helper function to add icon to a single row
                     function addIconToRow(row) {
                         try {
-                            const { nameCell, barcodeCell } = findCellsByHeader(row);
+                            const { nameCell, barcodeCell, priceCell } = findCellsByHeader(row);
 
                             // ננסה למצוא שם מוצר בעמודה עם header "שם"
                             let productName = '';
                             if (nameCell) {
                                 productName = nameCell.textContent.trim();
+                            }
+
+                            // ננסה למצוא את המחיר בעמודת המחיר
+                            let lionwheelPrice = null;
+                            if (priceCell) {
+                                const priceText = priceCell.textContent.trim();
+                                // נסה לחלץ מספר מהטקסט (למשל "315.00")
+                                const priceMatch = priceText.match(/(\d+(\.\d{2})?)/);
+                                if (priceMatch) {
+                                    lionwheelPrice = parseFloat(priceMatch[1]);
+                                }
                             }
 
                             // אם לא מצאנו בעמודה עם header "שם", ננסה בעמודה השלישית
@@ -426,12 +476,20 @@
                                     const button = createAlternativesButton(productName, barcode, barcode);
                                     if (button) {
                                         button.setAttribute('data-anipet-icon', 'true');
+                                        // שמור את מחיר ה-LionWheel על הכפתור לשימוש עתידי בפופאפ
+                                        if (lionwheelPrice !== null) {
+                                            button.setAttribute('data-lionwheel-price', lionwheelPrice);
+                                        }
                                         anipetCell.appendChild(button);
                                     }
                                 } else if (productName) {
                                     const button = createAlternativesButton(productName, productName, null);
                                     if (button) {
                                         button.setAttribute('data-anipet-icon', 'true');
+                                        // שמור את מחיר ה-LionWheel על הכפתור לשימוש עתידי בפופאפ
+                                        if (lionwheelPrice !== null) {
+                                            button.setAttribute('data-lionwheel-price', lionwheelPrice);
+                                        }
                                         anipetCell.appendChild(button);
                                     }
                                 }
@@ -524,6 +582,12 @@
 
     function observeAndAddButtons() {
         try {
+            // Try to find the specific container that holds the tables
+            // In LionWheel, this is typically a div with class 'card-body' inside a form
+            const targetNode = document.querySelector('.card-body') || document.querySelector('form') || document.body;
+            
+            if (DEBUG) console.log('Starting MutationObserver on target:', targetNode);
+
             const observer = new MutationObserver(mutations => {
                 let shouldAdd = false;
                 let shouldRestore = false;
@@ -579,9 +643,11 @@
                     }, 100);
                 }
             });
-            observer.observe(document.body, { childList: true, subtree: true, attributes: false });
+            
+            // Observe only the targeted container
+            observer.observe(targetNode, { childList: true, subtree: true, attributes: false });
         } catch (error) {
-            console.error('Error setting up observer:', error);
+            if (DEBUG) console.error('Error setting up observer:', error);
             errorCount++;
         }
     }
@@ -602,7 +668,7 @@
 
                     if (isProcessed && !hasAnipetCell) {
                         // Restore the icon for this row
-                        const { nameCell, barcodeCell } = findCellsByHeader(row);
+                        const { nameCell, barcodeCell, priceCell } = findCellsByHeader(row);
                         let productName = '';
                         if (nameCell) {
                             productName = nameCell.textContent.trim();
@@ -611,6 +677,15 @@
                         let barcode = '';
                         if (barcodeCell) {
                             barcode = barcodeCell.textContent.trim();
+                        }
+
+                        let lionwheelPrice = null;
+                        if (priceCell) {
+                            const priceText = priceCell.textContent.trim();
+                            const priceMatch = priceText.match(/(\d+(\.\d{2})?)/);
+                            if (priceMatch) {
+                                lionwheelPrice = parseFloat(priceMatch[1]);
+                            }
                         }
 
                         if (barcode || productName) {
@@ -635,12 +710,18 @@
                                 const button = createAlternativesButton(productName, barcode, barcode);
                                 if (button) {
                                     button.setAttribute('data-anipet-icon', 'true');
+                                    if (lionwheelPrice !== null) {
+                                        button.setAttribute('data-lionwheel-price', lionwheelPrice);
+                                    }
                                     anipetCell.appendChild(button);
                                 }
                             } else if (productName) {
                                 const button = createAlternativesButton(productName, productName, null);
                                 if (button) {
                                     button.setAttribute('data-anipet-icon', 'true');
+                                    if (lionwheelPrice !== null) {
+                                        button.setAttribute('data-lionwheel-price', lionwheelPrice);
+                                    }
                                     anipetCell.appendChild(button);
                                 }
                             }
@@ -951,10 +1032,14 @@
                         if (productName) {
                             const nameKgMatch = productName.match(/(\d+(?:\.\d+)?)\s*(?:ק"?ג|קילו)/);
                             const nameGramMatch = productName.match(/(\d+(?:\.\d+)?)\s*גרם/);
+                            const nameLiterMatch = productName.match(/(\d+(?:\.\d+)?)\s*ליטר/);
                             if (nameKgMatch) {
                                 return parseFloat(nameKgMatch[1]);
                             } else if (nameGramMatch) {
                                 return parseFloat(nameGramMatch[1]) / 1000; // Convert grams to kg
+                            } else if (nameLiterMatch) {
+                                // Treat liter like kg for package size comparison
+                                return parseFloat(nameLiterMatch[1]);
                             }
                         }
                         return 0;
@@ -962,11 +1047,15 @@
 
                     const kgMatch = weightText.match(/(\d+(?:\.\d+)?)\s*ק"?ג/);
                     const gramMatch = weightText.match(/(\d+(?:\.\d+)?)\s*גרם/);
+                    const literMatch = weightText.match(/(\d+(?:\.\d+)?)\s*ליטר/);
 
                     if (kgMatch) {
                         return parseFloat(kgMatch[1]);
                     } else if (gramMatch) {
                         return parseFloat(gramMatch[1]) / 1000; // Convert grams to kg
+                    } else if (literMatch) {
+                        // Treat liter like kg for package size comparison
+                        return parseFloat(literMatch[1]);
                     }
 
                     const numberMatch = weightText.match(/^([0-9]+\.?[0-9]*)/);
@@ -978,11 +1067,23 @@
                     return 0;
                 };
 
+                // Helper to parse quality level to a score
+                const getQualityScore = (text) => {
+                    if (!text) return 0;
+                    text = text.toString().trim();
+                    if (text === 'הכי טוב') return 3;
+                    if (text === 'יותר טוב') return 2;
+                    if (text === 'טוב') return 1;
+                    return 0;
+                };
+
                 // Transform the data to match our expected format
                 productsData = jsonData.map((row, index) => {
                     const productName = row['תאור פריט'] || '';
                     const weightText = row['משקל'] || '';
                     const weight = parseWeightForData(weightText, productName);
+                    const qualityText = row['רמה / איכות'] || row['איכות'] || '';
+                    const participatesInVariety = row['משתתף במגוון'] === 'כן';
 
                     return {
                         id: index,
@@ -996,8 +1097,10 @@
                         internalCategory: row['קטגוריה פנימית'] || row['קטגוריה'] || '',
                         mainIngredient: row['ממרכיב עיקרי'] || row['מרכיב'] || '',
                         medicalIssue: row['בעיה רפואית'] || '',
-                        qualityLevel: row['רמה / איכות'] || row['איכות'] || '',
+                        qualityLevel: qualityText, // Keep original string for display
+                        qualityScore: getQualityScore(qualityText), // Numeric score for comparison
                         supplierName: row['שם ספק ראשי'] || row['ספק'] || '',
+                        participatesInVariety: participatesInVariety,
                         weight: weight,
                         'משקל': weightText, // Keep original for reference
                         imageUrl: row['Image URL'] || '',
@@ -1006,7 +1109,7 @@
                 }).filter(p => p.productName && p.salePrice > 0);
 
                 productsDataLoaded = true;
-                console.log(`Loaded ${productsData.length} products for client-side search`);
+                if (DEBUG) console.log(`Loaded ${productsData.length} products for client-side search`);
             } else {
                 productsData = [];
                 productsDataLoaded = true;
@@ -1034,6 +1137,7 @@
         'medicalIssue',
         'quality',
         'qualityLevel',
+        'participatesInVariety', // Added field
     ];
 
     // Normalize SKU and barcode for comparison
@@ -1069,6 +1173,7 @@
             supplier: 10,
             healthIssue: 10,
             quality: 10,
+            participatesInVariety: 15, // New bonus points
         };
 
         fieldsToCheck.forEach(field => {
@@ -1143,13 +1248,35 @@
                 case 'quality':
                 case 'qualityLevel':
                     maxScore += fieldPoints.quality;
-                    if (
-                        product1.qualityLevel && product2.qualityLevel &&
-                        product1.qualityLevel.toString().trim().toLowerCase() === product2.qualityLevel.toString().trim().toLowerCase()
-                    ) {
+                    const q1 = product1.qualityScore || 0;
+                    const q2 = product2.qualityScore || 0;
+
+                    // If original has no specified quality, don't penalize matches
+                    if (q1 === 0) {
                         score += fieldPoints.quality;
                     }
+                    // Reward same or better quality
+                    else if (q2 >= q1) {
+                        score += fieldPoints.quality;
+                    }
+                    // Give partial points if compare product has some quality defined but lower
+                    else if (q2 > 0) {
+                        score += fieldPoints.quality / 2;
+                    }
                     break;
+
+                case 'participatesInVariety':
+                    maxScore += fieldPoints.participatesInVariety;
+                    // Give bonus if both products participate in variety
+                    if (product1.participatesInVariety && product2.participatesInVariety) {
+                        score += fieldPoints.participatesInVariety;
+                    }
+                    // Give partial bonus if just the alternative participates
+                    else if (product2.participatesInVariety) {
+                        score += fieldPoints.participatesInVariety / 2;
+                    }
+                    break;
+
                 default:
                     break;
             }
@@ -1168,10 +1295,14 @@
             if (productName) {
                 const nameKgMatch = productName.match(/(\d+(?:\.\d+)?)\s*(?:ק"?ג|קילו)/);
                 const nameGramMatch = productName.match(/(\d+(?:\.\d+)?)\s*גרם/);
+                const nameLiterMatch = productName.match(/(\d+(?:\.\d+)?)\s*ליטר/);
                 if (nameKgMatch) {
                     return parseFloat(nameKgMatch[1]);
                 } else if (nameGramMatch) {
                     return parseFloat(nameGramMatch[1]) / 1000; // Convert grams to kg
+                } else if (nameLiterMatch) {
+                    // Treat liter like kg for package size comparison
+                    return parseFloat(nameLiterMatch[1]);
                 }
             }
             return 0;
@@ -1180,11 +1311,15 @@
         // Try to extract weight from weightText
         const kgMatch = weightText.match(/(\d+(?:\.\d+)?)\s*ק"?ג/);
         const gramMatch = weightText.match(/(\d+(?:\.\d+)?)\s*גרם/);
+        const literMatch = weightText.match(/(\d+(?:\.\d+)?)\s*ליטר/);
 
         if (kgMatch) {
             return parseFloat(kgMatch[1]);
         } else if (gramMatch) {
             return parseFloat(gramMatch[1]) / 1000; // Convert grams to kg
+        } else if (literMatch) {
+            // Treat liter like kg for package size comparison
+            return parseFloat(literMatch[1]);
         }
 
         // Try to extract just a number
@@ -1258,7 +1393,7 @@
     // This follows the same logic as the website: calculate similarity for ALL products, not just text matches
     function performClientSideSearch(products, query, limit, excludeBarcode = null, excludeProductName = null) {
         if (!products || products.length === 0 || !query) {
-            console.log('performClientSideSearch: No products or query');
+            if (DEBUG) console.log('performClientSideSearch: No products or query');
             return [];
         }
 
@@ -1266,7 +1401,7 @@
         const excludeBarcodeLower = excludeBarcode ? excludeBarcode.toLowerCase().trim() : null;
         const excludeProductNameLower = excludeProductName ? excludeProductName.toLowerCase().trim() : null;
 
-        console.log('performClientSideSearch:', { query, excludeBarcode, excludeProductName, productsCount: products.length });
+        if (DEBUG) console.log('performClientSideSearch:', { query, excludeBarcode, excludeProductName, productsCount: products.length });
 
         // Step 1: Find the original product in the data
         let originalProduct = null;
@@ -1345,23 +1480,84 @@
             console.log(`After lifeStage filter (${originalProduct.lifeStage}): ${filtered.length} products (was ${beforeFilter})`);
         }
 
-        // Step 4: Calculate similarity scores for ALL filtered products (like the website)
-        const activeSimilarityFields = ['weight', 'price', 'brand', 'animalType', 'internalCategory', 'lifeStage'];
+        // Filter by medicalIssue if original product has one - prioritize medical products
+        const hasMedicalIssue = !!(originalProduct.medicalIssue && originalProduct.medicalIssue.trim());
+        if (hasMedicalIssue) {
+            const beforeFilter = filtered.length;
+            // Prefer products with the same medicalIssue, but don't exclude others completely
+            // We'll use scoring bonus instead of strict filtering
+            const matchingMedical = filtered.filter(p => p.medicalIssue && 
+                p.medicalIssue.trim().toLowerCase() === originalProduct.medicalIssue.trim().toLowerCase());
+            const nonMatchingMedical = filtered.filter(p => !p.medicalIssue || 
+                p.medicalIssue.trim().toLowerCase() !== originalProduct.medicalIssue.trim().toLowerCase());
+            
+            // Sort: matching medical products first, then others
+            filtered = [...matchingMedical, ...nonMatchingMedical];
+            console.log(`Medical products with matching issue: ${matchingMedical.length}, others: ${nonMatchingMedical.length}`);
+        }
+
+        // Step 4: Check if original product is medical food
+        const isOriginalMedical = !!(originalProduct.medicalIssue && originalProduct.medicalIssue.trim());
+        const isOriginalMedicalCategory = !!(originalProduct.internalCategory && 
+            (originalProduct.internalCategory.toLowerCase().includes('רפואי') || 
+             originalProduct.internalCategory.toLowerCase().includes('medical')));
+
+        // Step 5: Calculate similarity scores for ALL filtered products (like the website)
+        // Include medicalIssue in similarity calculation if original product is medical
+        // Added participatesInVariety and qualityLevel to active fields
+        const activeSimilarityFields = ['weight', 'price', 'brand', 'animalType', 'internalCategory', 'lifeStage', 'participatesInVariety', 'qualityLevel'];
+
+        if (isOriginalMedical || isOriginalMedicalCategory) {
+            activeSimilarityFields.push('medicalIssue');
+            if (DEBUG) console.log('Original product is medical food, including medicalIssue in similarity calculation');
+        }
 
         const productsWithScores = filtered.map(product => {
             // Ensure weight is parsed if not already
             if (!product.weight && (product['משקל'] || product.productName)) {
                 product.weight = parseWeight(product['משקל'] || '', product.productName || '');
             }
-            const similarityScore = calculateSimilarity(originalProduct, product, activeSimilarityFields);
+            let similarityScore = calculateSimilarity(originalProduct, product, activeSimilarityFields);
+            
+            // Bonus for medical products with matching medicalIssue
+            if (isOriginalMedical && originalProduct.medicalIssue && product.medicalIssue) {
+                const originalMedical = originalProduct.medicalIssue.trim().toLowerCase();
+                const productMedical = product.medicalIssue.trim().toLowerCase();
+                if (originalMedical === productMedical) {
+                    // Add significant bonus points (20%) for matching medical issue
+                    similarityScore = Math.min(100, similarityScore + 20);
+                    if (DEBUG) console.log(`Medical match bonus: ${product.productName} matches ${originalProduct.medicalIssue}`);
+                }
+            }
+            
+            // Bonus for products in medical category if original is medical
+            const productIsMedicalCategory = product.internalCategory && 
+                (product.internalCategory.toLowerCase().includes('רפואי') || 
+                 product.internalCategory.toLowerCase().includes('medical'));
+            
+            if (isOriginalMedicalCategory || isOriginalMedical) {
+                if (productIsMedicalCategory) {
+                    // Add bonus (10%) for being in medical category when original is medical
+                    similarityScore = Math.min(100, similarityScore + 10);
+                }
+            }
+            
+            // Additional bonus if product has any medicalIssue when original is medical
+            if ((isOriginalMedical || isOriginalMedicalCategory) && product.medicalIssue && product.medicalIssue.trim()) {
+                // Add smaller bonus (5%) for having any medical issue
+                similarityScore = Math.min(100, similarityScore + 5);
+            }
+            
             return { product, similarityScore };
         });
 
-        console.log('Similarity scores calculated for all filtered products:', productsWithScores.length);
-        console.log('Top 5 similarity scores:', productsWithScores.slice(0, 5).map(p => ({
-            name: p.product.productName,
-            similarity: p.similarityScore
-        })));
+        if (DEBUG) {
+            console.log('Similarity scores calculated for all filtered products:', productsWithScores.length);
+            console.log('Top 5 similarity scores:', productsWithScores.slice(0, 5).map(p => ({
+                name: p.product.productName,
+                similarity: p.similarityScore
+            })));
+        }
 
         // Step 5: Sort by similarity score (highest first) - like the website
         productsWithScores.sort((a, b) => (b.similarityScore || 0) - (a.similarityScore || 0));
@@ -1377,13 +1573,16 @@
                 return item.product;
             });
 
-        console.log(`Returning ${results.length} results (sorted by similarity)`);
+        if (DEBUG) console.log(`Returning ${results.length} results (sorted by similarity)`);
 
         return results;
     }
 
     // Show popup with search results
-    async function showSearchPopup(productName, searchTerm, barcode = null) {
+    async function showSearchPopup(productName, searchTerm, barcode = null, lionwheelPrice = null) {
+        // Load Font Awesome if not already loaded
+        loadFontAwesome();
+        
         // Remove existing popup if any
         const existingPopup = document.getElementById('anipet-popup');
         if (existingPopup) {
@@ -1397,6 +1596,32 @@
         // If searchTerm is numeric and we don't have barcode, use searchTerm as barcode
         if (!excludeBarcode && /^\d+$/.test(searchTerm.trim())) {
             excludeBarcode = searchTerm.trim();
+        }
+
+        // Try to find original product data for comparison features
+        let originalProductData = null;
+        try {
+            if (!productsDataLoaded) {
+                await loadProductsData();
+            }
+            if (productsData && productsData.length > 0) {
+                if (excludeBarcode) {
+                    originalProductData = productsData.find(p => (p.barcode || '').trim() === excludeBarcode.trim());
+                }
+                if (!originalProductData && excludeProductName) {
+                    originalProductData = productsData.find(p => (p.productName || '').trim() === excludeProductName.trim());
+                }
+
+                // If we found the product AND we have a price from LionWheel, use the LionWheel price
+                // as it's the most accurate for comparison
+                if (originalProductData && lionwheelPrice !== null) {
+                    if (DEBUG) console.log(`Overriding JSON price (${originalProductData.salePrice}) with LionWheel price (${lionwheelPrice})`);
+                    // Create a copy of the data to avoid modifying the global productsData cache
+                    originalProductData = { ...originalProductData, salePrice: lionwheelPrice };
+                }
+            }
+        } catch (e) {
+            if (DEBUG) console.warn('Failed to find original product data:', e);
         }
 
         // Create popup overlay
@@ -1476,7 +1701,7 @@
                     </div>
                 `;
             } else {
-                content.innerHTML = renderProductResults(results, searchTerm, productName);
+                content.innerHTML = renderProductResults(results, searchTerm, productName, originalProductData);
                 
                 // Add click handlers for product links after rendering
                 const productLinks = content.querySelectorAll('.anipet-product-link');
@@ -1514,7 +1739,7 @@
     }
 
     // Render product results
-    function renderProductResults(products, searchTerm, productName = null) {
+    function renderProductResults(products, searchTerm, productName = null, originalProduct = null) {
         if (!products || products.length === 0) {
             return '<div class="anipet-popup-empty"><p>לא נמצאו תוצאות</p></div>';
         }
@@ -1574,12 +1799,46 @@
             if (!product) return '';
 
             const imageUrl = product.imageUrl || ICON_URL;
-            const productName = product.productName || '';
-            const searchQuery = productName || searchTerm || '';
+            const productNameStr = product.productName || '';
             const productUrl = product.productUrl || `${ANIPET_APP_URL}?barcode=${encodeURIComponent(product.barcode || product.productName)}`;
-            const price = (product.salePrice && !isNaN(product.salePrice)) ? product.salePrice.toFixed(2) : 'לא זמין';
+
+            // Price calculations
+            const hasPrice = product.salePrice && !isNaN(product.salePrice);
+            const price = hasPrice ? product.salePrice.toFixed(2) : 'לא זמין';
+
+            // Price per Kg calculation
+            let pricePerKgHtml = '';
+            if (hasPrice && product.weight && product.weight > 0) {
+                const ppkg = (product.salePrice / product.weight).toFixed(2);
+                pricePerKgHtml = `<p class="anipet-price-per-kg">${ppkg} ₪ לק"ג</p>`;
+            }
+
+            // Price difference calculation
+            let priceDiffHtml = '';
+            let priceDiffTitle = '';
+            if (hasPrice && originalProduct && originalProduct.salePrice && !isNaN(originalProduct.salePrice)) {
+                const diff = product.salePrice - originalProduct.salePrice;
+                if (diff !== 0) {
+                    const color = diff > 0 ? '#dc3545' : '#28a745'; // red for more expensive, green for cheaper
+                    const absDiff = Math.abs(diff).toFixed(2);
+                    // Calculate percentage difference
+                    const percentDiff = ((diff / originalProduct.salePrice) * 100).toFixed(1);
+                    priceDiffTitle = `הפרש של ${Math.abs(percentDiff)}% מהמוצר המקורי`;
+                    // Note: escapeHtml will be called after this function, but for title attribute we need to escape manually
+                    const escapedTitle = priceDiffTitle.replace(/"/g, '&quot;');
+                    // Display as "זול ב־X₪ מהמוצר המקורי" or "יקר ב־X₪ מהמוצר המקורי"
+                    const priceDiffText = diff > 0 
+                        ? `יקר ב־${absDiff}₪ מהמוצר המקורי`
+                        : `זול ב־${absDiff}₪ מהמוצר המקורי`;
+                    priceDiffHtml = `<p class="anipet-price-diff" style="color: ${color}; direction: rtl; margin: 0; font-size: 0.9em;" title="${escapedTitle}">${priceDiffText}</p>`;
+                } else {
+                    // Price is the same as original product
+                    priceDiffHtml = `<p class="anipet-price-diff" style="color: #28a745; direction: rtl; margin: 0; font-size: 0.9em;">המחיר זהה למוצר המקורי</p>`;
+                }
+            }
+
             const brand = product.brand || '';
-            const name = productName || 'מוצר ללא שם';
+            const name = productNameStr || 'מוצר ללא שם';
             const similarityScore = product._similarityScore !== undefined ? product._similarityScore : null;
             const barcode = product.barcode || 'לא זמין';
             const sku = product.sku || 'לא זמין';
@@ -1590,6 +1849,19 @@
 
             // Truncate long product names
             const displayName = name.length > 60 ? name.substring(0, 57) + '...' : name;
+            
+            // Google Images search URL
+            const googleImagesUrl = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(name)}`;
+            
+            // Google icon SVG
+            const googleIconSvg = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline-block; vertical-align: middle;">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+            `;
 
             return `
                 <div class="anipet-product-card" data-product-url="${escapeHtml(productUrl)}">
@@ -1597,12 +1869,21 @@
                         <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.src='${ICON_URL}';">
                     </div>
                     <div class="anipet-product-info">
-                        <h4 class="anipet-product-name anipet-copyable" data-copy-value="${escapeHtml(name)}" title="${escapeHtml(name)} (לחץ להעתקה)">${escapeHtml(displayName)}</h4>
+                        <div class="anipet-product-name-wrapper">
+                            <h4 class="anipet-product-name anipet-copyable" data-copy-value="${escapeHtml(name)}" title="${escapeHtml(name)} (לחץ להעתקה)">${escapeHtml(displayName)}<i class="fa-light fa-clone anipet-copy-icon"></i></h4>
+                            <a href="${escapeHtml(googleImagesUrl)}" target="_blank" rel="noopener noreferrer" class="anipet-google-images-link" title="חפש תמונות בגוגל">
+                                ${googleIconSvg}
+                            </a>
+                        </div>
                         ${brand ? `<p class="anipet-product-brand">${escapeHtml(brand)}</p>` : ''}
-                        <p class="anipet-product-price">${price !== 'לא זמין' ? '₪' + price : price}</p>
+                        <div class="anipet-price-container">
+                            <p class="anipet-product-price">${price !== 'לא זמין' ? '₪' + price : price}</p>
+                            ${priceDiffHtml}
+                        </div>
+                        ${pricePerKgHtml}
                         <div class="anipet-product-details">
-                            <p class="anipet-product-barcode anipet-copyable" data-copy-value="${escapeHtml(String(barcode))}" title="לחץ להעתקה">ברקוד: ${escapeHtml(String(barcode))}</p>
-                            ${sku !== barcode && sku !== 'לא זמין' ? `<p class="anipet-product-sku anipet-copyable" data-copy-value="${escapeHtml(String(sku))}" title="לחץ להעתקה">מק"ט: ${escapeHtml(String(sku))}</p>` : ''}
+                            <p class="anipet-product-barcode anipet-copyable" data-copy-value="${escapeHtml(String(barcode))}" title="לחץ להעתקה">ברקוד: ${escapeHtml(String(barcode))}<i class="fa-light fa-clone anipet-copy-icon"></i></p>
+                            ${sku !== barcode && sku !== 'לא זמין' ? `<p class="anipet-product-sku anipet-copyable" data-copy-value="${escapeHtml(String(sku))}" title="לחץ להעתקה">מק"ט: ${escapeHtml(String(sku))}<i class="fa-light fa-clone anipet-copy-icon"></i></p>` : ''}
                             <p class="anipet-product-weight">משקל: ${escapeHtml(String(weight))}</p>
                         </div>
                         ${tagsHtml ? `<div class="anipet-product-tags">${tagsHtml}</div>` : ''}
@@ -1622,7 +1903,7 @@
 
         return `
             <div class="anipet-popup-results">
-                <p class="anipet-results-count">נמצאו ${products.length} תחליפים:</p>
+                <p class="anipet-results-count">מוצגים ${products.length} תחליפים:</p>
                 <div class="anipet-products-list">
                     ${productsHtml}
                 </div>
@@ -1682,8 +1963,29 @@
         }
     }
 
+    function loadFontAwesome() {
+        // Check if Font Awesome is already loaded
+        if (document.querySelector('link[href*="font-awesome"]') || 
+            document.querySelector('link[href*="fontawesome"]') ||
+            document.querySelector('link[href*="cdnjs.cloudflare.com"]') ||
+            window.FontAwesome) {
+            return;
+        }
+        
+        // Load Font Awesome from CDN (includes Light, Regular, Solid, etc.)
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
+        link.integrity = 'sha512-iecdLmaskl7CVkqkXNQ/ZH/XLlvWZOJyj7Yy7tcenmpD1ypASozpmT/E0iPtmFIB46ZmdtAc9eNBvH0H/ZpiBw==';
+        link.crossOrigin = 'anonymous';
+        document.head.appendChild(link);
+    }
+
     function injectGlobalStyles() {
         if (document.getElementById('anipet-popup-styles')) return;
+        
+        // Load Font Awesome
+        loadFontAwesome();
         const css = `
         /* Disable pointer events on parent anchor tags containing our button */
         a:has(.anipet-alternatives-btn) {
@@ -1976,12 +2278,49 @@
             min-width: 0;
         }
 
-        .anipet-product-name {
+        .anipet-product-name-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0;
             margin: 0 0 8px 0;
+            flex-wrap: wrap;
+        }
+        
+        .anipet-product-name {
+            margin-right: 4px;
+        }
+
+        .anipet-product-name {
+            margin: 0;
             font-size: 1rem;
             font-weight: 600;
             color: #333;
             line-height: 1.4;
+            display: inline;
+        }
+        
+        .anipet-google-images-link {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
+            padding: 4px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+            opacity: 0.7;
+        }
+        
+        .anipet-google-images-link:hover {
+            opacity: 1;
+            background-color: #f0f0f0;
+            transform: scale(1.1);
+        }
+        
+        .anipet-google-images-link svg {
+            width: 16px;
+            height: 16px;
         }
         
         .anipet-copyable {
@@ -2005,11 +2344,34 @@
             color: #666;
         }
 
+        .anipet-price-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            margin: 0 0 6px 0;
+        }
+
         .anipet-product-price {
-            margin: 0 0 10px 0;
-            font-size: 1rem;
-            font-weight: 600;
+            margin: 0;
+            font-size: 1.1rem;
+            font-weight: 700;
             color: #28a745;
+        }
+
+        .anipet-price-per-kg {
+            margin: 0 0 10px 0;
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+
+        .anipet-price-diff {
+            font-size: 0.9rem;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background-color: #f8f9fa;
+            cursor: help;
         }
 
         .anipet-product-link {
@@ -2046,15 +2408,18 @@
             margin: 2px 0;
         }
         
-        .anipet-copyable::after {
-            content: ' 📋';
+        .anipet-copy-icon {
             font-size: 0.75em;
-            opacity: 0;
-            transition: opacity 0.2s ease;
+            opacity: 1;
+            color: #3699ff;
+            transition: all 0.2s ease;
+            margin-right: 4px;
+            margin-left: 4px;
         }
         
-        .anipet-copyable:hover::after {
-            opacity: 0.6;
+        .anipet-copyable:hover .anipet-copy-icon {
+            opacity: 1;
+            color: #3699ff;
         }
 
         /* Product Tags */
