@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LionWheel to Anipet Alternatives
 // @namespace    http://tampermonkey.net/
-// @version      4.2
+// @version      4.3
 // @description  Add Anipet popup with alternative products search results in LionWheel
 // @author       Adam Lee
 // @icon         https://anipetapp.netlify.app/pixel.svg
