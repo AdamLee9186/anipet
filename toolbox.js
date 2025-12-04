@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.8.71
+// @version      13.8.72
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -1202,8 +1202,8 @@ function installPanelViewRateLimiter(){
     const PANEL_VIEW_RE = /\/tasks\/\d+\/panel_view(\b|$)/;
 
     // --- Tuning (faster but safe) ---
-    const MAX_CONCURRENT = 2;          // allow 2 in-flight previews
-    const MIN_START_GAP_MS = 900;      // smaller start gap for batch-open
+    const MAX_CONCURRENT = 4;          // Boost: allow 4 in-flight previews (was 2)
+    const MIN_START_GAP_MS = 200;      // Boost: fast gap (was 900) - Backoff will handle 429s if they occur
 
     // --- Simple circuit breaker on repeated 429s ---
     const recent429 = [];
@@ -3345,7 +3345,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.8.71"; // Match @version
+    const SCRIPT_VERSION = "13.8.72"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -4042,6 +4042,35 @@ setupBlockedScriptObserver();
                 } catch (error) {
                     console.error(`[${SCRIPT_NAME}] Error manually refreshing links:`, error);
                     alert(`שגיאה ברענון קישורים: ${error.message}`);
+                }
+            });
+
+            GM_registerMenuCommand('🗑️ נקה מטמון PREVIEWS', () => {
+                try {
+                    // מחיקת מפתחות SessionStorage שקשורים ל-Preview בלבד
+                    let clearedCount = 0;
+                    Object.keys(sessionStorage).forEach(key => {
+                        if (key.startsWith('tm_preview_panel_view_')) {
+                            sessionStorage.removeItem(key);
+                            clearedCount++;
+                        }
+                    });
+                    
+                    // ניקוי גם של מפתחות נוספים הקשורים ל-previews
+                    const previewKeys = ['openPreviewTaskIds', 'openPreviewTaskIds_v2', 'tmcStickyPreviews'];
+                    previewKeys.forEach(key => {
+                        if (sessionStorage.getItem(key)) {
+                            sessionStorage.removeItem(key);
+                            clearedCount++;
+                        }
+                    });
+                    
+                    if (confirm(`מטמון ה-Previews נוקה (${clearedCount} מפתחות).\nהאם לרענן את הדף כעת כדי לוודא שהשינויים נכנסו לתוקף?`)) {
+                        location.reload();
+                    }
+                } catch (error) {
+                    console.error('Error clearing preview cache:', error);
+                    alert('שגיאה בניקוי המטמון.');
                 }
             });
 
@@ -6655,17 +6684,36 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                 // מוצא את כל האייקונים הפוטנציאליים
                 const iconsToConsider = mainTableBody.querySelectorAll(`.preview-cell button i.${targetIconClass}`);
 
-                // עובר על כל האייקונים ולוחץ רק אם השורה שלהם מוצגת
+                // --- SMART BATCH OPEN START ---
+                const viewportHeight = window.innerHeight;
+                const visibleButtons = [];
+                const offscreenButtons = [];
+
                 iconsToConsider.forEach(icon => {
-                    const parentRow = icon.closest('tr[data-task-id]');
-                    // התנאי שבודק אם השורה אכן נראית על המסך
-                    if (parentRow && parentRow.offsetParent !== null) {
-                        const targetButton = icon.closest('button');
-                        if (targetButton) {
-                            targetButton.click();
-                        }
+                    const btn = icon.closest('button');
+                    if (!btn) return;
+                    const rect = btn.getBoundingClientRect();
+                    // בדיקה אם הכפתור נמצא בתוך גבולות המסך כרגע
+                    if (rect.top >= 0 && rect.bottom <= viewportHeight) {
+                        visibleButtons.push(btn);
+                    } else {
+                        offscreenButtons.push(btn);
                     }
                 });
+
+                // 1. את מה שעל המסך - פתח מיד
+                visibleButtons.forEach(btn => btn.click());
+
+                // 2. את השאר - פתח בהדרגה כדי לא לתקוע את הממשק (Staggering)
+                if (offscreenButtons.length > 0) {
+                    let delay = 50; // המתנה התחלתית קצרה
+                    offscreenButtons.forEach((btn, index) => {
+                        setTimeout(() => {
+                            btn.click();
+                        }, delay + (index * 20)); // מרווח של 20ms בין לחיצה ללחיצה
+                    });
+                }
+                // --- SMART BATCH OPEN END ---
             }, { passive: false });
 
             previewHeaderCell.innerHTML = '';
