@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LionWheel to Anipet Alternatives
 // @namespace    http://tampermonkey.net/
-// @version      4.3
+// @version      4.4
 // @description  Add Anipet popup with alternative products search results in LionWheel
 // @author       Adam Lee
 // @icon         https://anipetapp.netlify.app/pixel.svg
@@ -50,6 +50,17 @@
             DEBUG = !DEBUG;
             GM_setValue('debug_mode', DEBUG);
             alert(`מצב DEBUG ${DEBUG ? 'הופעל' : 'כובה'}. רענן את הדף כדי שהשינוי ייכנס לתוקף.`);
+        });
+
+        GM_registerMenuCommand('🗑️ נקה מטמון חיפושים', () => {
+            try {
+                const cacheSize = searchCache.size;
+                searchCache.clear();
+                alert(`מטמון החיפושים נוקה (${cacheSize} תוצאות). החיפושים הבאים יטענו מחדש מהשרת.`);
+            } catch (error) {
+                console.error('Error clearing search cache:', error);
+                alert('שגיאה בניקוי מטמון החיפושים.');
+            }
         });
     }
 
@@ -1578,8 +1589,40 @@
         return results;
     }
 
+    // Global loader functions
+    function showGlobalLoader() {
+        // Remove existing loader if any
+        const existingLoader = document.getElementById('anipet-global-loader');
+        if (existingLoader) {
+            existingLoader.remove();
+        }
+
+        // Create global loader overlay
+        const loaderOverlay = document.createElement('div');
+        loaderOverlay.id = 'anipet-global-loader';
+        loaderOverlay.className = 'anipet-global-loader-overlay';
+        loaderOverlay.innerHTML = `
+            <div class="anipet-global-loader-spinner">
+                <div class="anipet-spinner-border anipet-text-primary" role="status">
+                    <span class="anipet-sr-only">טוען...</span>
+                </div>
+                <p>מחפש תחליפים...</p>
+            </div>
+        `;
+        document.body.appendChild(loaderOverlay);
+    }
+
+    function hideGlobalLoader() {
+        const loader = document.getElementById('anipet-global-loader');
+        if (loader) {
+            loader.remove();
+        }
+    }
+
     // Show popup with search results
     async function showSearchPopup(productName, searchTerm, barcode = null, lionwheelPrice = null) {
+        // Show global loader immediately
+        showGlobalLoader();
         // Load Font Awesome if not already loaded
         loadFontAwesome();
         
@@ -1649,8 +1692,8 @@
         // Show loading state
         content.innerHTML = `
             <div class="anipet-popup-loading">
-                <div class="spinner-border text-primary" role="status">
-                    <span class="sr-only">טוען...</span>
+                <div class="anipet-spinner-border anipet-text-primary" role="status">
+                    <span class="anipet-sr-only">טוען...</span>
                 </div>
                 <p>מחפש תחליפים...</p>
             </div>
@@ -1660,6 +1703,9 @@
         popup.appendChild(content);
         overlay.appendChild(popup);
         document.body.appendChild(overlay);
+
+        // Hide global loader now that popup is visible
+        hideGlobalLoader();
 
         // Close button handler
         const closeBtn = header.querySelector('.anipet-popup-close');
@@ -1695,7 +1741,7 @@
                 content.innerHTML = `
                     <div class="anipet-popup-empty">
                         <p>לא נמצאו תחליפים למוצר זה.</p>
-                        <a href="${ANIPET_APP_URL}?search=${encodeURIComponent(searchTerm)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">
+                        <a href="${ANIPET_APP_URL}?search=${encodeURIComponent(searchTerm)}" target="_blank" rel="noopener noreferrer" class="anipet-btn anipet-btn-primary">
                             פתח באניפט לחיפוש מתקדם
                         </a>
                     </div>
@@ -1726,11 +1772,13 @@
             }
         } catch (error) {
             console.error('Error in search:', error);
+            // Hide global loader in case of error
+            hideGlobalLoader();
             content.innerHTML = `
                 <div class="anipet-popup-error">
                     <p>אירעה שגיאה בחיפוש. נסה שוב מאוחר יותר.</p>
                     <p style="font-size: 0.875rem; color: #666; margin-top: 10px;">${escapeHtml(error.message || 'שגיאה לא ידועה')}</p>
-                    <a href="${ANIPET_APP_URL}?search=${encodeURIComponent(searchTerm)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="margin-top: 15px;">
+                    <a href="${ANIPET_APP_URL}?search=${encodeURIComponent(searchTerm)}" target="_blank" rel="noopener noreferrer" class="anipet-btn anipet-btn-primary" style="margin-top: 15px;">
                         פתח באניפט לחיפוש מתקדם
                     </a>
                 </div>
@@ -2089,6 +2137,42 @@
             to { opacity: 1; }
         }
 
+        /* Global Loader Overlay */
+        .anipet-global-loader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 99998;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            direction: rtl;
+            animation: anipet-fadeIn 0.2s ease-in;
+        }
+
+        .anipet-global-loader-spinner {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+        }
+
+        .anipet-global-loader-spinner p {
+            margin: 0;
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        .anipet-global-loader-spinner .anipet-spinner-border {
+            border-color: rgba(255, 255, 255, 0.3);
+            border-right-color: #fff;
+        }
+
         /* Popup Container */
         .anipet-popup {
             background: white;
@@ -2164,7 +2248,7 @@
             padding: 40px 20px;
         }
 
-        .anipet-popup-loading .spinner-border {
+        .anipet-popup-loading .anipet-spinner-border {
             width: 3rem;
             height: 3rem;
             border-width: 0.3em;
@@ -2473,7 +2557,7 @@
         }
 
         /* Button Styles */
-        .btn {
+        .anipet-btn {
             display: inline-block;
             padding: 0.375rem 0.75rem;
             font-size: 0.875rem;
@@ -2488,26 +2572,26 @@
             transition: all 0.15s ease-in-out;
         }
 
-        .btn-primary {
+        .anipet-btn-primary {
             color: #fff;
             background-color: #007bff;
             border-color: #007bff;
         }
 
-        .btn-primary:hover {
+        .anipet-btn-primary:hover {
             background-color: #0056b3;
             border-color: #0056b3;
             color: #fff;
             text-decoration: none;
         }
 
-        .btn-sm {
+        .anipet-btn-sm {
             padding: 0.25rem 0.5rem;
             font-size: 0.875rem;
         }
 
         /* Spinner */
-        .spinner-border {
+        .anipet-spinner-border {
             display: inline-block;
             width: 2rem;
             height: 2rem;
@@ -2515,18 +2599,18 @@
             border: 0.25em solid currentColor;
             border-right-color: transparent;
             border-radius: 50%;
-            animation: spinner-border 0.75s linear infinite;
+            animation: anipet-spinner-border 0.75s linear infinite;
         }
 
-        @keyframes spinner-border {
+        @keyframes anipet-spinner-border {
             to { transform: rotate(360deg); }
         }
 
-        .text-primary {
+        .anipet-text-primary {
             color: #007bff !important;
         }
 
-        .sr-only {
+        .anipet-sr-only {
             position: absolute;
             width: 1px;
             height: 1px;
