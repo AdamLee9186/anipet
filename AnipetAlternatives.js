@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LionWheel to Anipet Alternatives
 // @namespace    http://tampermonkey.net/
-// @version      4.4
+// @version      4.5
 // @description  Add Anipet popup with alternative products search results in LionWheel
 // @author       Adam Lee
 // @icon         https://anipetapp.netlify.app/pixel.svg
@@ -83,6 +83,58 @@
             clearTimeout(timeout);
             timeout = setTimeout(() => func.apply(this, args), wait);
         };
+    }
+
+    function getFullSizeImageUrl(thumbnailUrl) {
+        try {
+            if (!thumbnailUrl || typeof thumbnailUrl !== 'string') return '';
+
+            if (thumbnailUrl.includes('cdn.modulus.co.il')) { return thumbnailUrl.split('?')[0]; }
+            if (thumbnailUrl.includes('www.gag-lachayot.co.il')) { return thumbnailUrl.replace(/-\d+x\d+(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/-\d+x\d+$/, ''); }
+            if (thumbnailUrl.includes('www.all4pet.co.il')) { return thumbnailUrl.replace(/_small(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/_small$/, ''); }
+            if (thumbnailUrl.includes('d3m9l0v76dty0.cloudfront.net')) { return thumbnailUrl.replace('/show/', '/original/').replace('/index/', '/original/').replace('/large/', '/original/'); }
+            if (thumbnailUrl.includes('just4pet.co.il')) {
+                const parts = thumbnailUrl.split('/'); const filenameWithQuery = parts.pop(); const filenameParts = filenameWithQuery.split('?');
+                const filename = filenameParts[0]; const query = filenameParts.length > 1 ? `?${filenameParts[1]}` : '';
+                if (filename.startsWith('tn_')) { const newFilename = filename.substring(3); return parts.join('/') + '/' + newFilename + query; }
+            }
+            if (thumbnailUrl.includes('speedog.co.il')) {
+                // Remove size parameters like -100x100 from the end of the filename
+                return thumbnailUrl.replace(/-\d+x\d+(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/-\d+x\d+$/, '');
+            }
+            return thumbnailUrl;
+        } catch (e) {
+            console.warn(`[AnipetAlternatives] ⚠️ Error processing thumbnail URL, returning original:`, thumbnailUrl, e);
+            return thumbnailUrl;
+        }
+    }
+
+    // New function for optimized image URLs based on screen size (provided by user)
+    function getOptimizedImageUrl(originalUrl, targetWidth = null) {
+        try {
+            if (!originalUrl || typeof originalUrl !== 'string') return originalUrl;
+
+            if (!targetWidth) { targetWidth = Math.min(window.innerWidth, 1200); }
+            const __BUCKETS = [320, 480, 640, 960, 1200];
+            for (let i = 0; i < __BUCKETS.length; i++) {
+                if (targetWidth <= __BUCKETS[i]) { targetWidth = __BUCKETS[i]; break; }
+                if (i === __BUCKETS.length - 1) targetWidth = __BUCKETS[i];
+            }
+
+            if (originalUrl.includes('cdn.modulus.co.il')) { return `${originalUrl.split('?')[0]}?w=${targetWidth}&h=${Math.round(targetWidth * 0.75)}&fit=crop`; }
+            if (originalUrl.includes('www.gag-lachayot.co.il')) { const baseUrl = originalUrl.replace(/-\d+x\d+(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/-\d+x\d+$/, ''); return `${baseUrl}?w=${targetWidth}`; }
+            if (originalUrl.includes('www.all4pet.co.il')) { const baseUrl = originalUrl.replace(/_small(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/_small$/, ''); return `${baseUrl}?w=${targetWidth}`; }
+            if (originalUrl.includes('d3m9l0v76dty0.cloudfront.net')) { return originalUrl; }
+            if (originalUrl.includes('just4pet.co.il')) { const parts = originalUrl.split('/'); const filenameWithQuery = parts.pop(); const filenameParts = filenameWithQuery.split('?'); const filename = filenameParts[0]; const query = filenameParts.length > 1 ? `&${filenameParts[1]}` : ''; if (filename.startsWith('tn_')) { const newFilename = filename.substring(3); return `${parts.join('/')}/${newFilename}?w=${targetWidth}${query}`; } }
+            if (originalUrl.includes('speedog.co.il')) { const baseUrl = originalUrl.replace(/-\d+x\d+(\.[a-zA-Z0-9]+(?:[?#].*)?)$/, '$1').replace(/-\d+x\d+$/, ''); const separator = baseUrl.includes('?') ? '&' : '?'; return `${baseUrl}${separator}w=${targetWidth}`; }
+
+            const separator = originalUrl.includes('?') ? '&' : '?';
+            return `${originalUrl}${separator}w=${targetWidth}`;
+
+        } catch (e) {
+            console.warn(`[AnipetAlternatives] ⚠️ Error optimizing image URL, returning original:`, originalUrl, e);
+            return originalUrl;
+        }
     }
 
     function createAlternativesButton(productName, searchTerm, barcode = null) {
@@ -1901,6 +1953,16 @@
             // Google Images search URL
             const googleImagesUrl = `https://www.google.com/search?tbm=isch&q=${encodeURIComponent(name)}`;
             
+            // Get full size image URL for click
+            const fullSizeUrl = getFullSizeImageUrl(imageUrl);
+            
+            // Determine the final HTML for the image, wrapping in an <a> tag only if it's not the placeholder
+            const imageHtml = imageUrl === ICON_URL
+                ? `<img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.src='${ICON_URL}';">`
+                : `<a href="${escapeHtml(fullSizeUrl || imageUrl)}" target="_blank" rel="noopener noreferrer" title="לחץ לפתיחת תמונה בגודל מלא">
+                        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.src='${ICON_URL}';">
+                    </a>`;
+            
             // Google icon SVG
             const googleIconSvg = `
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="display: inline-block; vertical-align: middle;">
@@ -1914,7 +1976,7 @@
             return `
                 <div class="anipet-product-card" data-product-url="${escapeHtml(productUrl)}">
                     <div class="anipet-product-image">
-                        <img src="${escapeHtml(imageUrl)}" alt="${escapeHtml(name)}" loading="lazy" onerror="this.src='${ICON_URL}';">
+                        ${imageHtml}
                     </div>
                     <div class="anipet-product-info">
                         <div class="anipet-product-name-wrapper">
