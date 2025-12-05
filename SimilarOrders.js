@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - חיפוש משלוחים דומים
 // @namespace    http://tampermonkey.net/
-// @version      3.6
+// @version      3.7
 // @description  [מבצע אופטימיזציה] מאחד בקשות רשת (items+drivers), מוסיף טעינה אסינכרונית לפריטים, ומשפר עיצוב אייקונים.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*
@@ -44,6 +44,36 @@
     const IMAGE_CACHE_TIMESTAMP_KEY = 'anipet_image_cache_timestamp_search';
     const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
     let productDataCache = null;
+
+    // -------------------------------------------------------------------------
+    // מנגנון ניהול תור בקשות (Rate Limiter / Queue)
+    // מונע "פקק" בטעינת הרבה פריטים במקביל (בדומה לתיקון ב-Toolbox)
+    // -------------------------------------------------------------------------
+    const REQ_QUEUE = [];
+    let REQ_ACTIVE = 0;
+    const REQ_MAX_CONCURRENT = 4; // Boost: מאפשר 4 בקשות במקביל
+    const REQ_DELAY_MS = 200;     // Boost: השהייה קצרה של 200ms בין בקשות
+
+    function processRequestQueue() {
+        if (REQ_ACTIVE >= REQ_MAX_CONCURRENT || REQ_QUEUE.length === 0) return;
+        
+        const { fn, resolve, reject } = REQ_QUEUE.shift();
+        REQ_ACTIVE++;
+        
+        fn().then(resolve)
+            .catch(reject)
+            .finally(() => {
+                REQ_ACTIVE--;
+                setTimeout(processRequestQueue, REQ_DELAY_MS);
+            });
+    }
+
+    function enqueueRequest(fn) {
+        return new Promise((resolve, reject) => {
+            REQ_QUEUE.push({ fn, resolve, reject });
+            processRequestQueue();
+        });
+    }
 
     const previewCache = new Map();
     const PLACEHOLDER_IMG_URL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="70" viewBox="0 0 80 70"><rect width="80" height="70" fill="#fafafa"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="12px" fill="#d4d4d4">אין תמונה</text></svg>');
@@ -204,14 +234,13 @@
 
         .lw-search-result-item {
             display: block;
-            text-decoration: none !important;
             color: inherit;
             border-bottom: 1px solid #eee;
             transition: background-color 0.2s;
+            cursor: pointer; /* הוספת סמן יד כדי שייראה לחיץ */
         }
         .lw-search-result-item:hover {
             background-color: #f9f9f9;
-            text-decoration: none !important;
         }
         .lw-search-result-item:last-child {
             border-bottom: none;
@@ -731,7 +760,7 @@
             const previewContainerId = `preview-for-task-${task.id}`;
 
             html += `
-                <a href="#" data-href="${taskUrl}" class="lw-search-result-item task-row d-block" title="פתח משלוח ${task.id}" data-task-id-row="${task.id}">
+                <div data-href="${taskUrl}" class="lw-search-result-item task-row d-block" title="פתח משלוח ${task.id}" data-task-id-row="${task.id}">
                     <div class="d-flex align-items-center flex-grow-1 justify-content-between p-2">
 
                         <div class="flex-shrink-0 align-self-center ml-2">
@@ -769,7 +798,7 @@
                         </div>
 
                     </div>
-                </a>
+                </div>
                 <div class="lw-preview-container" id="${previewContainerId}" style="display: none;"></div>
             `;
         });
@@ -958,8 +987,17 @@
 
     /**
      * [שונה] שולף את דף המשימה המלא עבור *נתוני נהגים*, *השם המוצג* ו*אייקון הנהג/גשר*.
+     * עוטף את הבקשה בתור הניהול כדי למנוע עומס (Traffic Jam)
      */
     function fetchTaskDriverData(taskId) {
+        // עוטף את הבקשה בתור הניהול כדי למנוע עומס (Traffic Jam)
+        return enqueueRequest(() => _executeFetchTaskDriverData(taskId));
+    }
+
+    /**
+     * הפונקציה הפנימית שמבצעת את הבקשה בפועל (מופעלת ע"י התור)
+     */
+    function _executeFetchTaskDriverData(taskId) {
          return new Promise((resolve, reject) => {
             const token = getCSRFToken();
             if (!token) return reject(new Error('CSRF token not found'));
