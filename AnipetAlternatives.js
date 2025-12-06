@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         LionWheel to Anipet Alternatives
 // @namespace    http://tampermonkey.net/
-// @version      4.5
+// @version      4.6
 // @description  Add Anipet popup with alternative products search results in LionWheel
 // @author       Adam Lee
 // @icon         https://anipetapp.netlify.app/pixel.svg
@@ -534,8 +534,15 @@
                                     opacity: 1 !important;
                                 `;
 
+                                // Define exclusions (keywords and specific barcodes)
+                                const excludedBarcodes = ['10000', '491', '1948', '1949', '555503', '2543'];
+                                const excludedKeywords = ['משלוח', 'מתנה', 'מנוי', 'במנוי'];
+
+                                const isExcluded = (barcode && excludedBarcodes.includes(barcode)) ||
+                                                   (productName && excludedKeywords.some(keyword => productName.includes(keyword)));
+
                                 // אם יש ברקוד, צור כפתור עם ברקוד. אם אין ברקוד אבל יש שם מוצר, צור כפתור עם שם המוצר
-                                if (barcode) {
+                                if (!isExcluded && barcode) {
                                     const button = createAlternativesButton(productName, barcode, barcode);
                                     if (button) {
                                         button.setAttribute('data-anipet-icon', 'true');
@@ -545,7 +552,7 @@
                                         }
                                         anipetCell.appendChild(button);
                                     }
-                                } else if (productName) {
+                                } else if (!isExcluded && productName) {
                                     const button = createAlternativesButton(productName, productName, null);
                                     if (button) {
                                         button.setAttribute('data-anipet-icon', 'true');
