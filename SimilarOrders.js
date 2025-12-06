@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - חיפוש משלוחים דומים
 // @namespace    http://tampermonkey.net/
-// @version      3.7
+// @version      3.8
 // @description  [מבצע אופטימיזציה] מאחד בקשות רשת (items+drivers), מוסיף טעינה אסינכרונית לפריטים, ומשפר עיצוב אייקונים.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*
@@ -51,8 +51,8 @@
     // -------------------------------------------------------------------------
     const REQ_QUEUE = [];
     let REQ_ACTIVE = 0;
-    const REQ_MAX_CONCURRENT = 4; // Boost: מאפשר 4 בקשות במקביל
-    const REQ_DELAY_MS = 200;     // Boost: השהייה קצרה של 200ms בין בקשות
+    const REQ_MAX_CONCURRENT = 5; // Boost: הועלה ל-5 בקשות במקביל לניצול טוב יותר
+    const REQ_DELAY_MS = 50;      // Boost: זמן המתנה צומצם ל-50ms לשיפור תגובתיות
 
     function processRequestQueue() {
         if (REQ_ACTIVE >= REQ_MAX_CONCURRENT || REQ_QUEUE.length === 0) return;
@@ -808,9 +808,22 @@
         const title = `נמצאו ${uniqueResults.length} תוצאות עבור "${searchTerm}"`;
         showModal(title, html);
 
-        uniqueResults.forEach(task => {
-            loadAndRenderExtraData(task.id);
-        });
+        // אופטימיזציה: שימוש ב-IntersectionObserver לטעינת נתונים רק כשהשורה נראית במסך
+        const scrollContainer = document.getElementById('lwSearchContent');
+        const observer = new IntersectionObserver((entries, obs) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    const row = entry.target;
+                    const taskId = row.getAttribute('data-task-id-row');
+                    if (taskId) loadAndRenderExtraData(taskId);
+                    obs.unobserve(row); // הפסק לעקוב אחרי שכבר ביקשנו טעינה
+                }
+            });
+        }, { root: scrollContainer, rootMargin: '100px' }); // Margin של 100 פיקסל לטעינה מקדימה קלה
+
+        // הפעלת האובזרבר על כל השורות
+        const resultRows = scrollContainer.querySelectorAll('.lw-search-result-item[data-task-id-row]');
+        resultRows.forEach(row => observer.observe(row));
     }
 
     async function loadAndRenderExtraData(taskId) {
