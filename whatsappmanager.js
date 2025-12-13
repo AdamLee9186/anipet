@@ -1,17 +1,18 @@
 // ==UserScript==
-// @name         Lionwheel - WhatsApp Manager Pro V3.2
-// @namespace    lionwheel-whatsapp-pro-v3-2
-// @version      3.2
-// @description  מערכת ניהול ושליחת הודעות וואטסאפ
+// @name         Lionwheel - WhatsApp Manager Pro V3.6
+// @namespace    lionwheel-whatsapp-pro-v3-6
+// @version      3.6
+// @description  מערכת ניהול ושליחת הודעות חכמה לוואטסאפ
 // @author       Adam Lee
 // @match        *://*.lionwheel.com/*
+// @match        *://api.whatsapp.com/*
 // @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/whatsappmanager.js
 // @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/whatsappmanager.js
 // @grant        GM_setValue
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
-// @grant        GM_setClipboard
+// @grant        window.close
 // @run-at       document-end
 // ==/UserScript==
 
@@ -19,43 +20,60 @@
     'use strict';
 
     // ==========================================
-    // 1. הגדרות ברירת מחדל
+    // 0. סגירת טאב אוטומטית (WhatsApp API)
+    // ==========================================
+    if (window.location.hostname === 'api.whatsapp.com') {
+        // ממתין 3 שניות ואז סוגר
+        setTimeout(() => {
+            window.close();
+        }, 3000);
+        return; // עוצר את שאר הסקריפט בעמוד זה
+    }
+
+    // ==========================================
+    // 1. הגדרות סינון ומוצרים
+    // ==========================================
+    const EXCLUDED_BARCODES = ['10000', '491', '1948', '1949', '555503', '2543'];
+    const EXCLUDED_KEYWORDS = ['משלוח', 'מתנה', 'מנוי', 'במנוי'];
+
+    // ==========================================
+    // 2. הגדרות ברירת מחדל
     // ==========================================
     const DEFAULT_PRESETS = [
         {
             title: "רבים, חלק חסר, בוא נחליף",
             color: "#D9EAD3",
-            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך.\nקיבלנו את ההזמנה, וכרגע חסרים במלאי חלק מהמוצרים וישנו עיכוב במשלוח. מצטערים מראש על העיכוב, ואנו דואגים להביא את המוצרים שהזמנת בהקדם האפשרי מהיבואן ומהסניפים הקרובים כך שהמשלוח יתעכב כמה שפחות. בכדי לא לעכב את המשלוח, האם נוכל להחליף חלק מהמוצרים בהזמנה? כך שתקבל במקום:"
+            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך.\nקיבלנו את ההזמנה, וכרגע חסרים במלאי חלק מהמוצרים: {products} וישנו עיכוב במשלוח. מצטערים מראש על העיכוב, ואנו דואגים להביא את המוצרים שהזמת בהקדם האפשרי מהיבואן ומהסניפים הקרובים כך שהמשלוח יתעכב כמה שפחות. בכדי לא לעכב את המשלוח, האם נוכל להחליף חלק מהמוצרים בהזמנה? כך שתקבל במקום:"
         },
         {
             title: "רבים, חלק חסר",
             color: "#93C47D",
-            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך.\nקיבלנו את ההזמנה במערכת ורצינו לעדכן כי כרגע חסרים במלאי חלק מהמוצרים שהזמנת. אנו מנסים להשיג אותם בהקדם האפשרי מהסניפים הקרובים ומהיבואן כדי שהמשלוח יתעכב כמה שפחות.\nמצטערים מראש על העיכוב ומודים על סבלנותך."
+            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך.\nקיבלנו את ההזמנה במערכת ורצינו לעדכן כי כרגע חסרים במלאי חלק מהמוצרים שהזמנת: {products} אנו מנסים להשיג אותם בהקדם האפשרי מהסניפים הקרובים ומהיבואן כדי שהמשלוח יתעכב כמה שפחות.\nמצטערים מראש על העיכוב ומודים על סבלנותך."
         },
         {
             title: "פיצול משלוח",
             color: "#F4CCCC",
-            text: "אנחנו מבינים את הדחיפות ורוצים לתת לך את השירות הטוב ביותר.\nלכן, האם לשלוח אליך את חלק מהמשלוח שכן יש במלאי ביומיים הקרובים, ואת היתרה נספק ברגע שתגיע למלאי הזמין?"
+            text: "אנחנו מבינים את הדחיפות ורוצים לתת לך את השירות הטוב ביותר.\nלכן, האם לשלוח אליך את חלק מהמשלוח שכן יש במלאי ביומיים הקרובים, ואת היתרה ({products}) נספק ברגע שתגיע למלאי הזמין?"
         },
         {
             title: "יחיד, חסר במלאי, בוא נחליף",
             color: "#FCE5CD",
-            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך. קיבלנו את ההזמנה\nוכרגע חסר לנו במלאי המוצר שהזמנת וישנו עיכוב במשלוח. מצטערים מראש על העיכוב ודואגים להביא את המוצר שהוזמן בהקדם האפשרי מהיבואן ומהסניפים הקרובים כך שהמשלוח יתעכב כמה שפחות. בכדי לא לעכב את המשלוח, נוכל להחליף המוצר בהזמנה? כך שתקבל במקום:"
+            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך. קיבלנו את ההזמנה\nוכרגע חסר לנו במלאי {products} שהזמנת, וישנו עיכוב במשלוח. מצטערים מראש על העיכוב ודואגים להביא את המוצר שהוזמן בהקדם האפשרי מהיבואן ומהסניפים הקרובים כך שהמשלוח יתעכב כמה שפחות. בכדי לא לעכב את המשלוח, נוכל להחליף המוצר בהזמנה? כך שתקבל במקום:"
         },
         {
             title: "יחיד, חסר במלאי",
             color: "#93C47D",
-            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שהזמנת.\nרצינו לעדכן כי כרגע חסר לנו במלאי המוצר שהזמנת ואנו מנסים להשיג אותו בהקדם האפשרי מהסניפים הקרובים ומהיבואן כדי שהמשלוח יתעכב כמה שפחות.\nמצטערים מראש על העיכוב ומודים לך על סבלנותך."
+            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שהזמנת.\nרצינו לעדכן כי כרגע חסר לנו במלאי {products} שהזמנת ואנו מנסים להשיג אותו בהקדם האפשרי מהסניפים הקרובים ומהיבואן כדי שהמשלוח יתעכב כמה שפחות.\nמצטערים מראש על העיכוב ומודים לך על סבלנותך."
         },
         {
             title: "הכל חסר",
             color: "#F4CCCC",
-            text: "שלום {name}, זה מאניפט חוצות.\nכרגע קיבלנו את ההזמנה שלך וחסרים לנו המוצרים שהזמנת ואנחנו עושים מאמצים להשיג אותם מהסניפים הקרובים ומהיבואן בהקדם האפשרי כך שהמשלוח יתעכב כמה שפחות.\nאנו מצטערים מראש על העיכוב שנוצר ומודים על ההבנה."
+            text: "שלום {name}, זה מאניפט חוצות.\nכרגע קיבלנו את ההזמנה שלך וחסרים לנו המוצרים שהזמנת: {products} ואנחנו עושים מאמצים להשיג אותם מהסניפים הקרובים ומהיבואן בהקדם האפשרי כך שהמשלוח יתעכב כמה שפחות.\nאנו מצטערים מראש על העיכוב שנוצר ומודים על ההבנה."
         },
         {
             title: "פיצול + זיכוי 1",
             color: "#6FA8DC",
-            text: "לגבי הפיצול + זיכוי, פותחים לך עכשיו בקשה לזיכוי עבור המוצרים החסרים, ואת שאר ההזמנה אנחנו מוציאים אליך בהקדם האפשרי.\nהאם לזכות את חבר המועדון או את אמצעי התשלום בו בוצעה העסקה?"
+            text: "לגבי הפיצול + זיכוי, פותחים לך עכשיו בקשה לזיכוי עבור המוצרים החסרים ({products}), ואת שאר ההזמנה אנחנו מוציאים אליך בהקדם האפשרי.\nהאם לזכות את חבר המועדון או את אמצעי התשלום בו בוצעה העסקה?"
         },
         {
             title: "פיצול + זיכוי 2",
@@ -65,7 +83,7 @@
         {
             title: "תזכו אותי",
             color: "#C9DAF8",
-            text: "מבינים את הבקשה ומצטערים על העיכוב שנוצר.\nפותחים לך עכשיו בקשה לזיכוי מול מוקד שירות לקוחות.\nהאם לזכות את חבר המועדון או את אמצעי התשלום בו בוצעה העסקה?\nלכל בירור נוסף ניתן להתקשר למס' 1-700-5555-03."
+            text: "מבינים את הבקשה ומצטערים על העיכוב שנוצר.\nפותחים לך עכשיו בקשה לזיכוי עבור {products} מול מוקד שירות לקוחות.\nהאם לזכות את חבר המועדון או את אמצעי התשלום בו בוצעה העסקה?\nלכל בירור נוסף ניתן להתקשר למס' 1-700-5555-03."
         },
         {
             title: "איפה הזיכוי?",
@@ -85,12 +103,15 @@
     ];
 
     // ==========================================
-    // 2. ניהול נתונים (Load/Save/Import/Export)
+    // 3. ניהול נתונים
     // ==========================================
 
-    let isLocked = true; // ברירת מחדל: נעול
+    let isLocked = true;
     let hasUnsavedChanges = false;
     let savedStateString = "";
+    // detectedMissingProducts ו-selectedProducts יכילו כעת אובייקטים: { name: string, missing: number }
+    let detectedMissingProducts = [];
+    let selectedProducts = [];
 
     function loadPresets() {
         const stored = GM_getValue('whatsapp_presets_v3');
@@ -99,7 +120,6 @@
     }
 
     function savePresets(presets) {
-        // שימוש ב-null, 4 יוצר JSON קריא עם הזחות גם בזיכרון (ובייצוא)
         const jsonStr = JSON.stringify(presets, null, 4);
         GM_setValue('whatsapp_presets_v3', jsonStr);
         currentPresets = presets;
@@ -118,9 +138,7 @@
     }
 
     // --- תפריטי Tampermonkey ---
-
-    // 1. ייצוא (JSON קריא)
-    GM_registerMenuCommand("📤 ייצוא הגדרות לקובץ (גיבוי)", () => {
+    GM_registerMenuCommand("📤 ייצוא הגדרות לקובץ", () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentPresets, null, 4));
         const downloadAnchorNode = document.createElement('a');
         downloadAnchorNode.setAttribute("href", dataStr);
@@ -130,7 +148,6 @@
         downloadAnchorNode.remove();
     });
 
-    // 2. ייבוא
     GM_registerMenuCommand("📥 ייבוא הגדרות מקובץ", () => {
         const input = document.createElement('input');
         input.type = 'file';
@@ -142,7 +159,7 @@
                 try {
                     const importedPresets = JSON.parse(event.target.result);
                     if (Array.isArray(importedPresets)) {
-                        if(confirm(`האם לדרוס את ההגדרות הנוכחיות ב-${importedPresets.length} הודעות מהקובץ?`)) {
+                        if(confirm(`האם לדרוס את ההגדרות הנוכחיות?`)) {
                             savePresets(importedPresets);
                             alert("ההגדרות נטענו בהצלחה! הדף ירוענן.");
                             location.reload();
@@ -159,17 +176,15 @@
         input.click();
     });
 
-    // 3. איפוס
-    GM_registerMenuCommand("🔄 שחזר לברירת מחדל (Revert)", () => {
-        if(confirm("האם אתה בטוח שברצונך למחוק את כל השינויים ולחזור להודעות המקוריות?")) {
+    GM_registerMenuCommand("🔄 שחזר לברירת מחדל", () => {
+        if(confirm("למחוק את כל השינויים ולחזור לברירת המחדל?")) {
             GM_deleteValue('whatsapp_presets_v3');
-            alert("ההודעות שוחזרו בהצלחה! אנא רענן את הדף.");
             location.reload();
         }
     });
 
     // ==========================================
-    // 3. CSS Style
+    // 4. CSS Style (ללא שינוי מהותי)
     // ==========================================
     const css = `
         .tm-wa-btn {
@@ -205,7 +220,17 @@
 
         .tm-modal-body { padding: 15px; overflow-y: auto; flex-grow: 1; background: #f9f9f9; }
 
-        /* הסתרת הפוטר כשהוא נעול */
+        /* אזור בחירת מוצרים */
+        .tm-products-selection-area {
+            background: #fff; border: 1px solid #e0e0e0; border-radius: 8px;
+            padding: 12px; margin-bottom: 15px;
+        }
+        .tm-products-title { font-size: 13px; font-weight: bold; color: #555; margin-bottom: 8px; }
+        .tm-products-list { display: flex; flex-direction: column; gap: 5px; max-height: 120px; overflow-y: auto; }
+        .tm-product-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        .tm-product-checkbox-row input { cursor: pointer; }
+        .tm-no-products-msg { font-size: 12px; color: #999; font-style: italic; }
+
         .tm-modal-footer {
             padding: 10px 20px; background: #fff; border-top: 1px solid #eee;
             display: flex; justify-content: center;
@@ -223,10 +248,8 @@
             background: #ccc; cursor: not-allowed; box-shadow: none; color: #666;
         }
 
-        /* Grid Layout - Fixed & Spacious Column Widths */
         .tm-preset-row {
             display: grid;
-            /* Grip | Num | Color | Content | Actions (120px) */
             grid-template-columns: 30px 25px 8px 1fr 120px;
             gap: 10px;
             background: white; margin-bottom: 8px; border-radius: 8px;
@@ -239,13 +262,10 @@
         .tm-preset-row:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .tm-preset-row.dragging { opacity: 0.5; border: 2px dashed #999; }
 
-        /* Locked State Visuals */
         .tm-is-locked .tm-drag-handle { cursor: not-allowed; opacity: 0.3; }
         .tm-is-locked .tm-btn-edit, .tm-is-locked .tm-btn-delete { display: none; }
-        /* במצב נעול, מקטינים עמודת פעולות */
         .tm-is-locked .tm-preset-row { grid-template-columns: 30px 25px 8px 1fr 50px; }
 
-        /* Edit Mode */
         .tm-preset-row.tm-edit-mode { display: block; background: #fff8e1; border: 1px solid #ffe0b2; padding: 15px; }
 
         .tm-drag-handle {
@@ -265,7 +285,6 @@
         .tm-preset-title-text { font-weight: bold; font-size: 0.95rem; margin-bottom: 4px; color: #222; }
         .tm-preset-body-text { font-size: 0.85rem; color: #555; line-height: 1.3; white-space: pre-wrap; }
 
-        /* Actions Container - רווח אחיד לאייקונים */
         .tm-preset-actions {
             display: flex; align-items: center; justify-content: center;
             border-right: 1px solid #eee; gap: 8px; background: #fafafa;
@@ -276,7 +295,7 @@
             width: 30px; height: 30px; border-radius: 50%; transition: all 0.2s;
             display: flex; align-items: center; justify-content: center;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #eee;
-            flex-shrink: 0; /* מונע כיווץ */
+            flex-shrink: 0;
         }
         .tm-btn-edit:hover { background: #333; color: white; }
         .tm-btn-delete { color: #e74c3c; }
@@ -296,7 +315,7 @@
     document.head.appendChild(styleEl);
 
     // ==========================================
-    // 4. לוגיקה ראשית
+    // 5. לוגיקה ראשית
     // ==========================================
 
     function injectButton() {
@@ -322,12 +341,19 @@
         });
     }
 
+    /**
+     * מחלץ נתוני לקוח ומוצרים חסרים
+     * @param {Element} row
+     * @returns {{phone: string, name: string, productsList: Array<{name: string, missing: number}>}}
+     */
     function extractClientData(row) {
+        // 1. Phone Extraction (ללא שינוי)
         let phone = '';
         const phoneEl = row.querySelector('.whatsapp-injected') || row.querySelector('.hover-copy');
         if (phoneEl) phone = phoneEl.textContent.replace(/\D/g, '');
         if (phone.startsWith('0')) phone = '972' + phone.substring(1);
 
+        // 2. Name Extraction (ללא שינוי)
         let firstName = "לקוח יקר";
         const parentContainer = row.closest('.px-3');
         if (parentContainer) {
@@ -337,28 +363,131 @@
                 firstName = fullName.split(/\s+/)[0] || "לקוח יקר";
             }
         }
-        return { phone, name: firstName };
+
+        // 3. Products Logic - הוספת כמות חסרה
+        let missingProducts = []; // פורמט: { name: string, missing: number }
+
+        const rootContainer = row.closest('.offcanvas, .card, .modal-content') || document;
+
+        // חיפוש בטבלה (Inputs / Text)
+        const checkItem = (name, ordered, picked, barcode) => {
+            if (!name) return;
+            if (EXCLUDED_KEYWORDS.some(k => name.includes(k))) return;
+            if (barcode && EXCLUDED_BARCODES.includes(barcode)) return;
+
+            const missing = (ordered - picked);
+
+            if (missing > 0) {
+                // שומרים את שם המוצר ואת הכמות החסרה
+                missingProducts.push({ name: name.trim(), missing: missing });
+            }
+        };
+
+        // אסטרטגיה 1: שדות קלט (אם ישנם)
+        const inputRows = rootContainer.querySelectorAll('.order-item-row');
+        if (inputRows.length > 0) {
+            inputRows.forEach(item => {
+                const nameEl = item.querySelector('.order-item-name input') || item.querySelector('input.order-item-name');
+                const qtyEl = item.querySelector('.order-item-quantity input') || item.querySelector('input.order-item-quantity');
+                const pickedEl = item.querySelector('input[name*="picked_quantity"]') ||
+                                 item.querySelector('input[name*="collected_quantity"]') ||
+                                 item.querySelector('.order-item-picked-quantity input');
+                const skuEl = item.querySelector('.order-item-sku input') || item.querySelector('input.order-item-sku');
+
+                const ordered = parseFloat(qtyEl.value) || 0;
+                const picked = parseFloat(pickedEl.value) || 0;
+
+                if (nameEl && qtyEl && pickedEl) {
+                    checkItem(
+                        nameEl.value,
+                        ordered,
+                        picked,
+                        skuEl ? skuEl.value : null
+                    );
+                }
+            });
+        }
+
+        // אסטרטגיה 2: טבלה רגילה (אם ישנם)
+        if (missingProducts.length === 0) {
+            const tableRows = rootContainer.querySelectorAll('table tbody tr');
+            tableRows.forEach(tr => {
+                // חיפוש תא הכמות / לוקט
+                const qtyCell = tr.querySelector('td[data-label="כמות / לוקט"]') || Array.from(tr.cells).find(cell => cell.textContent.match(/(\d+)\s*\/\s*(\d+)/));
+
+                if (qtyCell) {
+                    const text = qtyCell.textContent;
+                    const qtyMatch = text.match(/(\d+)\s*\/\s*(\d+)/);
+
+                    if (qtyMatch) {
+                        const picked = parseInt(qtyMatch[1]);
+                        const ordered = parseInt(qtyMatch[2]);
+
+                        const nameEl = tr.querySelector('td[data-label="שם"]') || tr.querySelector('.order-item-name') || tr.cells[2];
+                        const skuEl = tr.querySelector('td[data-label="מק״ט"]') || tr.querySelector('td[data-label="ברקוד"]');
+
+                        if (nameEl) {
+                            checkItem(
+                                nameEl.innerText,
+                                ordered, // Ordered
+                                picked, // Picked
+                                skuEl ? skuEl.innerText.trim() : null
+                            );
+                        }
+                    }
+                }
+            });
+        }
+
+        return { phone, name: firstName, productsList: missingProducts };
     }
 
     // ==========================================
-    // 5. בניית המודל (Popup)
+    // 6. כלי עזר: פורמט מוצרים
+    // ==========================================
+
+    /**
+     * מעצב את רשימת המוצרים (כולל כמות אם > 1) לטקסט להודעה
+     * @param {Array<{name: string, missing: number}>} products - רשימת המוצרים הנבחרים
+     * @returns {{productsString: string, isEmpty: boolean}}
+     */
+    function formatProductsList(products) {
+        // מכין את שמות המוצרים המעוצבים (עם כמות חסרה אם רלוונטי)
+        const formattedNames = products.map(p => {
+            let name = p.name;
+            // הוסף כמות רק אם חסר יותר מ-1
+            if (p.missing > 1) {
+                name += ` (${p.missing} יחידות)`;
+            }
+            return name;
+        });
+
+        const isEmptySelection = (formattedNames.length === 0);
+        let productsString = "";
+
+        if (!isEmptySelection) {
+            if (formattedNames.length === 1) {
+                productsString = formattedNames[0]; // מוצר יחיד - מוכנס Inline
+            } else {
+                // רשימת מוצרים - שבירת שורה, כדורים, ושבירת שורה נוספת בסוף
+                productsString = "\n" + formattedNames.map(p => `• ${p}`).join("\n") + "\n";
+            }
+        }
+        return { productsString, isEmpty: isEmptySelection };
+    }
+
+    // ==========================================
+    // 7. בניית המודל (Popup)
     // ==========================================
 
     let saveButtonEl = null;
 
     function updateSaveButtonState() {
         const footer = document.querySelector('.tm-modal-footer');
-
-        // 1. ניהול נראות הפוטר לפי מצב נעילה
         if (footer) {
-            if (isLocked) {
-                footer.classList.add('tm-hidden');
-            } else {
-                footer.classList.remove('tm-hidden');
-            }
+            if (isLocked) footer.classList.add('tm-hidden');
+            else footer.classList.remove('tm-hidden');
         }
-
-        // 2. ניהול מצב הכפתור (פעיל/אפור)
         if (saveButtonEl) {
             if (hasUnsavedChanges) {
                 saveButtonEl.disabled = false;
@@ -375,7 +504,9 @@
         if (existing) existing.remove();
 
         hasUnsavedChanges = false;
-        isLocked = true; // איפוס לנעול תמיד בפתיחה
+        isLocked = true;
+        detectedMissingProducts = clientData.productsList; // מערך של {name, missing}
+        selectedProducts = [...detectedMissingProducts]; // העתק של האובייקטים
 
         const overlay = document.createElement('div');
         overlay.className = 'tm-modal-overlay';
@@ -400,13 +531,11 @@
             </div>
         `;
 
-        // Footer (מוסתר בהתחלה ע"י class)
         const footer = document.createElement('div');
         footer.className = `tm-modal-footer ${isLocked ? 'tm-hidden' : ''}`;
         footer.innerHTML = `<button class="tm-main-save-btn" disabled>שמור שינויים</button>`;
         saveButtonEl = footer.querySelector('.tm-main-save-btn');
 
-        // Body
         const body = document.createElement('div');
         body.className = 'tm-modal-body';
 
@@ -458,7 +587,6 @@
         overlay.appendChild(content);
         document.body.appendChild(overlay);
 
-        // וידוא מצב כפתור שמירה אחרי הוספה ל-DOM
         updateSaveButtonState();
     }
 
@@ -466,63 +594,148 @@
         container.innerHTML = '';
         container.className = `tm-modal-body ${isLocked ? 'tm-is-locked' : ''}`;
 
-        currentPresets.forEach((preset, index) => {
-            const row = document.createElement('div');
-            row.className = 'tm-preset-row';
-            if (!isLocked) row.draggable = true;
-            row.dataset.index = index;
+        // 1. Render Product Selector
+        if (detectedMissingProducts.length > 0) {
+            const selectorDiv = document.createElement('div');
+            selectorDiv.className = 'tm-products-selection-area';
 
-            const previewText = preset.text.replace(/{name}/g, clientData.name);
+            let checkboxesHTML = '';
+            detectedMissingProducts.forEach((prod) => { // prod: {name: string, missing: number}
+                // בודק אם השם של המוצר נמצא ברשימת הנבחרים (שמכילה אובייקטים)
+                const isChecked = selectedProducts.some(p => p.name === prod.name) ? 'checked' : '';
 
-            row.innerHTML = `
-                <div class="tm-drag-handle" title="${isLocked ? 'נעול' : 'גרור לשינוי סדר'}"><i class="fa-solid fa-grip-vertical"></i></div>
-                <div class="tm-row-number">${index + 1}</div>
-                <div class="tm-color-strip" style="background-color: ${preset.color};"></div>
-                <div class="tm-preset-content" title="לחץ לשליחה">
-                    <div class="tm-preset-title-text">${preset.title}</div>
-                    <div class="tm-preset-body-text">${previewText}</div>
-                </div>
-                <div class="tm-preset-actions">
-                    <button class="tm-action-btn tm-btn-send" title="שלח בוואטסאפ"><i class="fa-brands fa-whatsapp"></i></button>
-                    <button class="tm-action-btn tm-btn-edit" title="ערוך"><i class="fa-solid fa-pencil"></i></button>
-                    <button class="tm-action-btn tm-btn-delete" title="מחק"><i class="fa-solid fa-trash-can"></i></button>
-                </div>
+                // עיצוב התווית עם הכמות החסרה (תמיד מציגים את הכמות כאן לצורך מידע, אבל רק אם > 1)
+                let label = prod.name;
+                if (prod.missing > 1) {
+                    label += ` (${prod.missing} יחידות)`;
+                } else if (prod.missing === 1) {
+                    label += ` (יחידה 1 חסרה)`;
+                }
+
+                checkboxesHTML += `
+                    <label class="tm-product-checkbox-row">
+                        <input type="checkbox" class="tm-prod-cb" data-prod-name="${prod.name.replace(/"/g, '&quot;')}" ${isChecked}>
+                        ${label}
+                    </label>
+                `;
+            });
+
+            selectorDiv.innerHTML = `
+                <div class="tm-products-title">מוצרים חסרים שזוהו (בחר מה לכלול בהודעה):</div>
+                <div class="tm-products-list">${checkboxesHTML}</div>
             `;
 
-            row.querySelector('.tm-preset-content').onclick = () => sendWhatsapp(preset.text, clientData);
-            row.querySelector('.tm-btn-send').onclick = (e) => {
-                e.stopPropagation();
-                sendWhatsapp(preset.text, clientData);
-            };
+            selectorDiv.querySelectorAll('.tm-prod-cb').forEach(cb => {
+                cb.onchange = (e) => {
+                    const prodName = e.target.getAttribute('data-prod-name');
+                    const originalProd = detectedMissingProducts.find(p => p.name === prodName);
 
-            row.querySelector('.tm-btn-edit').onclick = (e) => {
-                e.stopPropagation();
-                if(isLocked) return;
-                enableEditMode(row, index, clientData, container);
-            };
+                    if (e.target.checked) {
+                        // הוסף את האובייקט המלא לרשימת הנבחרים
+                        if (originalProd && !selectedProducts.some(p => p.name === prodName)) {
+                            selectedProducts.push(originalProd);
+                        }
+                    } else {
+                        // הסר את האובייקט לפי שם
+                        selectedProducts = selectedProducts.filter(p => p.name !== prodName);
+                    }
+                    renderPresetsRows();
+                };
+            });
 
-            row.querySelector('.tm-btn-delete').onclick = (e) => {
-                e.stopPropagation();
-                if(isLocked) return;
-                if(confirm("האם למחוק את ההודעה: " + preset.title + "?")) {
-                    currentPresets.splice(index, 1);
-                    checkForChanges();
-                    renderList(container, clientData);
+            container.appendChild(selectorDiv);
+        } else {
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'tm-products-selection-area';
+            msgDiv.innerHTML = `<div class="tm-no-products-msg">לא זוהו מוצרים חסרים אוטומטית.</div>`;
+            container.appendChild(msgDiv);
+        }
+
+        // 2. Container for presets rows
+        const rowsContainer = document.createElement('div');
+        container.appendChild(rowsContainer);
+
+        function renderPresetsRows() {
+            rowsContainer.innerHTML = '';
+
+            // לוגיקה חכמה לפורמט (משתמשת בפונקציית העזר החדשה)
+            const { productsString: productsStringPreview, isEmpty: isEmptySelection } = formatProductsList(selectedProducts);
+
+            currentPresets.forEach((preset, index) => {
+                const row = document.createElement('div');
+                row.className = 'tm-preset-row';
+                if (!isLocked) row.draggable = true;
+                row.dataset.index = index;
+
+                let previewText = preset.text
+                    .replace(/{name}/g, clientData.name)
+                    .replace(/{products}/g, productsStringPreview);
+
+                // ניקוי אם הרשימה ריקה
+                if (isEmptySelection) {
+                    let tempText = preset.text.replace(/{name}/g, clientData.name);
+
+                    // Regex: מוצא נקודתיים, רווח אופציונלי, ואת המשתנה {products}
+                    // ומחליף אותו בנקודה.
+                    if (tempText.includes('{products}')) {
+                        tempText = tempText.replace(/:\s*\{products\}/, '.'); // החלפת נקודתיים ומשתנה בנקודה
+                        tempText = tempText.replace(/\{products\}/, ''); // ניקוי שאריות אם אין נקודתיים
+                    }
+                    previewText = tempText;
                 }
-            };
 
-            if (!isLocked) {
-                addDragEvents(row, container, clientData);
-            }
-            container.appendChild(row);
-        });
+                row.innerHTML = `
+                    <div class="tm-drag-handle" title="${isLocked ? 'נעול' : 'גרור לשינוי סדר'}"><i class="fa-solid fa-grip-vertical"></i></div>
+                    <div class="tm-row-number">${index + 1}</div>
+                    <div class="tm-color-strip" style="background-color: ${preset.color};"></div>
+                    <div class="tm-preset-content" title="לחץ לשליחה">
+                        <div class="tm-preset-title-text">${preset.title}</div>
+                        <div class="tm-preset-body-text">${previewText}</div>
+                    </div>
+                    <div class="tm-preset-actions">
+                        <button class="tm-action-btn tm-btn-send" title="שלח בוואטסאפ"><i class="fa-brands fa-whatsapp"></i></button>
+                        <button class="tm-action-btn tm-btn-edit" title="ערוך"><i class="fa-solid fa-pencil"></i></button>
+                        <button class="tm-action-btn tm-btn-delete" title="מחק"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                `;
+
+                row.querySelector('.tm-preset-content').onclick = () => sendWhatsapp(preset.text, clientData);
+                row.querySelector('.tm-btn-send').onclick = (e) => {
+                    e.stopPropagation();
+                    sendWhatsapp(preset.text, clientData);
+                };
+
+                row.querySelector('.tm-btn-edit').onclick = (e) => {
+                    e.stopPropagation();
+                    if(isLocked) return;
+                    enableEditMode(row, index, rowsContainer);
+                };
+
+                row.querySelector('.tm-btn-delete').onclick = (e) => {
+                    e.stopPropagation();
+                    if(isLocked) return;
+                    if(confirm("האם למחוק את ההודעה?")) {
+                        currentPresets.splice(index, 1);
+                        checkForChanges();
+                        renderPresetsRows();
+                    }
+                };
+
+                if (!isLocked) {
+                    addDragEvents(row, rowsContainer);
+                }
+                rowsContainer.appendChild(row);
+            });
+        }
+
+        renderPresetsRows();
     }
 
     // ==========================================
-    // 6. פונקציונליות עריכה
+    // 8. עריכה, גרירה ושליחה
     // ==========================================
 
-    function enableEditMode(rowElement, index, clientData, container) {
+    function enableEditMode(rowElement, index, container) {
         const preset = currentPresets[index];
         const editDiv = document.createElement('div');
         editDiv.className = 'tm-preset-row tm-edit-mode';
@@ -538,7 +751,7 @@
                     <input type="text" class="tm-input" id="edit-color-text" value="${preset.color}" style="margin:0; width:120px;">
                 </div>
 
-                <label class="tm-edit-label">תוכן ההודעה (השתמש ב-{name} עבור שם הלקוח):</label>
+                <label class="tm-edit-label">תוכן ההודעה (משתנים: {name}, {products}):</label>
                 <textarea class="tm-textarea" id="edit-text">${preset.text}</textarea>
 
                 <div class="tm-edit-controls">
@@ -553,7 +766,6 @@
         colorPicker.oninput = () => colorText.value = colorPicker.value;
         colorText.oninput = () => colorPicker.value = colorText.value;
 
-        // אישור זמני (לזיכרון, לא לקובץ)
         editDiv.querySelector('.tm-save-btn').onclick = () => {
             currentPresets[index] = {
                 title: editDiv.querySelector('#edit-title').value,
@@ -561,64 +773,63 @@
                 text: editDiv.querySelector('#edit-text').value
             };
             checkForChanges();
-            renderList(container, clientData);
+            // כאן משתמשים בטריק: לחיצה על כפתור הסגירה כדי לרנדר הכל מחדש
+            const closeBtn = document.querySelector('.tm-close-btn');
+            if(closeBtn) {
+                alert("השינוי נשמר זמנית. החלון ייסגר כעת לרענון.");
+                closeBtn.click();
+            }
         };
 
         editDiv.querySelector('.tm-cancel-btn').onclick = () => {
-            renderList(container, clientData);
+             const closeBtn = document.querySelector('.tm-close-btn');
+             if(closeBtn) closeBtn.click();
         };
 
         rowElement.replaceWith(editDiv);
     }
 
-    // ==========================================
-    // 7. פונקציונליות גרירה (Drag & Drop)
-    // ==========================================
-
-    function addDragEvents(row, container, clientData) {
+    function addDragEvents(row, container) {
         row.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('text/plain', row.dataset.index);
             row.classList.add('dragging');
         });
-
-        row.addEventListener('dragend', () => {
-            row.classList.remove('dragging');
-        });
-
+        row.addEventListener('dragend', () => row.classList.remove('dragging'));
         row.addEventListener('dragover', (e) => {
             e.preventDefault();
             const draggingRow = container.querySelector('.dragging');
             if (draggingRow && draggingRow !== row) {
                 const bounding = row.getBoundingClientRect();
-                const offset = e.clientY - bounding.top + bounding.height / 2;
-                if (offset > bounding.height) {
-                    row.after(draggingRow);
-                } else {
-                    row.before(draggingRow);
-                }
+                if ((e.clientY - bounding.top + bounding.height / 2) > bounding.height) row.after(draggingRow);
+                else row.before(draggingRow);
             }
         });
-
         row.addEventListener('drop', (e) => {
             e.preventDefault();
             const newOrder = [];
             container.querySelectorAll('.tm-preset-row').forEach(r => {
-                if (r.dataset.index !== undefined) {
-                    newOrder.push(currentPresets[r.dataset.index]);
-                }
+                if (r.dataset.index !== undefined) newOrder.push(currentPresets[r.dataset.index]);
             });
             currentPresets = newOrder;
             checkForChanges();
-            renderList(container, clientData);
+            // הערה: הסדר נשמר, אך המספור הוויזואלי יתעדכן בפתיחה הבאה
         });
     }
 
-    // ==========================================
-    // 8. שיגור
-    // ==========================================
-
     function sendWhatsapp(textTemplate, clientData) {
-        const finalText = textTemplate.replace(/{name}/g, clientData.name);
+        // בניית המחרוזת הסופית באמצעות פונקציית העזר החדשה
+        const { productsString, isEmpty: isEmptySelection } = formatProductsList(selectedProducts);
+
+        let finalText = textTemplate.replace(/{name}/g, clientData.name);
+
+        if (isEmptySelection) {
+            // החלפת נקודתיים ומשתנה בנקודה אחת
+            finalText = finalText.replace(/:\s*\{products\}/, '.');
+            finalText = finalText.replace(/\{products\}/, '');
+        } else {
+            finalText = finalText.replace(/{products}/g, productsString);
+        }
+
         const url = `https://wa.me/${clientData.phone}?text=${encodeURIComponent(finalText)}`;
         window.open(url, 'whatsapp_window');
     }
