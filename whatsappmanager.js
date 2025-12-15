@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Lionwheel - WhatsApp Manager Pro V4.0
-// @namespace    lionwheel-whatsapp-pro-v4-0
-// @version      4.0
+// @name         Lionwheel - WhatsApp Manager Pro V5.5
+// @namespace    lionwheel-whatsapp-pro-v5-5
+// @version      5.5
 // @description  מערכת ניהול ושליחת הודעות חכמה לוואטסאפ
 // @author       Adam Lee
 // @match        *://*.lionwheel.com/*
@@ -12,6 +12,7 @@
 // @grant        GM_getValue
 // @grant        GM_deleteValue
 // @grant        GM_registerMenuCommand
+// @grant        GM_setClipboard
 // @grant        window.close
 // @run-at       document-end
 // ==/UserScript==
@@ -20,104 +21,146 @@
     'use strict';
 
     // ==========================================
-    // 0. סגירת טאב אוטומטית (WhatsApp API)
+    // 0. Auto-Close WhatsApp API Tab
     // ==========================================
     if (window.location.hostname === 'api.whatsapp.com') {
-        setTimeout(() => {
-            window.close();
-        }, 3000);
+        setTimeout(() => window.close(), 3000);
         return;
     }
 
     // ==========================================
-    // 1. הגדרות ונתונים
+    // 1. Constants & Defaults
     // ==========================================
     const EXCLUDED_BARCODES = ['10000', '491', '1948', '1949', '555503', '2543'];
     const EXCLUDED_KEYWORDS = ['משלוח', 'מתנה', 'מנוי', 'במנוי'];
 
-    // שימוש ב-{greeting} במקום "שלום" קבוע
+    // Utility: Generate unique ID
+    const generateId = () => '_' + Math.random().toString(36).substr(2, 9);
+
     const DEFAULT_PRESETS = [
         {
+            id: 'p_multi_missing_swap',
             title: "רבים, חלק חסר, בוא נחליף",
             color: "#D9EAD3",
-            text: "{greeting} {name}, זה מאניפט חוצות לגבי המשלוח שלך.\nקיבלנו את ההזמנה, וכרגע חסרים במלאי חלק מהמוצרים: {products} וישנו עיכוב במשלוח. מצטערים מראש על העיכוב, ואנו דואגים להביא את המוצרים שהזמת בהקדם האפשרי מהיבואן ומהסניפים הקרובים כך שהמשלוח יתעכב כמה שפחות. בכדי לא לעכב את המשלוח, האם נוכל להחליף חלק מהמוצרים בהזמנה? כך שתקבל במקום:"
+            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך.\nקיבלנו את ההזמנה, וכרגע חסרים במלאי חלק מהמוצרים: {products} וישנו עיכוב במשלוח. מצטערים מראש על העיכוב, ואנו דואגים להביא את המוצרים שהזמת בהקדם האפשרי מהיבואן ומהסניפים הקרובים כך שהמשלוח יתעכב כמה שפחות. בכדי לא לעכב את המשלוח, האם נוכל להחליף חלק מהמוצרים בהזמנה? כך שתקבל במקום:"
         },
         {
+            id: 'p_multi_missing',
             title: "רבים, חלק חסר",
             color: "#93C47D",
-            text: "{greeting} {name}, זה מאניפט חוצות לגבי המשלוח שלך.\nקיבלנו את ההזמנה במערכת ורצינו לעדכן כי כרגע חסרים במלאי חלק מהמוצרים שהזמנת: {products} אנו מנסים להשיג אותם בהקדם האפשרי מהסניפים הקרובים ומהיבואן כדי שהמשלוח יתעכב כמה שפחות.\nמצטערים מראש על העיכוב ומודים על סבלנותך."
+            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך.\nקיבלנו את ההזמנה במערכת ורצינו לעדכן כי כרגע חסרים במלאי חלק מהמוצרים שהזמנת: {products} אנו מנסים להשיג אותם בהקדם האפשרי מהסניפים הקרובים ומהיבואן כדי שהמשלוח יתעכב כמה שפחות.\nמצטערים מראש על העיכוב ומודים על סבלנותך."
         },
         {
+            id: 'p_split',
             title: "פיצול משלוח",
             color: "#F4CCCC",
             text: "אנחנו מבינים את הדחיפות ורוצים לתת לך את השירות הטוב ביותר.\nלכן, האם לשלוח אליך את חלק מהמשלוח שכן יש במלאי ביומיים הקרובים, ואת היתרה ({products}) נספק ברגע שתגיע למלאי הזמין?"
         },
         {
+            id: 'p_single_missing_swap',
             title: "יחיד, חסר במלאי, בוא נחליף",
             color: "#FCE5CD",
-            text: "{greeting} {name}, זה מאניפט חוצות לגבי המשלוח שלך. קיבלנו את ההזמנה\nוכרגע חסר לנו במלאי {products} שהזמנת, וישנו עיכוב במשלוח. מצטערים מראש על העיכוב ודואגים להביא את המוצר שהוזמן בהקדם האפשרי מהיבואן ומהסניפים הקרובים כך שהמשלוח יתעכב כמה שפחות. בכדי לא לעכב את המשלוח, נוכל להחליף המוצר בהזמנה? כך שתקבל במקום:"
+            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שלך. קיבלנו את ההזמנה\nוכרגע חסר לנו במלאי {products} שהזמנת, וישנו עיכוב במשלוח. מצטערים מראש על העיכוב ודואגים להביא את המוצר שהוזמן בהקדם האפשרי מהיבואן ומהסניפים הקרובים כך שהמשלוח יתעכב כמה שפחות. בכדי לא לעכב את המשלוח, נוכל להחליף המוצר בהזמנה? כך שתקבל במקום:"
         },
         {
+            id: 'p_single_missing',
             title: "יחיד, חסר במלאי",
             color: "#93C47D",
-            text: "{greeting} {name}, זה מאניפט חוצות לגבי המשלוח שהזמנת.\nרצינו לעדכן כי כרגע חסר לנו במלאי {products} שהזמנת ואנו מנסים להשיג אותו בהקדם האפשרי מהסניפים הקרובים ומהיבואן כדי שהמשלוח יתעכב כמה שפחות.\nמצטערים מראש על העיכוב ומודים לך על סבלנותך."
+            text: "שלום {name}, זה מאניפט חוצות לגבי המשלוח שהזמנת.\nרצינו לעדכן כי כרגע חסר לנו במלאי {products} שהזמנת ואנו מנסים להשיג אותו בהקדם האפשרי מהסניפים הקרובים ומהיבואן כדי שהמשלוח יתעכב כמה שפחות.\nמצטערים מראש על העיכוב ומודים לך על סבלנותך."
         },
         {
+            id: 'p_all_missing',
             title: "הכל חסר",
             color: "#F4CCCC",
-            text: "{greeting} {name}, זה מאניפט חוצות.\nכרגע קיבלנו את ההזמנה שלך וחסרים לנו המוצרים שהזמנת: {products} ואנחנו עושים מאמצים להשיג אותם מהסניפים הקרובים ומהיבואן בהקדם האפשרי כך שהמשלוח יתעכב כמה שפחות.\nאנו מצטערים מראש על העיכוב שנוצר ומודים על ההבנה."
+            text: "שלום {name}, זה מאניפט חוצות.\nכרגע קיבלנו את ההזמנה שלך וחסרים לנו המוצרים שהזמנת: {products} ואנחנו עושים מאמצים להשיג אותם מהסניפים הקרובים ומהיבואן בהקדם האפשרי כך שהמשלוח יתעכב כמה שפחות.\nאנו מצטערים מראש על העיכוב שנוצר ומודים על ההבנה."
         },
         {
+            id: 'p_refund_1',
             title: "פיצול + זיכוי 1",
             color: "#6FA8DC",
             text: "לגבי הפיצול + זיכוי, פותחים לך עכשיו בקשה לזיכוי עבור המוצרים החסרים ({products}), ואת שאר ההזמנה אנחנו מוציאים אליך בהקדם האפשרי.\nהאם לזכות את חבר המועדון או את אמצעי התשלום בו בוצעה העסקה?"
         },
         {
+            id: 'p_refund_2',
             title: "פיצול + זיכוי 2",
             color: "#6FA8DC",
             text: "מעולה, לכל בירור נוסף ניתן להתקשר למס' 1-700-5555-03 עבור כל בירור בנוגע לזיכוי עצמו."
         },
         {
+            id: 'p_do_refund',
             title: "תזכו אותי",
             color: "#C9DAF8",
             text: "מבינים את הבקשה ומצטערים על העיכוב שנוצר.\nפותחים לך עכשיו בקשה לזיכוי עבור {products} מול מוקד שירות לקוחות.\nהאם לזכות את חבר המועדון או את אמצעי התשלום בו בוצעה העסקה?\nלכל בירור נוסף ניתן להתקשר למס' 1-700-5555-03."
         },
         {
+            id: 'p_where_refund',
             title: "איפה הזיכוי?",
             color: "#3C78D8",
-            text: "{greeting} {name}, לגבי הזיכוי שלך, אני רוצה לעזור לך, אבל אין לי מערכת לזיכויים, אני אחראי לוגיסטי בלבד.\nאני מקפיץ לאחמ\"שית שאחראית על הזיכויים. בשביל מידע נוסף או שירות אנושי עדיף לפנות למוקד שירות לקוחות ב־1-700-5555-03.\nשיהיה המשך יום מבורך."
+            text: "שלום {name}, לגבי הזיכוי שלך, אני רוצה לעזור לך, אבל אין לי מערכת לזיכויים, אני אחראי לוגיסטי בלבד.\nאני מקפיץ לאחמ\"שית שאחראית על הזיכויים. בשביל מידע נוסף או שירות אנושי עדיף לפנות למוקד שירות לקוחות ב־1-700-5555-03.\nשיהיה המשך יום מבורך."
         },
         {
+            id: 'p_where_orders',
             title: "הזמנות בחנות",
             color: "#B4A7D6",
-            text: "{greeting} {name}. המספר הזה לא פעיל יותר עבור הזמנות וניתן ליצור קשר עם נציגנו במספר טלפון 054-5458214 או למספר טלפון של החנות 04-6568229 בין שעות הפעילות 9:30-20:30"
+            text: "שלום {name}. המספר הזה לא פעיל יותר עבור הזמנות וניתן ליצור קשר עם נציגנו במספר טלפון 054-5458214 או למספר טלפון של החנות 04-6568229 בין שעות הפעילות 9:30-20:30"
         },
         {
+            id: 'p_no_add',
             title: "אין להוסיף, אין קופה",
             color: "#8E7CC3",
             text: "לצערי אין לי כאן מערכת קופות המאפשרת גביית תשלום עבור מוצרים נוספים.\nלביצוע תוספות להזמנה ניתן להתקשר למוקד 1-700-5555-03 או לסניף חוצות 04-6568229.\nתודה על ההבנה ושיהיה המשך יום מבורך."
         }
     ];
 
+    // ==========================================
+    // 2. Data Management (Variables Hoisted)
+    // ==========================================
+    let saveButtonEl = null;
+    let modalBodyEl = null;
+    let rowsContainerEl = null;
     let isLocked = true;
     let hasUnsavedChanges = false;
     let savedStateString = "";
     let detectedMissingProducts = [];
     let selectedProducts = [];
-    let currentPresets = loadPresets();
-    savedStateString = JSON.stringify(currentPresets);
+    let currentPresets = [];
+
+    // Helper: Update Button UI safely
+    function updateSaveButtonState() {
+        if (!saveButtonEl) return;
+
+        const footer = document.querySelector('.tm-modal-footer');
+        if (footer) {
+            if (isLocked) footer.classList.add('tm-hidden');
+            else footer.classList.remove('tm-hidden');
+        }
+        if (saveButtonEl) {
+            saveButtonEl.disabled = !hasUnsavedChanges;
+            saveButtonEl.title = hasUnsavedChanges ? "שמור שינויים" : "אין שינויים לשמירה";
+        }
+    }
 
     function loadPresets() {
         const stored = GM_getValue('whatsapp_presets_v3');
-        if (!stored) return JSON.parse(JSON.stringify(DEFAULT_PRESETS));
-        return JSON.parse(stored);
+        let loaded = stored ? JSON.parse(stored) : JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+
+        let modified = false;
+        loaded.forEach(p => {
+            if (!p.id) {
+                p.id = generateId();
+                modified = true;
+            }
+        });
+
+        if (modified) savePresets(loaded);
+        return loaded;
     }
 
     function savePresets(presets) {
         const jsonStr = JSON.stringify(presets, null, 4);
         GM_setValue('whatsapp_presets_v3', jsonStr);
         currentPresets = presets;
-        savedStateString = JSON.stringify(presets);
+        savedStateString = jsonStr;
         hasUnsavedChanges = false;
         updateSaveButtonState();
     }
@@ -128,9 +171,11 @@
         updateSaveButtonState();
     }
 
-    // ==========================================
-    // 2. תפריטי Tampermonkey
-    // ==========================================
+    // Initialize
+    currentPresets = loadPresets();
+    savedStateString = JSON.stringify(currentPresets);
+
+    // Tampermonkey Menu Commands
     GM_registerMenuCommand("📤 ייצוא הגדרות לקובץ", () => {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentPresets, null, 4));
         const a = document.createElement('a');
@@ -150,8 +195,10 @@
                 try {
                     const imported = JSON.parse(event.target.result);
                     if (Array.isArray(imported)) {
-                        if(confirm("לדרוס הגדרות קיימות?")) {
+                        imported.forEach(p => { if(!p.id) p.id = generateId(); });
+                        if(confirm(`האם לדרוס את ההגדרות הנוכחיות?`)) {
                             savePresets(imported);
+                            alert("ההגדרות נטענו בהצלחה! הדף ירוענן.");
                             location.reload();
                         }
                     } else alert("קובץ לא תקין.");
@@ -163,59 +210,150 @@
     });
 
     GM_registerMenuCommand("🔄 שחזר לברירת מחדל", () => {
-        if(confirm("למחוק הכל ולחזור לברירת המחדל?")) {
+        if(confirm("למחוק את כל השינויים ולחזור לברירת המחדל?")) {
             GM_deleteValue('whatsapp_presets_v3');
             location.reload();
         }
     });
 
     // ==========================================
-    // 3. CSS Style
+    // 3. CSS Style (UPDATED TOOLTIP POSITIONING)
     // ==========================================
     const css = `
         .tm-wa-btn { cursor: pointer; color: #ff9800; font-size: 1.2em; margin-inline-end: 8px; transition: 0.2s; }
         .tm-wa-btn:hover { transform: scale(1.15); color: #e65100; }
+
         .tm-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
         .tm-modal-content { background: white; width: 750px; max-width: 95%; max-height: 90vh; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; direction: rtl; }
+
         .tm-modal-header { padding: 12px 20px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-        .tm-header-left, .tm-header-right { display: flex; gap: 10px; align-items: center; }
+        .tm-header-right, .tm-header-left { display: flex; gap: 10px; align-items: center; }
         .tm-modal-title { font-weight: bold; font-size: 1.1rem; color: #333; }
+
         .tm-icon-btn { cursor: pointer; border: none; background: none; font-size: 1.1rem; padding: 5px; color: #555; transition: 0.2s; }
         .tm-icon-btn:hover { color: #000; transform: scale(1.1); }
-        .tm-lock-btn.locked { color: #e74c3c; } .tm-lock-btn.unlocked { color: #2ecc71; }
+        .tm-lock-btn.locked { color: #e74c3c; }
+        .tm-lock-btn.unlocked { color: #2ecc71; }
+
         .tm-modal-body { padding: 15px; overflow-y: auto; flex-grow: 1; background: #f9f9f9; }
+
+        /* Product Selector */
         .tm-products-selection-area { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
         .tm-products-title { font-size: 13px; font-weight: bold; color: #555; margin-bottom: 8px; }
         .tm-products-list { display: flex; flex-direction: column; gap: 5px; max-height: 120px; overflow-y: auto; }
         .tm-product-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
         .tm-product-checkbox-row input { cursor: pointer; }
         .tm-no-products-msg { font-size: 12px; color: #999; font-style: italic; }
+
+        /* Footer */
         .tm-modal-footer { padding: 10px 20px; background: #fff; border-top: 1px solid #eee; display: flex; justify-content: center; transition: all 0.3s; }
         .tm-modal-footer.tm-hidden { display: none !important; }
+
         .tm-main-save-btn { background: #4CAF50; color: white; border: none; padding: 8px 30px; border-radius: 20px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: 0.2s; }
         .tm-main-save-btn:hover { background: #43a047; box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
         .tm-main-save-btn:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; color: #666; }
-        .tm-preset-row { display: grid; grid-template-columns: 30px 25px 8px 1fr 120px; gap: 10px; background: white; margin-bottom: 8px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); transition: transform 0.1s; overflow: hidden; border: 1px solid #eee; align-items: stretch; }
+
+        /* Grid Rows */
+        .tm-preset-row {
+            display: grid;
+            grid-template-columns: 30px 25px 8px 1fr 50px;
+            gap: 10px;
+            background: white;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            transition: transform 0.1s;
+            overflow: hidden;
+            border: 1px solid #eee;
+            align-items: stretch;
+            position: relative;
+        }
         .tm-preset-row:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .tm-preset-row.dragging { opacity: 0.5; border: 2px dashed #999; }
+
+        /* Locked / Edit States */
         .tm-is-locked .tm-drag-handle { cursor: not-allowed; opacity: 0.3; }
         .tm-is-locked .tm-btn-edit, .tm-is-locked .tm-btn-delete { display: none; }
         .tm-is-locked .tm-preset-row { grid-template-columns: 30px 25px 8px 1fr 50px; }
+
         .tm-preset-row.tm-edit-mode { display: block; background: #fff8e1; border: 1px solid #ffe0b2; padding: 15px; }
+
+        /* Elements */
         .tm-drag-handle { display: flex; align-items: center; justify-content: center; cursor: grab; color: #bbb; background: #fafafa; border-left: 1px solid #eee; }
         .tm-drag-handle:hover { color: #555; background: #f0f0f0; }
         .tm-row-number { display: flex; align-items: center; justify-content: center; font-size: 12px; color: #888; font-weight: bold; background: #fff; }
         .tm-color-strip { width: 100%; height: 100%; }
+
         .tm-preset-content { padding: 10px 0; cursor: pointer; }
         .tm-preset-title-text { font-weight: bold; font-size: 0.95rem; margin-bottom: 4px; color: #222; }
         .tm-preset-body-text { font-size: 0.85rem; color: #555; line-height: 1.3; white-space: pre-wrap; }
-        .tm-preset-actions { display: flex; align-items: center; justify-content: center; border-right: 1px solid #eee; gap: 8px; background: #fafafa; padding: 0 5px; }
-        .tm-action-btn { border: none; background: white; cursor: pointer; font-size: 0.9rem; width: 30px; height: 30px; border-radius: 50%; transition: all 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border: 1px solid #eee; flex-shrink: 0; }
+
+        /* Actions - Vertical Layout */
+        .tm-preset-actions {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-right: 1px solid #eee;
+            gap: 5px;
+            background: #fafafa;
+            padding: 8px 0;
+            position: relative;
+        }
+
+        .tm-action-btn {
+            border: none;
+            background: white;
+            cursor: pointer;
+            font-size: 0.9rem;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #eee;
+            flex-shrink: 0;
+            position: relative; /* מאפשר ל-Tooltip להיות ממוקם יחסית אליו */
+        }
+
+        .tm-btn-send { color: #25D366; font-size: 1.2rem; }
+        .tm-btn-send:hover { background: #25D366; color: white; }
+        .tm-btn-copy { color: #2196F3; }
+        .tm-btn-copy:hover { background: #2196F3; color: white; }
         .tm-btn-edit:hover { background: #333; color: white; }
         .tm-btn-delete { color: #e74c3c; }
         .tm-btn-delete:hover { background: #e74c3c; color: white; }
-        .tm-btn-send { color: #25D366; font-size: 1.2rem; width: 36px; height: 36px; }
-        .tm-btn-send:hover { background: #25D366; color: white; }
+
+        /* NEW: Copy Tooltip - Positioned Relative to the Copy Button */
+        .tm-btn-copy .tm-copied-tooltip {
+            position: absolute;
+            top: -5px; /* כוונון אנכי צמוד מעל הכפתור */
+            right: 50%; /* מרכוז ביחס לכפתור */
+            background-color: #333;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.3s, transform 0.3s;
+            transform: translate(50%, 5px); /* הזזה למרכז וכלפי מטה בהתחלה */
+            pointer-events: none;
+            z-index: 10001; /* לוודא שהוא מעל כל דבר אחר */
+        }
+        .tm-btn-copy:hover .tm-copied-tooltip.visible {
+            opacity: 1;
+            transform: translate(50%, -100%); /* תנועה כלפי מעלה */
+        }
+        .tm-btn-copy .tm-copied-tooltip.visible {
+            opacity: 1;
+            transform: translate(50%, -100%);
+        }
+
+        /* Edit Form */
         .tm-edit-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333; }
         .tm-input { width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
         .tm-textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; resize: vertical; box-sizing: border-box; font-size: 14px; line-height: 1.4; }
@@ -228,7 +366,7 @@
     document.head.appendChild(styleEl);
 
     // ==========================================
-    // 4. לוגיקה ראשית (MutationObserver)
+    // 4. Logic & Logic (MutationObserver)
     // ==========================================
 
     function getTimeGreeting() {
@@ -239,11 +377,20 @@
         return "שלום";
     }
 
+    // Debounce function
+    function debounce(func, wait) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    }
+
     function injectButton() {
         const phoneRows = document.querySelectorAll('[data-name="destination_phone"]:not(.tm-presets-injected)');
         phoneRows.forEach(row => {
             row.classList.add('tm-presets-injected');
-            const targetCol = row.querySelector('.col-xxl-7, .col-6:last-child');
+            const targetCol = row.querySelector('.col-xxl-7, .col-6:last-child') || row.children[1];
             if (!targetCol) return;
 
             const icon = document.createElement('i');
@@ -262,25 +409,12 @@
         });
     }
 
-    // Debounce function
-    function debounce(func, wait) {
-        let timeout;
-        return function(...args) {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), wait);
-        };
-    }
-
-    // Observer setup
+    // Start Observer
     const observer = new MutationObserver(debounce(() => {
         injectButton();
-    }, 500));
-
-    // Start observing
+    }, 300));
     observer.observe(document.body, { childList: true, subtree: true });
-
-    // Initial run
-    injectButton();
+    injectButton(); // Initial run
 
     function extractClientData(row) {
         let phone = '';
@@ -298,6 +432,7 @@
             }
         }
 
+        // --- Improved Product Scraping Logic ---
         let missingProducts = [];
         const rootContainer = row.closest('.offcanvas, .card, .modal-content') || document;
 
@@ -312,7 +447,7 @@
             }
         };
 
-        // Strategy 1: Inputs
+        // Strategy 1: Inputs (.order-item-row)
         const inputRows = rootContainer.querySelectorAll('.order-item-row');
         if (inputRows.length > 0) {
             inputRows.forEach(item => {
@@ -334,11 +469,12 @@
             });
         }
 
-        // Strategy 2: Table
+        // Strategy 2: Table Rows
         if (missingProducts.length === 0) {
             const tableRows = rootContainer.querySelectorAll('table tbody tr');
             tableRows.forEach(tr => {
-                const qtyCell = tr.querySelector('td[data-label="כמות / לוקט"]') || Array.from(tr.cells).find(cell => cell.textContent.match(/(\d+)\s*\/\s*(\d+)/));
+                const qtyCell = tr.querySelector('td[data-label="כמות / לוקט"]') ||
+                                Array.from(tr.cells).find(cell => cell.textContent.match(/(\d+)\s*\/\s*(\d+)/));
 
                 if (qtyCell) {
                     const text = qtyCell.textContent;
@@ -370,47 +506,44 @@
     function formatProductsList(products) {
         const formattedNames = products.map(p => {
             let name = p.name;
-            if (p.missing > 1) {
-                name += ` (${p.missing} יחידות)`;
-            }
+            if (p.missing > 1) name += ` (${p.missing} יחידות)`;
             return name;
         });
 
-        const isEmptySelection = (formattedNames.length === 0);
+        const isEmpty = (formattedNames.length === 0);
         let productsString = "";
 
-        if (!isEmptySelection) {
+        if (!isEmpty) {
             if (formattedNames.length === 1) {
                 productsString = formattedNames[0];
             } else {
                 productsString = "\n" + formattedNames.map(p => `• ${p}`).join("\n") + "\n";
             }
         }
-        return { productsString, isEmpty: isEmptySelection };
+        return { productsString, isEmpty };
     }
 
-    // ==========================================
-    // 5. בניית המודל (Popup)
-    // ==========================================
+    function formatFinalText(template, clientData, productsString, isEmptySelection) {
+        const greetingTime = getTimeGreeting();
+        let finalText = template
+            .replace(/{name}/g, clientData.name)
+            .replace(/{greeting}/g, greetingTime);
 
-    let saveButtonEl = null;
-
-    function updateSaveButtonState() {
-        const footer = document.querySelector('.tm-modal-footer');
-        if (footer) {
-            if (isLocked) footer.classList.add('tm-hidden');
-            else footer.classList.remove('tm-hidden');
-        }
-        if (saveButtonEl) {
-            if (hasUnsavedChanges) {
-                saveButtonEl.disabled = false;
-                saveButtonEl.title = "שמור שינויים";
-            } else {
-                saveButtonEl.disabled = true;
-                saveButtonEl.title = "אין שינויים לשמירה";
+        if (isEmptySelection) {
+            // Cleanup unused placeholders
+            if (finalText.includes('{products}')) {
+                finalText = finalText.replace(/:\s*\{products\}/, '.');
+                finalText = finalText.replace(/\{products\}/, '');
             }
+        } else {
+            finalText = finalText.replace(/{products}/g, productsString);
         }
+        return finalText;
     }
+
+    // ==========================================
+    // 5. Build & Manage Modal (Decoupled)
+    // ==========================================
 
     function openModal(clientData) {
         const existing = document.querySelector('.tm-modal-overlay');
@@ -428,6 +561,7 @@
         const content = document.createElement('div');
         content.className = 'tm-modal-content';
 
+        // Header
         const header = document.createElement('div');
         header.className = 'tm-modal-header';
         header.innerHTML = `
@@ -443,14 +577,17 @@
             </div>
         `;
 
+        // Footer
         const footer = document.createElement('div');
         footer.className = `tm-modal-footer ${isLocked ? 'tm-hidden' : ''}`;
         footer.innerHTML = `<button class="tm-main-save-btn" disabled>שמור שינויים</button>`;
         saveButtonEl = footer.querySelector('.tm-main-save-btn');
 
-        const body = document.createElement('div');
-        body.className = 'tm-modal-body';
+        // Body
+        modalBodyEl = document.createElement('div');
+        modalBodyEl.className = 'tm-modal-body';
 
+        // Handlers
         header.querySelector('.tm-close-btn').onclick = () => overlay.remove();
 
         const lockBtn = header.querySelector('.tm-lock-btn');
@@ -461,22 +598,20 @@
             lockBtn.innerHTML = `<i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-lock-open'}"></i>`;
 
             updateSaveButtonState();
-            renderList(body, clientData);
+            renderContent(clientData);
         };
 
         header.querySelector('.tm-add-btn').onclick = () => {
-            if(isLocked) {
-                alert("אנא בטל נעילה כדי להוסיף הודעות.");
-                return;
-            }
+            if(isLocked) { alert("אנא בטל נעילה כדי להוסיף הודעות."); return; }
             currentPresets.push({
+                id: generateId(),
                 title: "הודעה חדשה",
                 color: "#eeeeee",
                 text: "תוכן ההודעה כאן..."
             });
             checkForChanges();
-            renderList(body, clientData);
-            setTimeout(() => body.scrollTop = body.scrollHeight, 100);
+            renderContent(clientData);
+            setTimeout(() => modalBodyEl.scrollTop = modalBodyEl.scrollHeight, 100);
         };
 
         saveButtonEl.onclick = () => {
@@ -491,10 +626,11 @@
             }, 1500);
         };
 
-        renderList(body, clientData);
+        // Initialize Content
+        renderContent(clientData);
 
         content.appendChild(header);
-        content.appendChild(body);
+        content.appendChild(modalBodyEl);
         content.appendChild(footer);
         overlay.appendChild(content);
         document.body.appendChild(overlay);
@@ -502,9 +638,11 @@
         updateSaveButtonState();
     }
 
-    function renderList(container, clientData) {
-        container.innerHTML = '';
-        container.className = `tm-modal-body ${isLocked ? 'tm-is-locked' : ''}`;
+    // Render the internal list (refreshable)
+    function renderContent(clientData) {
+        if (!modalBodyEl) return;
+        modalBodyEl.innerHTML = '';
+        modalBodyEl.className = `tm-modal-body ${isLocked ? 'tm-is-locked' : ''}`;
 
         // 1. Render Product Selector
         if (detectedMissingProducts.length > 0) {
@@ -515,11 +653,8 @@
             detectedMissingProducts.forEach((prod) => {
                 const isChecked = selectedProducts.some(p => p.name === prod.name) ? 'checked' : '';
                 let label = prod.name;
-                if (prod.missing > 1) {
-                    label += ` (${prod.missing} יחידות)`;
-                } else if (prod.missing === 1) {
-                    label += ` (יחידה 1 חסרה)`;
-                }
+                if (prod.missing > 1) label += ` (${prod.missing} יחידות)`;
+                else if (prod.missing === 1) label += ` (יחידה 1 חסרה)`;
 
                 checkboxesHTML += `
                     <label class="tm-product-checkbox-row">
@@ -538,126 +673,186 @@
                 cb.onchange = (e) => {
                     const prodName = e.target.getAttribute('data-prod-name');
                     const originalProd = detectedMissingProducts.find(p => p.name === prodName);
-
                     if (e.target.checked) {
-                        if (originalProd && !selectedProducts.some(p => p.name === prodName)) {
-                            selectedProducts.push(originalProd);
-                        }
+                        if (originalProd && !selectedProducts.some(p => p.name === prodName)) selectedProducts.push(originalProd);
                     } else {
                         selectedProducts = selectedProducts.filter(p => p.name !== prodName);
                     }
-                    renderPresetsRows();
+                    renderPresetsRows(clientData); // Re-render only rows
                 };
             });
-
-            container.appendChild(selectorDiv);
+            modalBodyEl.appendChild(selectorDiv);
         } else {
             const msgDiv = document.createElement('div');
             msgDiv.className = 'tm-products-selection-area';
             msgDiv.innerHTML = `<div class="tm-no-products-msg">לא זוהו מוצרים חסרים אוטומטית.</div>`;
-            container.appendChild(msgDiv);
+            modalBodyEl.appendChild(msgDiv);
         }
 
-        const rowsContainer = document.createElement('div');
-        container.appendChild(rowsContainer);
+        // 2. Rows Container
+        rowsContainerEl = document.createElement('div');
+        modalBodyEl.appendChild(rowsContainerEl);
+        renderPresetsRows(clientData);
+    }
 
-        function renderPresetsRows() {
-            rowsContainer.innerHTML = '';
-            const { productsString: productsStringPreview, isEmpty: isEmptySelection } = formatProductsList(selectedProducts);
-            const greetingTime = getTimeGreeting();
+    function renderPresetsRows(clientData) {
+        if (!rowsContainerEl) return;
+        rowsContainerEl.innerHTML = '';
 
-            currentPresets.forEach((preset, index) => {
-                const row = document.createElement('div');
-                row.className = 'tm-preset-row';
-                if (!isLocked) row.draggable = true;
-                row.dataset.index = index;
+        const { productsString, isEmpty } = formatProductsList(selectedProducts);
 
-                let previewText = preset.text
-                    .replace(/{name}/g, clientData.name)
-                    .replace(/{products}/g, productsStringPreview)
-                    .replace(/{greeting}/g, greetingTime);
+        currentPresets.forEach((preset, index) => {
+            const row = document.createElement('div');
+            row.className = 'tm-preset-row';
+            row.dataset.id = preset.id;
+            if (!isLocked) row.draggable = true;
 
-                if (isEmptySelection) {
-                    let tempText = preset.text
-                        .replace(/{name}/g, clientData.name)
-                        .replace(/{greeting}/g, greetingTime);
+            const previewText = formatFinalText(preset.text, clientData, productsString, isEmpty);
 
-                    if (tempText.includes('{products}')) {
-                        tempText = tempText.replace(/:\s*\{products\}/, '.');
-                        tempText = tempText.replace(/\{products\}/, '');
+            // Structure: Grip | Num | Color | Content | Actions
+
+            // Grip
+            const grip = document.createElement('div');
+            grip.className = 'tm-drag-handle';
+            grip.title = isLocked ? 'נעול' : 'גרור לשינוי סדר';
+            grip.innerHTML = `<i class="fa-solid fa-grip-vertical"></i>`;
+            row.appendChild(grip);
+
+            // Number
+            const num = document.createElement('div');
+            num.className = 'tm-row-number';
+            num.textContent = index + 1;
+            row.appendChild(num);
+
+            // Color
+            const colorStrip = document.createElement('div');
+            colorStrip.className = 'tm-color-strip';
+            colorStrip.style.backgroundColor = preset.color;
+            row.appendChild(colorStrip);
+
+            // Content
+            const content = document.createElement('div');
+            content.className = 'tm-preset-content';
+            content.title = 'לחץ לשליחה';
+            content.onclick = () => sendWhatsapp(previewText, clientData);
+
+            const titleEl = document.createElement('div');
+            titleEl.className = 'tm-preset-title-text';
+            titleEl.textContent = preset.title;
+
+            const bodyEl = document.createElement('div');
+            bodyEl.className = 'tm-preset-body-text';
+            bodyEl.textContent = previewText;
+
+            content.appendChild(titleEl);
+            content.appendChild(bodyEl);
+            row.appendChild(content);
+
+            // Actions
+            const actions = document.createElement('div');
+            actions.className = 'tm-preset-actions';
+
+            // Send
+            const btnSend = document.createElement('button');
+            btnSend.className = 'tm-action-btn tm-btn-send';
+            btnSend.title = 'שלח בוואטסאפ';
+            btnSend.innerHTML = `<i class="fa-brands fa-whatsapp"></i>`;
+            btnSend.onclick = (e) => { e.stopPropagation(); sendWhatsapp(previewText, clientData); };
+            actions.appendChild(btnSend);
+
+            // Copy
+            const btnCopy = document.createElement('button');
+            btnCopy.className = 'tm-action-btn tm-btn-copy';
+            btnCopy.title = 'העתק ללוח';
+            btnCopy.innerHTML = `<i class="fa-solid fa-copy"></i>`;
+
+            // Tooltip Element (Nested inside the copy button)
+            const tooltip = document.createElement('div');
+            tooltip.className = 'tm-copied-tooltip';
+            tooltip.textContent = 'הועתק!';
+            btnCopy.appendChild(tooltip);
+
+            btnCopy.onclick = (e) => {
+                e.stopPropagation();
+                GM_setClipboard(previewText);
+
+                // Show tooltip and change icon temporarily
+                tooltip.classList.add('visible');
+                const originalIcon = btnCopy.querySelector('.fa-copy') ? btnCopy.innerHTML : '';
+                btnCopy.innerHTML = `<i class="fa-solid fa-check"></i>`;
+                btnCopy.style.color = '#4CAF50';
+
+                // Re-append the tooltip before the timeout
+                btnCopy.appendChild(tooltip);
+                tooltip.classList.add('visible');
+
+                setTimeout(() => {
+                    tooltip.classList.remove('visible');
+                }, 1000); // Tooltip visible for 1 second
+
+                setTimeout(() => {
+                    if (originalIcon) {
+                        btnCopy.innerHTML = originalIcon;
+                    } else {
+                        // Revert to original icon if innerHTML was overwritten
+                        btnCopy.innerHTML = `<i class="fa-solid fa-copy"></i>`;
                     }
-                    previewText = tempText;
+                    btnCopy.style.color = '';
+                    btnCopy.appendChild(tooltip); // Ensure tooltip is present for next click
+                }, 1200); // Icon change slightly longer
+            };
+            actions.appendChild(btnCopy);
+
+            // Edit
+            const btnEdit = document.createElement('button');
+            btnEdit.className = 'tm-action-btn tm-btn-edit';
+            btnEdit.title = 'ערוך';
+            btnEdit.innerHTML = `<i class="fa-solid fa-pencil"></i>`;
+            btnEdit.onclick = (e) => { e.stopPropagation(); if(isLocked) return; enableEditMode(row, preset, clientData); };
+            actions.appendChild(btnEdit);
+
+            // Delete
+            const btnDelete = document.createElement('button');
+            btnDelete.className = 'tm-action-btn tm-btn-delete';
+            btnDelete.title = 'מחק';
+            btnDelete.innerHTML = `<i class="fa-solid fa-trash-can"></i>`;
+            btnDelete.onclick = (e) => {
+                e.stopPropagation();
+                if(isLocked) return;
+                if(confirm("האם למחוק את ההודעה?")) {
+                    currentPresets = currentPresets.filter(p => p.id !== preset.id);
+                    checkForChanges();
+                    renderPresetsRows(clientData); // In-place refresh
                 }
+            };
+            actions.appendChild(btnDelete);
 
-                row.innerHTML = `
-                    <div class="tm-drag-handle" title="${isLocked ? 'נעול' : 'גרור לשינוי סדר'}"><i class="fa-solid fa-grip-vertical"></i></div>
-                    <div class="tm-row-number">${index + 1}</div>
-                    <div class="tm-color-strip" style="background-color: ${preset.color};"></div>
-                    <div class="tm-preset-content" title="לחץ לשליחה">
-                        <div class="tm-preset-title-text">${preset.title}</div>
-                        <div class="tm-preset-body-text">${previewText}</div>
-                    </div>
-                    <div class="tm-preset-actions">
-                        <button class="tm-action-btn tm-btn-send" title="שלח בוואטסאפ"><i class="fa-brands fa-whatsapp"></i></button>
-                        <button class="tm-action-btn tm-btn-edit" title="ערוך"><i class="fa-solid fa-pencil"></i></button>
-                        <button class="tm-action-btn tm-btn-delete" title="מחק"><i class="fa-solid fa-trash-can"></i></button>
-                    </div>
-                `;
+            row.appendChild(actions);
 
-                row.querySelector('.tm-preset-content').onclick = () => sendWhatsapp(preset.text, clientData);
-                row.querySelector('.tm-btn-send').onclick = (e) => {
-                    e.stopPropagation();
-                    sendWhatsapp(preset.text, clientData);
-                };
-
-                row.querySelector('.tm-btn-edit').onclick = (e) => {
-                    e.stopPropagation();
-                    if(isLocked) return;
-                    enableEditMode(row, index, clientData, rowsContainer);
-                };
-
-                row.querySelector('.tm-btn-delete').onclick = (e) => {
-                    e.stopPropagation();
-                    if(isLocked) return;
-                    if(confirm("האם למחוק את ההודעה?")) {
-                        currentPresets.splice(index, 1);
-                        checkForChanges();
-                        renderPresetsRows();
-                    }
-                };
-
-                if (!isLocked) {
-                    addDragEvents(row, rowsContainer);
-                }
-                rowsContainer.appendChild(row);
-            });
-        }
-
-        renderPresetsRows();
+            if (!isLocked) {
+                addDragEvents(row, rowsContainerEl, clientData);
+            }
+            rowsContainerEl.appendChild(row);
+        });
     }
 
     // ==========================================
-    // 6. עריכה, גרירה ושליחה
+    // 6. In-Place Edit Mode
     // ==========================================
 
-    function enableEditMode(rowElement, index, clientData, container) {
-        const preset = currentPresets[index];
+    function enableEditMode(rowElement, preset, clientData) {
         const editDiv = document.createElement('div');
         editDiv.className = 'tm-preset-row tm-edit-mode';
-
-        // שימוש ב-textContent למניעת XSS בעת הצגת הערכים ב-input
-        const safeTitle = preset.title.replace(/"/g, '&quot;');
-        const safeColor = preset.color.replace(/"/g, '&quot;');
 
         editDiv.innerHTML = `
             <div>
                 <label class="tm-edit-label">כותרת:</label>
-                <input type="text" class="tm-input" id="edit-title" value="${safeTitle}">
+                <input type="text" class="tm-input" id="edit-title">
 
                 <label class="tm-edit-label">צבע רקע:</label>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
-                    <input type="color" id="edit-color-picker" value="${safeColor}" style="height:35px; width:50px; cursor:pointer;">
-                    <input type="text" class="tm-input" id="edit-color-text" value="${safeColor}" style="margin:0; width:120px;">
+                    <input type="color" id="edit-color-picker" style="height:35px; width:50px; cursor:pointer;">
+                    <input type="text" class="tm-input" id="edit-color-text" style="margin:0; width:120px;">
                 </div>
 
                 <label class="tm-edit-label">תוכן ההודעה (משתנים: {name}, {products}, {greeting}):</label>
@@ -670,48 +865,55 @@
             </div>
         `;
 
-        // הצבת הטקסט בנפרד (בטוח יותר ל-textarea)
+        // Set values safely
+        editDiv.querySelector('#edit-title').value = preset.title;
         editDiv.querySelector('#edit-text').value = preset.text;
+        editDiv.querySelector('#edit-color-picker').value = preset.color;
+        editDiv.querySelector('#edit-color-text').value = preset.color;
 
         const colorPicker = editDiv.querySelector('#edit-color-picker');
         const colorText = editDiv.querySelector('#edit-color-text');
         colorPicker.oninput = () => colorText.value = colorPicker.value;
         colorText.oninput = () => colorPicker.value = colorText.value;
 
+        // Save (In-Place)
         editDiv.querySelector('.tm-save-btn').onclick = () => {
-            currentPresets[index] = {
-                title: editDiv.querySelector('#edit-title').value,
-                color: editDiv.querySelector('#edit-color-text').value,
-                text: editDiv.querySelector('#edit-text').value
-            };
-            checkForChanges();
-            // In-place refresh: קריאה לרינדור מחדש של הרשימה כולה בתוך הקונטיינר
-            // מכיוון ש-container הוא ה-div הפנימי של השורות (rowsContainer) ו-clientData לא נגיש כאן ישירות
-            // אנחנו צריכים את clientData. העברנו אותו בפרמטר.
-            // עכשיו צריך לקרוא ל-renderPresetsRows. אבל היא פנימית.
-            // הפתרון הכי טוב בתוך המבנה הקיים: לסגור ולפתוח את המודל (מהיר) או לשכתב את המבנה.
-            // בגרסה 4.0: בוא נשכתב קצת כדי לאפשר רינדור מחדש.
-            // *תיקון מהיר:* שינינו את החתימה של enableEditMode שתקבל את הפרמטרים וקוראת לפונקציה חיצונית? לא.
-            // פשוט נסגור ונפתח את המודל אוטומטית. זה הכי יציב כרגע.
-
-            // טריק: נלחץ על הכפתור שפתח את המודל? לא.
-            // נשתמש ב-openModal מחדש. אבל צריך את clientData. הוא עבר כפרמטר!
-            openModal(clientData);
+            const idx = currentPresets.findIndex(p => p.id === preset.id);
+            if (idx !== -1) {
+                currentPresets[idx] = {
+                    ...preset,
+                    title: editDiv.querySelector('#edit-title').value,
+                    color: editDiv.querySelector('#edit-color-text').value,
+                    text: editDiv.querySelector('#edit-text').value
+                };
+                checkForChanges();
+                renderPresetsRows(clientData);
+            }
         };
 
+        // Cancel
         editDiv.querySelector('.tm-cancel-btn').onclick = () => {
-             openModal(clientData);
+            renderPresetsRows(clientData);
         };
 
         rowElement.replaceWith(editDiv);
     }
 
-    function addDragEvents(row, container) {
+    // ==========================================
+    // 7. Drag & Drop (Stable IDs)
+    // ==========================================
+
+    function addDragEvents(row, container, clientData) {
         row.addEventListener('dragstart', (e) => {
-            e.dataTransfer.setData('text/plain', row.dataset.index);
+            e.dataTransfer.setData('text/plain', row.dataset.id);
             row.classList.add('dragging');
         });
-        row.addEventListener('dragend', () => row.classList.remove('dragging'));
+
+        row.addEventListener('dragend', () => {
+            row.classList.remove('dragging');
+            document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
+        });
+
         row.addEventListener('dragover', (e) => {
             e.preventDefault();
             const draggingRow = container.querySelector('.dragging');
@@ -721,43 +923,30 @@
                 else row.before(draggingRow);
             }
         });
+
         row.addEventListener('drop', (e) => {
             e.preventDefault();
+
             const newOrder = [];
-            // בונים את הסדר החדש לפי סדר האלמנטים ב-DOM
-            container.querySelectorAll('.tm-preset-row').forEach(r => {
-                if (r.dataset.index !== undefined) {
-                    newOrder.push(currentPresets[r.dataset.index]);
-                }
+            const rows = container.querySelectorAll('.tm-preset-row');
+
+            rows.forEach(domRow => {
+                const id = domRow.dataset.id;
+                const presetObj = currentPresets.find(p => p.id === id);
+                if (presetObj) newOrder.push(presetObj);
             });
+
             currentPresets = newOrder;
             checkForChanges();
-
-            // עדכון הממשק (כדי שהמספרים יסתדרו והאינדקסים יתעדכנו להמשך גרירה)
-            // נדרש ריענון מלא. מכיוון שאין לנו clientData כאן, נאלץ את המשתמש לשמור או נשמור מצב גלובלי.
-            // בגרסה 4.0, נסמוך על זה שה-DOM הסתדר ויזואלית, והאינדקסים יתעדכנו בשמירה/פתיחה הבאה.
-            // אבל כדי להיות מדויקים ב-100%, עדיף לרענן.
-            // כרגע נשאיר כך - זה עובד ויזואלית והשמירה נכונה.
+            renderPresetsRows(clientData);
         });
     }
 
-    function sendWhatsapp(textTemplate, clientData) {
-        const { productsString, isEmpty: isEmptySelection } = formatProductsList(selectedProducts);
-        const greetingTime = getTimeGreeting();
+    // ==========================================
+    // 8. Actions
+    // ==========================================
 
-        let finalText = textTemplate
-            .replace(/{name}/g, clientData.name)
-            .replace(/{greeting}/g, greetingTime);
-
-        if (isEmptySelection) {
-            if (finalText.includes('{products}')) {
-                finalText = finalText.replace(/:\s*\{products\}/, '.');
-                finalText = finalText.replace(/\{products\}/, '');
-            }
-        } else {
-            finalText = finalText.replace(/{products}/g, productsString);
-        }
-
+    function sendWhatsapp(finalText, clientData) {
         const url = `https://wa.me/${clientData.phone}?text=${encodeURIComponent(finalText)}`;
         window.open(url, 'whatsapp_window');
     }
