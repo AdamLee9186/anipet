@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Lionwheel - WhatsApp Manager Pro V5.6
-// @namespace    lionwheel-whatsapp-pro-v5-6
-// @version      5.6
-// @description  תיקון פתיחת וואטסאפ ריק (Force New Tab + Auto Copy)
+// @name         Lionwheel - WhatsApp Manager Pro V5.8
+// @namespace    lionwheel-whatsapp-pro-v5-8
+// @version      5.8
+// @description  תיקון כתובת API לסגירה אוטומטית, בדיקת תקינות טלפון ושיפורי יציבות
 // @author       Adam Lee
 // @match        *://*.lionwheel.com/*
 // @match        *://api.whatsapp.com/*
@@ -23,8 +23,10 @@
     // ==========================================
     // 0. Auto-Close WhatsApp API Tab
     // ==========================================
+    // This logic relies on the open command using 'api.whatsapp.com'
     if (window.location.hostname === 'api.whatsapp.com') {
-        setTimeout(() => window.close(), 3000);
+        // נותן קצת יותר זמן לטעינה/פתיחה לפני סגירה אוטומטית
+        setTimeout(() => window.close(), 5000);
         return;
     }
 
@@ -113,7 +115,7 @@
     ];
 
     // ==========================================
-    // 2. Data Management
+    // 2. Data Management (Variables Hoisted)
     // ==========================================
     let saveButtonEl = null;
     let modalBodyEl = null;
@@ -262,8 +264,8 @@
         .tm-btn-delete { color: #e74c3c; }
         .tm-btn-delete:hover { background: #e74c3c; color: white; }
 
-        /* Copy Tooltip */
-        .tm-btn-copy .tm-copied-tooltip {
+        /* Tooltip Style - Applies to Copy & Send buttons */
+        .tm-action-btn .tm-copied-tooltip {
             position: absolute;
             top: -5px;
             right: 50%;
@@ -279,7 +281,7 @@
             pointer-events: none;
             z-index: 10001;
         }
-        .tm-btn-copy .tm-copied-tooltip.visible {
+        .tm-action-btn .tm-copied-tooltip.visible {
             opacity: 1;
             transform: translate(50%, -100%);
         }
@@ -318,7 +320,6 @@
     function injectButton() {
         const phoneRows = document.querySelectorAll('[data-name="destination_phone"]:not(.tm-presets-injected)');
         phoneRows.forEach(row => {
-            row.classList.add('tm-presets-injected');
             const targetCol = row.querySelector('.col-xxl-7, .col-6:last-child') || row.children[1];
             if (!targetCol) return;
 
@@ -333,6 +334,9 @@
             const innerSpan = targetCol.querySelector('.hover-copy');
             if (innerSpan) innerSpan.insertBefore(icon, innerSpan.firstChild);
             else targetCol.prepend(icon);
+
+            // Mark as injected ONLY after successful injection
+            row.classList.add('tm-presets-injected');
         });
     }
 
@@ -444,7 +448,14 @@
 
         const overlay = document.createElement('div');
         overlay.className = 'tm-modal-overlay';
-        overlay.onclick = (e) => { if(e.target === overlay) overlay.remove(); };
+        overlay.onclick = (e) => {
+            if (e.target !== overlay) return;
+            if (hasUnsavedChanges) {
+                const ok = confirm("יש שינויים שלא נשמרו. לצאת בכל זאת?");
+                if (!ok) return;
+            }
+            overlay.remove();
+        };
 
         const content = document.createElement('div');
         content.className = 'tm-modal-content';
@@ -472,7 +483,13 @@
         modalBodyEl = document.createElement('div');
         modalBodyEl.className = 'tm-modal-body';
 
-        header.querySelector('.tm-close-btn').onclick = () => overlay.remove();
+        header.querySelector('.tm-close-btn').onclick = () => {
+            if (hasUnsavedChanges) {
+                const ok = confirm("יש שינויים שלא נשמרו. לצאת בכל זאת?");
+                if (!ok) return;
+            }
+            overlay.remove();
+        };
         const lockBtn = header.querySelector('.tm-lock-btn');
         lockBtn.onclick = () => {
             isLocked = !isLocked;
@@ -586,7 +603,7 @@
             const content = document.createElement('div');
             content.className = 'tm-preset-content';
             content.title = 'לחץ לשליחה';
-            content.onclick = () => sendWhatsapp(previewText, clientData);
+            content.onclick = () => sendWhatsapp(previewText, clientData, row.querySelector('.tm-btn-send'));
 
             const titleEl = document.createElement('div');
             titleEl.className = 'tm-preset-title-text';
@@ -601,37 +618,48 @@
             const actions = document.createElement('div');
             actions.className = 'tm-preset-actions';
 
+            // Send Button with Tooltip capability
             const btnSend = document.createElement('button');
             btnSend.className = 'tm-action-btn tm-btn-send';
             btnSend.title = 'שלח בוואטסאפ';
             btnSend.innerHTML = `<i class="fa-brands fa-whatsapp"></i>`;
-            btnSend.onclick = (e) => { e.stopPropagation(); sendWhatsapp(previewText, clientData); };
+
+            const tooltipSend = document.createElement('div');
+            tooltipSend.className = 'tm-copied-tooltip';
+            tooltipSend.textContent = 'מועתק ושולח...';
+            btnSend.appendChild(tooltipSend);
+
+            btnSend.onclick = (e) => {
+                e.stopPropagation();
+                sendWhatsapp(previewText, clientData, btnSend);
+            };
             actions.appendChild(btnSend);
 
+            // Copy Button
             const btnCopy = document.createElement('button');
             btnCopy.className = 'tm-action-btn tm-btn-copy';
             btnCopy.title = 'העתק ללוח';
             btnCopy.innerHTML = `<i class="fa-solid fa-copy"></i>`;
 
-            const tooltip = document.createElement('div');
-            tooltip.className = 'tm-copied-tooltip';
-            tooltip.textContent = 'הועתק!';
-            btnCopy.appendChild(tooltip);
+            const tooltipCopy = document.createElement('div');
+            tooltipCopy.className = 'tm-copied-tooltip';
+            tooltipCopy.textContent = 'הועתק!';
+            btnCopy.appendChild(tooltipCopy);
 
             btnCopy.onclick = (e) => {
                 e.stopPropagation();
                 GM_setClipboard(previewText);
-                tooltip.classList.add('visible');
+                tooltipCopy.classList.add('visible');
                 const originalIcon = btnCopy.querySelector('.fa-copy') ? btnCopy.innerHTML : '';
                 btnCopy.innerHTML = `<i class="fa-solid fa-check"></i>`;
                 btnCopy.style.color = '#4CAF50';
-                btnCopy.appendChild(tooltip);
-                setTimeout(() => tooltip.classList.remove('visible'), 1000);
+                btnCopy.appendChild(tooltipCopy);
+                setTimeout(() => tooltipCopy.classList.remove('visible'), 1000);
                 setTimeout(() => {
                     if (originalIcon) btnCopy.innerHTML = originalIcon;
                     else btnCopy.innerHTML = `<i class="fa-solid fa-copy"></i>`;
                     btnCopy.style.color = '';
-                    btnCopy.appendChild(tooltip);
+                    btnCopy.appendChild(tooltipCopy);
                 }, 1200);
             };
             actions.appendChild(btnCopy);
@@ -746,17 +774,78 @@
     // 8. Actions (FIXED SEND FUNCTION)
     // ==========================================
 
-    function sendWhatsapp(finalText, clientData) {
+    function sendWhatsapp(finalText, clientData, btnElement) {
+        const phoneRaw = (clientData && clientData.phone) ? String(clientData.phone).trim() : "";
+
+        const showButtonTooltip = (message) => {
+            if (!btnElement) return false;
+            const tooltip = btnElement.querySelector('.tm-copied-tooltip');
+            if (!tooltip) return false;
+
+            const originalText = tooltip.textContent;
+            tooltip.textContent = message;
+            tooltip.classList.add('visible');
+
+            setTimeout(() => {
+                tooltip.classList.remove('visible');
+                tooltip.textContent = originalText;
+            }, 1800);
+
+            return true;
+        };
+
+        // נרמול מספר: שומר רק ספרות
+        let digits = phoneRaw.replace(/\D/g, '');
+
+        // המרה לפורמט בינלאומי ישראלי בשכבת השליחה
+        if (digits.startsWith('0')) {
+            // 0XXXXXXXXX -> 972XXXXXXXXX
+            digits = '972' + digits.substring(1);
+        } else if (!digits.startsWith('972')) {
+            // לא מתחיל ב-0 ולא ב-972 => נחשב שגוי
+            digits = '';
+        }
+
+        // ולידציה רכה + טוסט במקום alert
+        // אחרי נרמול, מצפים לפורמט ישראלי מלא:
+        //  - קווי: 972 + 8 ספרות  => 11 ספרות
+        //  - נייד: 972 + 9 ספרות  => 12 ספרות
+        if (
+            !digits ||
+            !digits.startsWith('972') ||
+            (digits.length !== 11 && digits.length !== 12)
+        ) {
+            const shown = showButtonTooltip("שגיאה, אין מספר תקין");
+            if (!shown) {
+                console.warn("WhatsApp Manager: invalid phone, aborting send");
+            }
+            return;
+        }
+
+        const phone = digits;
+
         // 1. Auto-Copy Text
         GM_setClipboard(finalText);
 
-        // 2. Open WhatsApp in a new tab with a slight delay
-        // This ensures clipboard operation finishes and forces a fresh navigation event
-        const url = `https://wa.me/${clientData.phone}?text=${encodeURIComponent(finalText)}`;
+        // Visual Feedback על הצלחה (reuse אותו מנגנון tooltip גם להצלחה)
+        const shownSuccess = showButtonTooltip("מועתק ושולח...");
+        if (!shownSuccess) {
+            console.info("WhatsApp Manager: text copied to clipboard, opening WhatsApp (no tooltip element found).");
+        }
 
-        setTimeout(() => {
-            window.open(url, '_blank');
-        }, 100);
+        // 2. Open WhatsApp in a new tab ישירות מתוך ה-click
+        // בלי delay כדי להימנע מחסימות popup בסביבות ארגוניות
+        // שימוש ב-noopener,noreferrer להפחתת תלות ב-window.opener
+        const url = `https://api.whatsapp.com/send?phone=${encodeURIComponent(phone)}&text=${encodeURIComponent(finalText)}`;
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+
+        // fallback: אם החלון נחסם, להסביר למשתמש שההודעה כבר הועתקה
+        if (!win) {
+            const shownBlocked = showButtonTooltip("נחסם חלון, ההודעה הועתקה – הדבק ידנית בוואטסאפ");
+            if (!shownBlocked) {
+                console.warn("WhatsApp Manager: popup blocked, text copied to clipboard. Paste manually in WhatsApp.");
+            }
+        }
     }
 
 })();
