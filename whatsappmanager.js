@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Lionwheel - WhatsApp Manager Pro V5.5
-// @namespace    lionwheel-whatsapp-pro-v5-5
-// @version      5.5
-// @description  מערכת ניהול ושליחת הודעות חכמה לוואטסאפ
+// @name         Lionwheel - WhatsApp Manager Pro V5.6
+// @namespace    lionwheel-whatsapp-pro-v5-6
+// @version      5.6
+// @description  תיקון פתיחת וואטסאפ ריק (Force New Tab + Auto Copy)
 // @author       Adam Lee
 // @match        *://*.lionwheel.com/*
 // @match        *://api.whatsapp.com/*
@@ -113,7 +113,7 @@
     ];
 
     // ==========================================
-    // 2. Data Management (Variables Hoisted)
+    // 2. Data Management
     // ==========================================
     let saveButtonEl = null;
     let modalBodyEl = null;
@@ -125,10 +125,8 @@
     let selectedProducts = [];
     let currentPresets = [];
 
-    // Helper: Update Button UI safely
     function updateSaveButtonState() {
         if (!saveButtonEl) return;
-
         const footer = document.querySelector('.tm-modal-footer');
         if (footer) {
             if (isLocked) footer.classList.add('tm-hidden');
@@ -143,7 +141,6 @@
     function loadPresets() {
         const stored = GM_getValue('whatsapp_presets_v3');
         let loaded = stored ? JSON.parse(stored) : JSON.parse(JSON.stringify(DEFAULT_PRESETS));
-
         let modified = false;
         loaded.forEach(p => {
             if (!p.id) {
@@ -151,7 +148,6 @@
                 modified = true;
             }
         });
-
         if (modified) savePresets(loaded);
         return loaded;
     }
@@ -171,89 +167,36 @@
         updateSaveButtonState();
     }
 
-    // Initialize
     currentPresets = loadPresets();
     savedStateString = JSON.stringify(currentPresets);
 
-    // Tampermonkey Menu Commands
-    GM_registerMenuCommand("📤 ייצוא הגדרות לקובץ", () => {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentPresets, null, 4));
-        const a = document.createElement('a');
-        a.href = dataStr;
-        a.download = "lionwheel_whatsapp_presets.json";
-        a.click();
-    });
-
-    GM_registerMenuCommand("📥 ייבוא הגדרות מקובץ", () => {
-        const input = document.createElement('input');
-        input.type = 'file';
-        input.accept = '.json';
-        input.onchange = e => {
-            const file = e.target.files[0];
-            const reader = new FileReader();
-            reader.onload = event => {
-                try {
-                    const imported = JSON.parse(event.target.result);
-                    if (Array.isArray(imported)) {
-                        imported.forEach(p => { if(!p.id) p.id = generateId(); });
-                        if(confirm(`האם לדרוס את ההגדרות הנוכחיות?`)) {
-                            savePresets(imported);
-                            alert("ההגדרות נטענו בהצלחה! הדף ירוענן.");
-                            location.reload();
-                        }
-                    } else alert("קובץ לא תקין.");
-                } catch(err) { alert("שגיאה: " + err); }
-            };
-            reader.readAsText(file);
-        };
-        input.click();
-    });
-
-    GM_registerMenuCommand("🔄 שחזר לברירת מחדל", () => {
-        if(confirm("למחוק את כל השינויים ולחזור לברירת המחדל?")) {
-            GM_deleteValue('whatsapp_presets_v3');
-            location.reload();
-        }
-    });
-
     // ==========================================
-    // 3. CSS Style (UPDATED TOOLTIP POSITIONING)
+    // 3. CSS Style
     // ==========================================
     const css = `
         .tm-wa-btn { cursor: pointer; color: #ff9800; font-size: 1.2em; margin-inline-end: 8px; transition: 0.2s; }
         .tm-wa-btn:hover { transform: scale(1.15); color: #e65100; }
-
         .tm-modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 10000; display: flex; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
         .tm-modal-content { background: white; width: 750px; max-width: 95%; max-height: 90vh; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden; font-family: system-ui, -apple-system, sans-serif; direction: rtl; }
-
         .tm-modal-header { padding: 12px 20px; background: #f8f9fa; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
         .tm-header-right, .tm-header-left { display: flex; gap: 10px; align-items: center; }
         .tm-modal-title { font-weight: bold; font-size: 1.1rem; color: #333; }
-
         .tm-icon-btn { cursor: pointer; border: none; background: none; font-size: 1.1rem; padding: 5px; color: #555; transition: 0.2s; }
         .tm-icon-btn:hover { color: #000; transform: scale(1.1); }
-        .tm-lock-btn.locked { color: #e74c3c; }
-        .tm-lock-btn.unlocked { color: #2ecc71; }
-
+        .tm-lock-btn.locked { color: #e74c3c; } .tm-lock-btn.unlocked { color: #2ecc71; }
         .tm-modal-body { padding: 15px; overflow-y: auto; flex-grow: 1; background: #f9f9f9; }
-
-        /* Product Selector */
         .tm-products-selection-area { background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
         .tm-products-title { font-size: 13px; font-weight: bold; color: #555; margin-bottom: 8px; }
         .tm-products-list { display: flex; flex-direction: column; gap: 5px; max-height: 120px; overflow-y: auto; }
         .tm-product-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
         .tm-product-checkbox-row input { cursor: pointer; }
         .tm-no-products-msg { font-size: 12px; color: #999; font-style: italic; }
-
-        /* Footer */
         .tm-modal-footer { padding: 10px 20px; background: #fff; border-top: 1px solid #eee; display: flex; justify-content: center; transition: all 0.3s; }
         .tm-modal-footer.tm-hidden { display: none !important; }
-
         .tm-main-save-btn { background: #4CAF50; color: white; border: none; padding: 8px 30px; border-radius: 20px; font-weight: bold; font-size: 14px; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.1); transition: 0.2s; }
         .tm-main-save-btn:hover { background: #43a047; box-shadow: 0 4px 8px rgba(0,0,0,0.15); }
         .tm-main-save-btn:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; color: #666; }
 
-        /* Grid Rows */
         .tm-preset-row {
             display: grid;
             grid-template-columns: 30px 25px 8px 1fr 50px;
@@ -270,25 +213,19 @@
         }
         .tm-preset-row:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
         .tm-preset-row.dragging { opacity: 0.5; border: 2px dashed #999; }
-
-        /* Locked / Edit States */
         .tm-is-locked .tm-drag-handle { cursor: not-allowed; opacity: 0.3; }
         .tm-is-locked .tm-btn-edit, .tm-is-locked .tm-btn-delete { display: none; }
         .tm-is-locked .tm-preset-row { grid-template-columns: 30px 25px 8px 1fr 50px; }
-
         .tm-preset-row.tm-edit-mode { display: block; background: #fff8e1; border: 1px solid #ffe0b2; padding: 15px; }
 
-        /* Elements */
         .tm-drag-handle { display: flex; align-items: center; justify-content: center; cursor: grab; color: #bbb; background: #fafafa; border-left: 1px solid #eee; }
         .tm-drag-handle:hover { color: #555; background: #f0f0f0; }
         .tm-row-number { display: flex; align-items: center; justify-content: center; font-size: 12px; color: #888; font-weight: bold; background: #fff; }
         .tm-color-strip { width: 100%; height: 100%; }
-
         .tm-preset-content { padding: 10px 0; cursor: pointer; }
         .tm-preset-title-text { font-weight: bold; font-size: 0.95rem; margin-bottom: 4px; color: #222; }
         .tm-preset-body-text { font-size: 0.85rem; color: #555; line-height: 1.3; white-space: pre-wrap; }
 
-        /* Actions - Vertical Layout */
         .tm-preset-actions {
             display: flex;
             flex-direction: column;
@@ -300,7 +237,6 @@
             padding: 8px 0;
             position: relative;
         }
-
         .tm-action-btn {
             border: none;
             background: white;
@@ -316,9 +252,8 @@
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
             border: 1px solid #eee;
             flex-shrink: 0;
-            position: relative; /* מאפשר ל-Tooltip להיות ממוקם יחסית אליו */
+            position: relative;
         }
-
         .tm-btn-send { color: #25D366; font-size: 1.2rem; }
         .tm-btn-send:hover { background: #25D366; color: white; }
         .tm-btn-copy { color: #2196F3; }
@@ -327,11 +262,11 @@
         .tm-btn-delete { color: #e74c3c; }
         .tm-btn-delete:hover { background: #e74c3c; color: white; }
 
-        /* NEW: Copy Tooltip - Positioned Relative to the Copy Button */
+        /* Copy Tooltip */
         .tm-btn-copy .tm-copied-tooltip {
             position: absolute;
-            top: -5px; /* כוונון אנכי צמוד מעל הכפתור */
-            right: 50%; /* מרכוז ביחס לכפתור */
+            top: -5px;
+            right: 50%;
             background-color: #333;
             color: white;
             padding: 5px 10px;
@@ -340,20 +275,15 @@
             white-space: nowrap;
             opacity: 0;
             transition: opacity 0.3s, transform 0.3s;
-            transform: translate(50%, 5px); /* הזזה למרכז וכלפי מטה בהתחלה */
+            transform: translate(50%, 5px);
             pointer-events: none;
-            z-index: 10001; /* לוודא שהוא מעל כל דבר אחר */
-        }
-        .tm-btn-copy:hover .tm-copied-tooltip.visible {
-            opacity: 1;
-            transform: translate(50%, -100%); /* תנועה כלפי מעלה */
+            z-index: 10001;
         }
         .tm-btn-copy .tm-copied-tooltip.visible {
             opacity: 1;
             transform: translate(50%, -100%);
         }
 
-        /* Edit Form */
         .tm-edit-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; color: #333; }
         .tm-input { width: 100%; padding: 8px; margin-bottom: 12px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; }
         .tm-textarea { width: 100%; height: 100px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-family: inherit; resize: vertical; box-sizing: border-box; font-size: 14px; line-height: 1.4; }
@@ -377,7 +307,6 @@
         return "שלום";
     }
 
-    // Debounce function
     function debounce(func, wait) {
         let timeout;
         return function(...args) {
@@ -396,25 +325,20 @@
             const icon = document.createElement('i');
             icon.className = 'fa-solid fa-comment-dots tm-wa-btn';
             icon.title = 'ניהול הודעות וואטסאפ';
-
             icon.onclick = (e) => {
                 e.stopPropagation();
                 const clientData = extractClientData(row);
                 openModal(clientData);
             };
-
             const innerSpan = targetCol.querySelector('.hover-copy');
             if (innerSpan) innerSpan.insertBefore(icon, innerSpan.firstChild);
             else targetCol.prepend(icon);
         });
     }
 
-    // Start Observer
-    const observer = new MutationObserver(debounce(() => {
-        injectButton();
-    }, 300));
+    const observer = new MutationObserver(debounce(() => injectButton(), 300));
     observer.observe(document.body, { childList: true, subtree: true });
-    injectButton(); // Initial run
+    injectButton();
 
     function extractClientData(row) {
         let phone = '';
@@ -432,7 +356,6 @@
             }
         }
 
-        // --- Improved Product Scraping Logic ---
         let missingProducts = [];
         const rootContainer = row.closest('.offcanvas, .card, .modal-content') || document;
 
@@ -440,66 +363,40 @@
             if (!name) return;
             if (EXCLUDED_KEYWORDS.some(k => name.includes(k))) return;
             if (barcode && EXCLUDED_BARCODES.includes(barcode)) return;
-
             const missing = (ordered - picked);
-            if (missing > 0) {
-                missingProducts.push({ name: name.trim(), missing: missing });
-            }
+            if (missing > 0) missingProducts.push({ name: name.trim(), missing: missing });
         };
 
-        // Strategy 1: Inputs (.order-item-row)
         const inputRows = rootContainer.querySelectorAll('.order-item-row');
         if (inputRows.length > 0) {
             inputRows.forEach(item => {
                 const nameEl = item.querySelector('.order-item-name input') || item.querySelector('input.order-item-name');
                 const qtyEl = item.querySelector('.order-item-quantity input') || item.querySelector('input.order-item-quantity');
-                const pickedEl = item.querySelector('input[name*="picked_quantity"]') ||
-                                 item.querySelector('input[name*="collected_quantity"]') ||
-                                 item.querySelector('.order-item-picked-quantity input');
+                const pickedEl = item.querySelector('input[name*="picked_quantity"]') || item.querySelector('input[name*="collected_quantity"]') || item.querySelector('.order-item-picked-quantity input');
                 const skuEl = item.querySelector('.order-item-sku input') || item.querySelector('input.order-item-sku');
-
                 if (nameEl && qtyEl && pickedEl) {
-                    checkItem(
-                        nameEl.value,
-                        parseFloat(qtyEl.value) || 0,
-                        parseFloat(pickedEl.value) || 0,
-                        skuEl ? skuEl.value : null
-                    );
+                    checkItem(nameEl.value, parseFloat(qtyEl.value) || 0, parseFloat(pickedEl.value) || 0, skuEl ? skuEl.value : null);
                 }
             });
         }
 
-        // Strategy 2: Table Rows
         if (missingProducts.length === 0) {
             const tableRows = rootContainer.querySelectorAll('table tbody tr');
             tableRows.forEach(tr => {
-                const qtyCell = tr.querySelector('td[data-label="כמות / לוקט"]') ||
-                                Array.from(tr.cells).find(cell => cell.textContent.match(/(\d+)\s*\/\s*(\d+)/));
-
+                const qtyCell = tr.querySelector('td[data-label="כמות / לוקט"]') || Array.from(tr.cells).find(cell => cell.textContent.match(/(\d+)\s*\/\s*(\d+)/));
                 if (qtyCell) {
                     const text = qtyCell.textContent;
                     const qtyMatch = text.match(/(\d+)\s*\/\s*(\d+)/);
-
                     if (qtyMatch) {
-                        const picked = parseInt(qtyMatch[1]);
-                        const ordered = parseInt(qtyMatch[2]);
-
                         const nameEl = tr.querySelector('td[data-label="שם"]') || tr.querySelector('.order-item-name') || tr.cells[2];
                         const skuEl = tr.querySelector('td[data-label="מק״ט"]') || tr.querySelector('td[data-label="ברקוד"]');
-
                         if (nameEl) {
-                            checkItem(
-                                nameEl.innerText,
-                                ordered,
-                                picked,
-                                skuEl ? skuEl.innerText.trim() : null
-                            );
+                            checkItem(nameEl.innerText, parseInt(qtyMatch[2]), parseInt(qtyMatch[1]), skuEl ? skuEl.innerText.trim() : null);
                         }
                     }
                 }
             });
         }
-
         return { phone, name: firstName, productsList: missingProducts };
     }
 
@@ -509,28 +406,19 @@
             if (p.missing > 1) name += ` (${p.missing} יחידות)`;
             return name;
         });
-
         const isEmpty = (formattedNames.length === 0);
         let productsString = "";
-
         if (!isEmpty) {
-            if (formattedNames.length === 1) {
-                productsString = formattedNames[0];
-            } else {
-                productsString = "\n" + formattedNames.map(p => `• ${p}`).join("\n") + "\n";
-            }
+            if (formattedNames.length === 1) productsString = formattedNames[0];
+            else productsString = "\n" + formattedNames.map(p => `• ${p}`).join("\n") + "\n";
         }
         return { productsString, isEmpty };
     }
 
     function formatFinalText(template, clientData, productsString, isEmptySelection) {
         const greetingTime = getTimeGreeting();
-        let finalText = template
-            .replace(/{name}/g, clientData.name)
-            .replace(/{greeting}/g, greetingTime);
-
+        let finalText = template.replace(/{name}/g, clientData.name).replace(/{greeting}/g, greetingTime);
         if (isEmptySelection) {
-            // Cleanup unused placeholders
             if (finalText.includes('{products}')) {
                 finalText = finalText.replace(/:\s*\{products\}/, '.');
                 finalText = finalText.replace(/\{products\}/, '');
@@ -542,7 +430,7 @@
     }
 
     // ==========================================
-    // 5. Build & Manage Modal (Decoupled)
+    // 5. Build & Manage Modal
     // ==========================================
 
     function openModal(clientData) {
@@ -561,7 +449,6 @@
         const content = document.createElement('div');
         content.className = 'tm-modal-content';
 
-        // Header
         const header = document.createElement('div');
         header.className = 'tm-modal-header';
         header.innerHTML = `
@@ -577,38 +464,28 @@
             </div>
         `;
 
-        // Footer
         const footer = document.createElement('div');
         footer.className = `tm-modal-footer ${isLocked ? 'tm-hidden' : ''}`;
         footer.innerHTML = `<button class="tm-main-save-btn" disabled>שמור שינויים</button>`;
         saveButtonEl = footer.querySelector('.tm-main-save-btn');
 
-        // Body
         modalBodyEl = document.createElement('div');
         modalBodyEl.className = 'tm-modal-body';
 
-        // Handlers
         header.querySelector('.tm-close-btn').onclick = () => overlay.remove();
-
         const lockBtn = header.querySelector('.tm-lock-btn');
         lockBtn.onclick = () => {
             isLocked = !isLocked;
             lockBtn.className = `tm-icon-btn tm-lock-btn ${isLocked ? 'locked' : 'unlocked'}`;
             lockBtn.title = isLocked ? 'לחץ לביטול נעילה' : 'לחץ לנעילה';
             lockBtn.innerHTML = `<i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-lock-open'}"></i>`;
-
             updateSaveButtonState();
             renderContent(clientData);
         };
 
         header.querySelector('.tm-add-btn').onclick = () => {
             if(isLocked) { alert("אנא בטל נעילה כדי להוסיף הודעות."); return; }
-            currentPresets.push({
-                id: generateId(),
-                title: "הודעה חדשה",
-                color: "#eeeeee",
-                text: "תוכן ההודעה כאן..."
-            });
+            currentPresets.push({ id: generateId(), title: "הודעה חדשה", color: "#eeeeee", text: "תוכן ההודעה כאן..." });
             checkForChanges();
             renderContent(clientData);
             setTimeout(() => modalBodyEl.scrollTop = modalBodyEl.scrollHeight, 100);
@@ -626,49 +503,32 @@
             }, 1500);
         };
 
-        // Initialize Content
         renderContent(clientData);
-
         content.appendChild(header);
         content.appendChild(modalBodyEl);
         content.appendChild(footer);
         overlay.appendChild(content);
         document.body.appendChild(overlay);
-
         updateSaveButtonState();
     }
 
-    // Render the internal list (refreshable)
     function renderContent(clientData) {
         if (!modalBodyEl) return;
         modalBodyEl.innerHTML = '';
         modalBodyEl.className = `tm-modal-body ${isLocked ? 'tm-is-locked' : ''}`;
 
-        // 1. Render Product Selector
         if (detectedMissingProducts.length > 0) {
             const selectorDiv = document.createElement('div');
             selectorDiv.className = 'tm-products-selection-area';
-
             let checkboxesHTML = '';
             detectedMissingProducts.forEach((prod) => {
                 const isChecked = selectedProducts.some(p => p.name === prod.name) ? 'checked' : '';
                 let label = prod.name;
                 if (prod.missing > 1) label += ` (${prod.missing} יחידות)`;
                 else if (prod.missing === 1) label += ` (יחידה 1 חסרה)`;
-
-                checkboxesHTML += `
-                    <label class="tm-product-checkbox-row">
-                        <input type="checkbox" class="tm-prod-cb" data-prod-name="${prod.name.replace(/"/g, '&quot;')}" ${isChecked}>
-                        ${label}
-                    </label>
-                `;
+                checkboxesHTML += `<label class="tm-product-checkbox-row"><input type="checkbox" class="tm-prod-cb" data-prod-name="${prod.name.replace(/"/g, '&quot;')}" ${isChecked}>${label}</label>`;
             });
-
-            selectorDiv.innerHTML = `
-                <div class="tm-products-title">מוצרים חסרים שזוהו (בחר מה לכלול בהודעה):</div>
-                <div class="tm-products-list">${checkboxesHTML}</div>
-            `;
-
+            selectorDiv.innerHTML = `<div class="tm-products-title">מוצרים חסרים שזוהו (בחר מה לכלול בהודעה):</div><div class="tm-products-list">${checkboxesHTML}</div>`;
             selectorDiv.querySelectorAll('.tm-prod-cb').forEach(cb => {
                 cb.onchange = (e) => {
                     const prodName = e.target.getAttribute('data-prod-name');
@@ -678,7 +538,7 @@
                     } else {
                         selectedProducts = selectedProducts.filter(p => p.name !== prodName);
                     }
-                    renderPresetsRows(clientData); // Re-render only rows
+                    renderPresetsRows(clientData);
                 };
             });
             modalBodyEl.appendChild(selectorDiv);
@@ -689,7 +549,6 @@
             modalBodyEl.appendChild(msgDiv);
         }
 
-        // 2. Rows Container
         rowsContainerEl = document.createElement('div');
         modalBodyEl.appendChild(rowsContainerEl);
         renderPresetsRows(clientData);
@@ -698,7 +557,6 @@
     function renderPresetsRows(clientData) {
         if (!rowsContainerEl) return;
         rowsContainerEl.innerHTML = '';
-
         const { productsString, isEmpty } = formatProductsList(selectedProducts);
 
         currentPresets.forEach((preset, index) => {
@@ -709,28 +567,22 @@
 
             const previewText = formatFinalText(preset.text, clientData, productsString, isEmpty);
 
-            // Structure: Grip | Num | Color | Content | Actions
-
-            // Grip
             const grip = document.createElement('div');
             grip.className = 'tm-drag-handle';
             grip.title = isLocked ? 'נעול' : 'גרור לשינוי סדר';
             grip.innerHTML = `<i class="fa-solid fa-grip-vertical"></i>`;
             row.appendChild(grip);
 
-            // Number
             const num = document.createElement('div');
             num.className = 'tm-row-number';
             num.textContent = index + 1;
             row.appendChild(num);
 
-            // Color
             const colorStrip = document.createElement('div');
             colorStrip.className = 'tm-color-strip';
             colorStrip.style.backgroundColor = preset.color;
             row.appendChild(colorStrip);
 
-            // Content
             const content = document.createElement('div');
             content.className = 'tm-preset-content';
             content.title = 'לחץ לשליחה';
@@ -739,20 +591,16 @@
             const titleEl = document.createElement('div');
             titleEl.className = 'tm-preset-title-text';
             titleEl.textContent = preset.title;
-
             const bodyEl = document.createElement('div');
             bodyEl.className = 'tm-preset-body-text';
             bodyEl.textContent = previewText;
-
             content.appendChild(titleEl);
             content.appendChild(bodyEl);
             row.appendChild(content);
 
-            // Actions
             const actions = document.createElement('div');
             actions.className = 'tm-preset-actions';
 
-            // Send
             const btnSend = document.createElement('button');
             btnSend.className = 'tm-action-btn tm-btn-send';
             btnSend.title = 'שלח בוואטסאפ';
@@ -760,13 +608,11 @@
             btnSend.onclick = (e) => { e.stopPropagation(); sendWhatsapp(previewText, clientData); };
             actions.appendChild(btnSend);
 
-            // Copy
             const btnCopy = document.createElement('button');
             btnCopy.className = 'tm-action-btn tm-btn-copy';
             btnCopy.title = 'העתק ללוח';
             btnCopy.innerHTML = `<i class="fa-solid fa-copy"></i>`;
 
-            // Tooltip Element (Nested inside the copy button)
             const tooltip = document.createElement('div');
             tooltip.className = 'tm-copied-tooltip';
             tooltip.textContent = 'הועתק!';
@@ -775,35 +621,21 @@
             btnCopy.onclick = (e) => {
                 e.stopPropagation();
                 GM_setClipboard(previewText);
-
-                // Show tooltip and change icon temporarily
                 tooltip.classList.add('visible');
                 const originalIcon = btnCopy.querySelector('.fa-copy') ? btnCopy.innerHTML : '';
                 btnCopy.innerHTML = `<i class="fa-solid fa-check"></i>`;
                 btnCopy.style.color = '#4CAF50';
-
-                // Re-append the tooltip before the timeout
                 btnCopy.appendChild(tooltip);
-                tooltip.classList.add('visible');
-
+                setTimeout(() => tooltip.classList.remove('visible'), 1000);
                 setTimeout(() => {
-                    tooltip.classList.remove('visible');
-                }, 1000); // Tooltip visible for 1 second
-
-                setTimeout(() => {
-                    if (originalIcon) {
-                        btnCopy.innerHTML = originalIcon;
-                    } else {
-                        // Revert to original icon if innerHTML was overwritten
-                        btnCopy.innerHTML = `<i class="fa-solid fa-copy"></i>`;
-                    }
+                    if (originalIcon) btnCopy.innerHTML = originalIcon;
+                    else btnCopy.innerHTML = `<i class="fa-solid fa-copy"></i>`;
                     btnCopy.style.color = '';
-                    btnCopy.appendChild(tooltip); // Ensure tooltip is present for next click
-                }, 1200); // Icon change slightly longer
+                    btnCopy.appendChild(tooltip);
+                }, 1200);
             };
             actions.appendChild(btnCopy);
 
-            // Edit
             const btnEdit = document.createElement('button');
             btnEdit.className = 'tm-action-btn tm-btn-edit';
             btnEdit.title = 'ערוך';
@@ -811,7 +643,6 @@
             btnEdit.onclick = (e) => { e.stopPropagation(); if(isLocked) return; enableEditMode(row, preset, clientData); };
             actions.appendChild(btnEdit);
 
-            // Delete
             const btnDelete = document.createElement('button');
             btnDelete.className = 'tm-action-btn tm-btn-delete';
             btnDelete.title = 'מחק';
@@ -822,61 +653,45 @@
                 if(confirm("האם למחוק את ההודעה?")) {
                     currentPresets = currentPresets.filter(p => p.id !== preset.id);
                     checkForChanges();
-                    renderPresetsRows(clientData); // In-place refresh
+                    renderPresetsRows(clientData);
                 }
             };
             actions.appendChild(btnDelete);
-
             row.appendChild(actions);
 
-            if (!isLocked) {
-                addDragEvents(row, rowsContainerEl, clientData);
-            }
+            if (!isLocked) addDragEvents(row, rowsContainerEl, clientData);
             rowsContainerEl.appendChild(row);
         });
     }
 
-    // ==========================================
-    // 6. In-Place Edit Mode
-    // ==========================================
-
     function enableEditMode(rowElement, preset, clientData) {
         const editDiv = document.createElement('div');
         editDiv.className = 'tm-preset-row tm-edit-mode';
-
         editDiv.innerHTML = `
             <div>
                 <label class="tm-edit-label">כותרת:</label>
                 <input type="text" class="tm-input" id="edit-title">
-
                 <label class="tm-edit-label">צבע רקע:</label>
                 <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
                     <input type="color" id="edit-color-picker" style="height:35px; width:50px; cursor:pointer;">
                     <input type="text" class="tm-input" id="edit-color-text" style="margin:0; width:120px;">
                 </div>
-
                 <label class="tm-edit-label">תוכן ההודעה (משתנים: {name}, {products}, {greeting}):</label>
                 <textarea class="tm-textarea" id="edit-text"></textarea>
-
                 <div class="tm-edit-controls">
                     <button class="tm-cancel-btn">ביטול</button>
                     <button class="tm-save-btn">אשר זמנית</button>
                 </div>
             </div>
         `;
-
-        // Set values safely
         editDiv.querySelector('#edit-title').value = preset.title;
         editDiv.querySelector('#edit-text').value = preset.text;
         editDiv.querySelector('#edit-color-picker').value = preset.color;
         editDiv.querySelector('#edit-color-text').value = preset.color;
-
         const colorPicker = editDiv.querySelector('#edit-color-picker');
         const colorText = editDiv.querySelector('#edit-color-text');
         colorPicker.oninput = () => colorText.value = colorPicker.value;
         colorText.oninput = () => colorPicker.value = colorText.value;
-
-        // Save (In-Place)
         editDiv.querySelector('.tm-save-btn').onclick = () => {
             const idx = currentPresets.findIndex(p => p.id === preset.id);
             if (idx !== -1) {
@@ -890,30 +705,19 @@
                 renderPresetsRows(clientData);
             }
         };
-
-        // Cancel
-        editDiv.querySelector('.tm-cancel-btn').onclick = () => {
-            renderPresetsRows(clientData);
-        };
-
+        editDiv.querySelector('.tm-cancel-btn').onclick = () => renderPresetsRows(clientData);
         rowElement.replaceWith(editDiv);
     }
-
-    // ==========================================
-    // 7. Drag & Drop (Stable IDs)
-    // ==========================================
 
     function addDragEvents(row, container, clientData) {
         row.addEventListener('dragstart', (e) => {
             e.dataTransfer.setData('text/plain', row.dataset.id);
             row.classList.add('dragging');
         });
-
         row.addEventListener('dragend', () => {
             row.classList.remove('dragging');
             document.querySelectorAll('.dragging').forEach(el => el.classList.remove('dragging'));
         });
-
         row.addEventListener('dragover', (e) => {
             e.preventDefault();
             const draggingRow = container.querySelector('.dragging');
@@ -923,19 +727,15 @@
                 else row.before(draggingRow);
             }
         });
-
         row.addEventListener('drop', (e) => {
             e.preventDefault();
-
             const newOrder = [];
             const rows = container.querySelectorAll('.tm-preset-row');
-
             rows.forEach(domRow => {
                 const id = domRow.dataset.id;
                 const presetObj = currentPresets.find(p => p.id === id);
                 if (presetObj) newOrder.push(presetObj);
             });
-
             currentPresets = newOrder;
             checkForChanges();
             renderPresetsRows(clientData);
@@ -943,12 +743,20 @@
     }
 
     // ==========================================
-    // 8. Actions
+    // 8. Actions (FIXED SEND FUNCTION)
     // ==========================================
 
     function sendWhatsapp(finalText, clientData) {
+        // 1. Auto-Copy Text
+        GM_setClipboard(finalText);
+
+        // 2. Open WhatsApp in a new tab with a slight delay
+        // This ensures clipboard operation finishes and forces a fresh navigation event
         const url = `https://wa.me/${clientData.phone}?text=${encodeURIComponent(finalText)}`;
-        window.open(url, 'whatsapp_window');
+
+        setTimeout(() => {
+            window.open(url, '_blank');
+        }, 100);
     }
 
 })();
