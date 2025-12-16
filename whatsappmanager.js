@@ -174,6 +174,72 @@
     savedStateString = JSON.stringify(currentPresets);
 
     // ==========================================
+    // 2.5. Import/Export JSON Functions
+    // ==========================================
+    function exportPresetsToJSON() {
+        const jsonStr = JSON.stringify(currentPresets, null, 4);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `whatsapp-presets-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    function importPresetsFromJSON() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const imported = JSON.parse(event.target.result);
+                    if (!Array.isArray(imported)) {
+                        alert('קובץ JSON לא תקין: צריך להיות מערך של הודעות');
+                        return;
+                    }
+                    // וידוא שיש id לכל preset
+                    imported.forEach(p => {
+                        if (!p.id) p.id = generateId();
+                    });
+                    const ok = confirm(`ייבוא ${imported.length} הודעות? זה יחליף את ההודעות הנוכחיות.`);
+                    if (!ok) return;
+                    currentPresets = imported;
+                    savePresets(currentPresets);
+                    alert('הודעות יובאו בהצלחה!');
+                } catch (err) {
+                    alert('שגיאה בקריאת קובץ JSON: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    }
+
+    function resetToDefaults() {
+        const ok = confirm('לאתחל את ההודעות לברירת מחדל? כל ההודעות הנוכחיות יוחלפו בהודעות ברירת המחדל.');
+        if (!ok) return;
+        const defaults = JSON.parse(JSON.stringify(DEFAULT_PRESETS));
+        defaults.forEach(p => {
+            if (!p.id) p.id = generateId();
+        });
+        currentPresets = defaults;
+        savePresets(currentPresets);
+        alert('הסקריפט אופס לברירת מחדל בהצלחה!');
+    }
+
+    // Register Tampermonkey menu commands
+    GM_registerMenuCommand('ייצא הודעות ל-JSON', exportPresetsToJSON);
+    GM_registerMenuCommand('ייבא הודעות מ-JSON', importPresetsFromJSON);
+    GM_registerMenuCommand('אתחל לברירת מחדל', resetToDefaults);
+
+    // ==========================================
     // 3. CSS Style
     // ==========================================
     const css = `
