@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Lionwheel - WhatsApp Manager Pro V5.8
-// @namespace    lionwheel-whatsapp-pro-v5-8
-// @version      5.8
+// @name         Lionwheel - WhatsApp Manager Pro V5.9
+// @namespace    lionwheel-whatsapp-pro-v5-9
+// @version      5.9
 // @description  תיקון כתובת API לסגירה אוטומטית, בדיקת תקינות טלפון ושיפורי יציבות
 // @author       Adam Lee
 // @match        *://*.lionwheel.com/*
@@ -122,6 +122,7 @@
     let rowsContainerEl = null;
     let isLocked = true;
     let hasUnsavedChanges = false;
+    let isModalOpen = false;
     let savedStateString = "";
     let detectedMissingProducts = [];
     let selectedProducts = [];
@@ -335,14 +336,19 @@
             if (innerSpan) innerSpan.insertBefore(icon, innerSpan.firstChild);
             else targetCol.prepend(icon);
 
-            // Mark as injected ONLY after successful injection
             row.classList.add('tm-presets-injected');
         });
     }
 
-    const observer = new MutationObserver(debounce(() => injectButton(), 300));
+    function injectButtonGuarded() {
+        if (isModalOpen) return;
+        if (!document.querySelector('[data-name="destination_phone"]')) return;
+        injectButton();
+    }
+
+    const observer = new MutationObserver(debounce(() => injectButtonGuarded(), 300));
     observer.observe(document.body, { childList: true, subtree: true });
-    injectButton();
+    injectButtonGuarded();
 
     function extractClientData(row) {
         let phone = '';
@@ -384,22 +390,87 @@
             });
         }
 
+        function findProductsTable(container) {
+            const tables = Array.from(container.querySelectorAll('table'));
+            for (const t of tables) {
+                const headers = Array.from(t.querySelectorAll('thead th'))
+                    .map(th => (th.textContent || '').replace(/\s+/g, ' ').trim())
+                    .filter(Boolean);
+                const hasName = headers.some(h => h.includes('שם'));
+                const hasQtyPicked = headers.some(h => h.includes('כמות') && h.includes('לוקט'));
+                if (hasName && hasQtyPicked) return t;
+            }
+            return null;
+        }
+
+        function getHeaderIndex(table, headerIncludes) {
+            const ths = Array.from(table.querySelectorAll('thead th'));
+            for (let i = 0; i < ths.length; i++) {
+                const txt = (ths[i].textContent || '').replace(/\s+/g, ' ').trim();
+                if (!txt) continue;
+                if (headerIncludes.every(part => txt.includes(part))) return i;
+            }
+            return -1;
+        }
+
+        // Strategy 2: Products Table Only
         if (missingProducts.length === 0) {
-            const tableRows = rootContainer.querySelectorAll('table tbody tr');
-            tableRows.forEach(tr => {
-                const qtyCell = tr.querySelector('td[data-label="כמות / לוקט"]') || Array.from(tr.cells).find(cell => cell.textContent.match(/(\d+)\s*\/\s*(\d+)/));
-                if (qtyCell) {
+            const productsTable = findProductsTable(document) || findProductsTable(rootContainer);
+            if (productsTable) {
+                const idxName = getHeaderIndex(productsTable, ['שם']);
+                const idxQty = getHeaderIndex(productsTable, ['כמות', 'לוקט']);
+                const idxSku = getHeaderIndex(productsTable, ['מק״ט']);
+                const idxBarcode = getHeaderIndex(productsTable, ['ברקוד']);
+
+                const tableRows = Array.from(productsTable.querySelectorAll('tbody tr'));
+                tableRows.forEach(tr => {
+                    const cells = Array.from(tr.cells || []);
+                    const qtyCell =
+                        tr.querySelector('td[data-label="כמות / לוקט"]') ||
+                        (idxQty >= 0 ? cells[idxQty] : null) ||
+                        cells.find(cell => (cell.textContent || '').match(/(\d+)\s*\/\s*(\d+)/));
+
+                    if (!qtyCell) return;
+                    const text = qtyCell.textContent || '';
+                    const qtyMatch = text.match(/(\d+)\s*\/\s*(\d+)/);
+                    if (!qtyMatch) return;
+
+                    const picked = parseInt(qtyMatch[1], 10);
+                    const ordered = parseInt(qtyMatch[2], 10);
+
+                    const nameCell =
+                        tr.querySelector('td[data-label="שם"]') ||
+                        (idxName >= 0 ? cells[idxName] : null);
+
+                    const skuCell =
+                        tr.querySelector('td[data-label="מק״ט"]') ||
+                        tr.querySelector('td[data-label="ברקוד"]') ||
+                        (idxSku >= 0 ? cells[idxSku] : null) ||
+                        (idxBarcode >= 0 ? cells[idxBarcode] : null);
+
+                    if (!nameCell) return;
+                    checkItem(
+                        nameCell.innerText,
+                        ordered,
+                        picked,
+                        skuCell ? skuCell.innerText.trim() : null
+                    );
+                });
+            } else {
+                // Fallback: old behavior (only if no products table found)
+                const tableRows = rootContainer.querySelectorAll('table tbody tr');
+                tableRows.forEach(tr => {
+                    const qtyCell = tr.querySelector('td[data-label="כמות / לוקט"]') || Array.from(tr.cells).find(cell => cell.textContent.match(/(\d+)\s*\/\s*(\d+)/));
+                    if (!qtyCell) return;
                     const text = qtyCell.textContent;
                     const qtyMatch = text.match(/(\d+)\s*\/\s*(\d+)/);
-                    if (qtyMatch) {
-                        const nameEl = tr.querySelector('td[data-label="שם"]') || tr.querySelector('.order-item-name') || tr.cells[2];
-                        const skuEl = tr.querySelector('td[data-label="מק״ט"]') || tr.querySelector('td[data-label="ברקוד"]');
-                        if (nameEl) {
-                            checkItem(nameEl.innerText, parseInt(qtyMatch[2]), parseInt(qtyMatch[1]), skuEl ? skuEl.innerText.trim() : null);
-                        }
-                    }
-                }
-            });
+                    if (!qtyMatch) return;
+                    const nameEl = tr.querySelector('td[data-label="שם"]') || tr.querySelector('.order-item-name');
+                    const skuEl = tr.querySelector('td[data-label="מק״ט"]') || tr.querySelector('td[data-label="ברקוד"]');
+                    if (!nameEl) return;
+                    checkItem(nameEl.innerText, parseInt(qtyMatch[2], 10), parseInt(qtyMatch[1], 10), skuEl ? skuEl.innerText.trim() : null);
+                });
+            }
         }
         return { phone, name: firstName, productsList: missingProducts };
     }
@@ -437,10 +508,26 @@
     // 5. Build & Manage Modal
     // ==========================================
 
+    function openNewPresetEditor(clientData) {
+        const newPreset = { id: generateId(), title: "הודעה חדשה", color: "#eeeeee", text: "תוכן ההודעה כאן..." };
+        currentPresets.push(newPreset);
+        checkForChanges();
+        renderContent(clientData);
+        setTimeout(() => {
+            modalBodyEl.scrollTop = modalBodyEl.scrollHeight;
+            const newRow = rowsContainerEl.querySelector(`[data-id="${newPreset.id}"]`);
+            if (newRow) {
+                const editBtn = newRow.querySelector('.tm-btn-edit');
+                if (editBtn) editBtn.click();
+            }
+        }, 100);
+    }
+
     function openModal(clientData) {
         const existing = document.querySelector('.tm-modal-overlay');
         if (existing) existing.remove();
 
+        isModalOpen = true;
         hasUnsavedChanges = false;
         isLocked = true;
         detectedMissingProducts = clientData.productsList;
@@ -454,6 +541,7 @@
                 const ok = confirm("יש שינויים שלא נשמרו. לצאת בכל זאת?");
                 if (!ok) return;
             }
+            isModalOpen = false;
             overlay.remove();
         };
 
@@ -462,18 +550,48 @@
 
         const header = document.createElement('div');
         header.className = 'tm-modal-header';
-        header.innerHTML = `
-            <div class="tm-header-right">
-                <div class="tm-modal-title"><i class="fa-brands fa-whatsapp" style="color:#25D366"></i> הודעות עבור: ${clientData.name}</div>
-            </div>
-            <div class="tm-header-left">
-                <button class="tm-icon-btn tm-add-btn" title="הוסף הודעה חדשה"><i class="fa-solid fa-plus"></i></button>
-                <button class="tm-icon-btn tm-lock-btn ${isLocked ? 'locked' : 'unlocked'}" title="${isLocked ? 'לחץ לביטול נעילה' : 'לחץ לנעילה'}">
-                    <i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-lock-open'}"></i>
-                </button>
-                <button class="tm-icon-btn tm-close-btn" title="סגור">&times;</button>
-            </div>
-        `;
+
+        const headerRight = document.createElement('div');
+        headerRight.className = 'tm-header-right';
+
+        const titleWrap = document.createElement('div');
+        titleWrap.className = 'tm-modal-title';
+
+        const waIcon = document.createElement('i');
+        waIcon.className = 'fa-brands fa-whatsapp';
+        waIcon.style.color = '#25D366';
+
+        const titleText = document.createElement('span');
+        titleText.textContent = ` הודעות עבור: ${clientData.name || ""}`;
+
+        titleWrap.appendChild(waIcon);
+        titleWrap.appendChild(titleText);
+        headerRight.appendChild(titleWrap);
+
+        const headerLeft = document.createElement('div');
+        headerLeft.className = 'tm-header-left';
+
+        const addBtn = document.createElement('button');
+        addBtn.className = 'tm-icon-btn tm-add-btn';
+        addBtn.title = 'הוסף הודעה חדשה';
+        addBtn.innerHTML = '<i class="fa-solid fa-plus"></i>';
+
+        const lockBtnEl = document.createElement('button');
+        lockBtnEl.className = `tm-icon-btn tm-lock-btn ${isLocked ? 'tm-locked' : 'tm-unlocked'}`;
+        lockBtnEl.title = isLocked ? 'לחץ לביטול נעילה' : 'לחץ לנעילה';
+        lockBtnEl.innerHTML = `<i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-lock-open'}"></i>`;
+
+        const closeBtn = document.createElement('button');
+        closeBtn.className = 'tm-icon-btn tm-close-btn';
+        closeBtn.title = 'סגור';
+        closeBtn.textContent = '×';
+
+        headerLeft.appendChild(addBtn);
+        headerLeft.appendChild(lockBtnEl);
+        headerLeft.appendChild(closeBtn);
+
+        header.appendChild(headerRight);
+        header.appendChild(headerLeft);
 
         const footer = document.createElement('div');
         footer.className = `tm-modal-footer ${isLocked ? 'tm-hidden' : ''}`;
@@ -483,29 +601,30 @@
         modalBodyEl = document.createElement('div');
         modalBodyEl.className = 'tm-modal-body';
 
-        header.querySelector('.tm-close-btn').onclick = () => {
+        closeBtn.onclick = () => {
             if (hasUnsavedChanges) {
                 const ok = confirm("יש שינויים שלא נשמרו. לצאת בכל זאת?");
                 if (!ok) return;
             }
+            isModalOpen = false;
             overlay.remove();
         };
-        const lockBtn = header.querySelector('.tm-lock-btn');
-        lockBtn.onclick = () => {
+        lockBtnEl.onclick = () => {
             isLocked = !isLocked;
-            lockBtn.className = `tm-icon-btn tm-lock-btn ${isLocked ? 'locked' : 'unlocked'}`;
-            lockBtn.title = isLocked ? 'לחץ לביטול נעילה' : 'לחץ לנעילה';
-            lockBtn.innerHTML = `<i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-lock-open'}"></i>`;
+            hasUnsavedChanges = true;
+            lockBtnEl.className = `tm-icon-btn tm-lock-btn ${isLocked ? 'tm-locked' : 'tm-unlocked'}`;
+            lockBtnEl.title = isLocked ? 'לחץ לביטול נעילה' : 'לחץ לנעילה';
+            lockBtnEl.innerHTML = `<i class="fa-solid ${isLocked ? 'fa-lock' : 'fa-lock-open'}"></i>`;
             updateSaveButtonState();
             renderContent(clientData);
         };
 
-        header.querySelector('.tm-add-btn').onclick = () => {
-            if(isLocked) { alert("אנא בטל נעילה כדי להוסיף הודעות."); return; }
-            currentPresets.push({ id: generateId(), title: "הודעה חדשה", color: "#eeeeee", text: "תוכן ההודעה כאן..." });
-            checkForChanges();
-            renderContent(clientData);
-            setTimeout(() => modalBodyEl.scrollTop = modalBodyEl.scrollHeight, 100);
+        addBtn.onclick = () => {
+            if (isLocked) {
+                alert("כדי להוסיף הודעה יש לבטל נעילה");
+                return;
+            }
+            openNewPresetEditor(clientData);
         };
 
         saveButtonEl.onclick = () => {
