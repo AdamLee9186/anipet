@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.2.0
+// @version      2.2.1
 // @description  Touch-friendly quantity input with smart animation and accessibility
 // @author       Adam Lee
 // @license      MIT
@@ -23,7 +23,7 @@
 
   // Configuration
   const CONFIG = {
-    VERSION: '2.2.0',
+    VERSION: '2.2.1',
     MIN_VALUE: -999,
     MAX_VALUE: 999999,
     HOLD_DELAY: 400,
@@ -75,6 +75,13 @@
       color: transparent !important;
       caret-color: transparent !important;
       text-shadow: none !important;
+    }
+
+    /* Hide the animated overlay text during booting as well,
+       so old values from previous dialog usages will not flash for a frame */
+    .lwq-booting .lwq-display-wrapper .lwq-display-value,
+    .modal.lwq-booting .lwq-display-wrapper .lwq-display-value {
+      visibility: hidden !important;
     }
 
     /* Keep current per-input hiding as a second safety net */
@@ -327,6 +334,13 @@
     el
     && el.tagName === 'INPUT'
     && el.type === 'number'
+    // IMPORTANT:
+    // אל תיגע בשדות bulk_update[...] (ובעיקר bulk_update[packages_quantity])
+    // במודל עריכת משלוחים. שם ערך ריק אומר "אל תעדכן את השדה הזה".
+    // אם ה-Stepper מכניס ברירת מחדל 1 לתוך השדה, הטופס תמיד ישלח
+    // bulk_update[packages_quantity]=1 והשרת יאפס את מספר החבילות ל-1
+    // גם כששינו רק נהג.
+    && !(el.name && el.name.startsWith('bulk_update['))
     && (
       // existing broad support
       true
