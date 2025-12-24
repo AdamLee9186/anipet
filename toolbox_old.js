@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.01
+// @version      13.8.72
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -30,9 +30,7 @@
     const BLOCK_RE = /(?:google-analytics\.com|googletagmanager\.com\/gtag|clarity\.ms|connect\.facebook\.net|fbevents\.js)/i;
     const shouldBlock = (u)=>{ try{ return BLOCK_RE.test(String(u||'')); }catch(_){ return false; } };
     // fetch: short-circuit known trackers before the request leaves the page
-    // Ensure we only wrap ONCE and keep a reference to the TRULY original fetch
-    if (!window.__tmcOrigFetch) window.__tmcOrigFetch = window.fetch;
-    const ORIG_FETCH = window.__tmcOrigFetch && window.__tmcOrigFetch.bind(window);
+    const ORIG_FETCH = window.fetch && window.fetch.bind(window);
     if (ORIG_FETCH){
       window.fetch = function(input, init){
         const url = typeof input==='string' ? input : (input && input.url);
@@ -177,17 +175,10 @@
   });
 
   const body = document.querySelector(`${TBL} tbody`);
-  if (body && !body.dataset.tmcObserverActive) {
-    body.dataset.tmcObserverActive = 'true';
-    new MutationObserver((mutations) => {
-      if (!active) return;
-      // Ignore mutations caused by our own script to prevent infinite loops
-      const isInternal = mutations.every(m => 
-        m.target.classList?.contains('tmc-preview-row') || 
-        m.target.closest?.('.tmc-preview-row')
-      );
-      if (!isInternal) refresh();
-    }).observe(body, { childList: true, subtree: true });
+  if (body) {
+    new MutationObserver(() => {
+      if (active) refresh();
+    }).observe(body, { childList: true });
   }
 
   window.toolboxMerlogFilter = {
@@ -239,34 +230,19 @@ function __tmcEnsurePreviewCSS(){
       max-inline-size: calc(100vw - var(--map-width, 0px)) !important;
       transition: none !important;
     }
-    
-    /* מכולת הכרטיסיות הראשית */
-    .tm-preview-container {
-      display: flex !important;
-      flex-wrap: wrap !important;
-      gap: 15px !important;
-      padding: 15px !important;
-      background: #f8f9fa !important;
-      min-height: 120px !important; /* שומר מקום מינימלי למניעת קפיצה של השורה */
-      width: 100% !important;
-      justify-content: flex-start !important;
-    }
     /* Each raw card (old markup without our classes) becomes fit-to-content.
        Make preflight match final layout exactly to prevent jumping. */
     tr[id^="preview-for-"] td[colspan] > div:first-child >
       [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"]{
       display: flex !important;
-      flex-direction: row !important;
-      align-items: flex-start !important; /* מונע מתיחה לגובה */
+      align-items: flex-start !important;
       gap: 10px !important;
-      flex: 0 1 auto !important; /* Changed from 1 1 auto to prevent stretching */
+      flex: 0 1 auto !important; /* Allow cards to shrink to content size */
       width: auto !important;
-      min-width: 220px !important; /* רוחב מינימלי קשיח - הוגדל מ-180px */
-      max-width: 100% !important;
-      white-space: normal !important; /* מונע את המעיכה של הטקסט */
+      min-width: 180px !important; /* Reduced from 260px for better fit */
+      max-width: min(250px, 100%) !important; /* Reduced max width for better fit */
+      white-space: normal !important;
       align-self: flex-start !important;
-      box-sizing: border-box !important;
-      height: auto !important;
       /* Match the class-based rules exactly to prevent jumping */
       transition: none !important;
     }
@@ -275,16 +251,13 @@ function __tmcEnsurePreviewCSS(){
     tr[id^="preview-for-"] td[colspan] > div:first-child > div:has(img),
     tr[id^="preview-for-"] td[colspan] > div:first-child > div:has(.text-muted){
       display:flex !important;
-      flex-direction: row !important;
       align-items:flex-start !important;
       gap:10px !important;
-      flex:0 1 auto !important; /* Changed from 1 1 auto to prevent stretching */
+      flex:0 1 auto !important;
       width:auto !important;
-      min-width:220px !important; /* רוחב מינימלי קשיח - הוגדל מ-180px */
-      max-width:100% !important;
-      white-space:normal !important; /* מונע את המעיכה של הטקסט */
-      box-sizing: border-box !important;
-      height: auto !important;
+      min-width:180px !important;
+      max-width:min(250px, 100%) !important;
+      white-space:normal !important;
       transition:none !important;
     }
     /* Kill legacy inline props on the raw card (before our JS can clean them) */
@@ -310,46 +283,6 @@ function __tmcEnsurePreviewCSS(){
       flex: 0 0 auto !important;
       margin-inline-start: 6px !important;
     }
-    
-    /* Skeleton placeholder for images to prevent layout shift */
-    .tmc-preview-img-wrapper,
-    tr[id^="preview-for-"] td[colspan] > div:first-child >
-      [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"][class*="p-2"] img {
-      width: 80px !important;
-      height: 80px !important;
-      background: #f3f3f3 !important; /* Placeholder color until image loads */
-      border-radius: 8px !important;
-      display: block !important;
-      aspect-ratio: 1 / 1 !important;
-      min-width: 80px !important;
-      min-height: 80px !important;
-    }
-    
-    /* Prevent name column from shifting */
-    td[data-label="שם"] {
-      min-width: 220px !important;
-      max-width: 300px !important;
-    }
-    /* מניעת שבירת שורות מוזרה בתוך הכרטיס */
-    tr[id^="preview-for-"] td .d-flex.align-items-center.border.rounded * {
-        white-space: normal !important;
-        word-break: break-word !important;
-    }
-    
-    /* הקונטיינר הראשי של השורות */
-    tr[id^="preview-for-"] td > div[style*="display: flex"] {
-        display: flex !important;
-        flex-wrap: wrap !important;
-        gap: 8px !important;
-        width: 100% !important;
-        box-sizing: border-box !important;
-    }
-    
-    /* הסתרת כרטיסים ריקים עד לטעינה */
-    tr[id^="preview-for-"] td:empty {
-        display: none;
-    }
-
     /* Let meta wrap naturally only inside cards (not the entire row) */
     tr[id^="preview-for-"] td[colspan] .tmc-preview-card .text-muted{
       white-space: normal !important;
@@ -422,39 +355,15 @@ function __tmcEnsurePreviewCSS(){
       display: flex !important;
       align-items: flex-start !important; /* Changed from center to flex-start for better content fitting */
       gap: 10px !important;
-      /* Allow fit to content */
+      /* fit-to-content: never stretch across whole line */
+      flex: 0 1 auto !important; /* Allow cards to shrink to content size */
       width: auto !important;
-      min-width: 200px !important;
-      max-width: 100% !important;
-      flex: 0 1 auto !important; 
+      min-width: 180px !important; /* Reduced from 260px for better fit */
+      max-width: min(250px, 100%) !important; /* Reduced max width for better fit */
       align-self: flex-start !important;
       white-space: normal !important; /* ensure text breaks inside the card */
-      margin-bottom: 10px !important;
       /* avoid transition flicker between initial and canonical layout */
       transition: none !important;
-    }
-    
-    /* כרטיסיית מוצר בודד - קיבוע גודל */
-    .tm-card-wrapper {
-      flex: 0 0 250px !important; /* לא גדל, לא קטן, תמיד 250 פיקסל */
-      width: 250px !important;
-      max-width: 250px !important;
-      min-width: 250px !important;
-      background: white !important;
-      border: 1px solid #e0e0e0 !important;
-      border-radius: 10px !important;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.05) !important;
-      overflow: hidden !important;
-      display: flex !important;
-      flex-direction: column !important;
-    }
-    
-    /* Container for preview cards - allows wrapping */
-    .tmc-preview-row,
-    tr[id^="preview-for-"] td[colspan] > div:first-child {
-      display: flex !important;
-      flex-wrap: wrap !important; /* Allow cards to wrap to next line */
-      gap: 10px !important;
     }
     /* kill legacy inline rules that force full-width/nowrap on old variant */
     .tmc-preview-card[style*="width: 100%"],
@@ -512,18 +421,7 @@ function __tmcEnsurePreviewCSS(){
 
     /* quantity coloring, meta, etc... (unchanged rules below) */
     .tmc-preview-meta { font-size: .85rem; line-height: 1.2; color: #6c757d; }
-    /* Product Titles and Bold Names in Previews */
-    .tmc-preview-card .font-weight-bold,
-    .tmc-preview-title {
-      font-size: 0.9rem !important;
-      white-space: normal !important; 
-      word-wrap: break-word !important;
-      overflow-wrap: break-word !important;
-      display: block !important;
-      line-height: 1.2 !important;
-      max-height: none !important; /* Remove limit to allow full name display */
-      margin-bottom: 4px !important;
-    }
+    .tmc-preview-title { line-height: 1.2; }
     .tampermonkey-picked-full { color: #0c7b0c; font-weight: 600; }
     .tampermonkey-picked-partial { color: #b26a00; font-weight: 600; }
     .tampermonkey-picked-none { color: #842029; font-weight: 600; }
@@ -538,57 +436,11 @@ function __tmcEnsurePreviewCSS(){
       contain: layout paint style;
       /* ברירת מחדל לכרטיסים אמיתיים */
       contain-intrinsic-size: 1px 400px;
-      /* Fix Z-Index: ensure previews stay above map */
-      position: relative;
-      z-index: 1;
     }
     /* תחת map-open: כאשר מדובר במצב־ריק, אל תשמור 400px */
     body.map-open tr[id^="preview-for-"] > td > .tmc-preview-row:has(.tmc-preview-empty){
       content-visibility: visible !important;
       contain-intrinsic-size: 1px 36px !important;
-    }
-    
-    /* Fix Z-Index for preview cards when map is open */
-    body.map-open tr[id^="preview-for-"] .tmc-preview-card {
-      position: relative;
-      z-index: 2;
-    }
-    
-    /* Skeleton placeholder for images to prevent layout shift */
-    .tmc-preview-img-wrapper,
-    tr[id^="preview-for-"] td[colspan] > div:first-child >
-      [class*="d-flex"][class*="align-items-center"][class*="border"][class*="rounded"][class*="p-2"] img {
-      width: 80px !important;
-      height: 80px !important;
-      background: #f3f3f3 !important; /* Placeholder color until image loads */
-      border-radius: 8px !important;
-      display: block !important;
-      aspect-ratio: 1 / 1 !important;
-      min-width: 80px !important;
-      min-height: 80px !important;
-    }
-    
-    /* אופטימיזציה לתמונה למניעת קפיצות גובה */
-    .tmc-preview-img-wrapper {
-      width: 100% !important;
-      height: 180px !important; /* גובה קבוע לתמונה */
-      display: flex !important;
-      align-items: center !important;
-      justify-content: center !important;
-      background: #fcfcfc !important;
-      border-bottom: 1px solid #f0f0f0 !important;
-    }
-    
-    .tmc-preview-img-wrapper img {
-      max-width: 100% !important;
-      max-height: 100% !important;
-      object-fit: contain !important;
-    }
-    
-    /* Prevent name column from shifting */
-    td[data-label="שם"] {
-      min-width: 220px !important;
-      max-width: 300px !important;
     }
     `;
     // Replace-or-create the single style node
@@ -1346,9 +1198,7 @@ function installPanelViewRateLimiter(){
   if (window.__tmcPanelLimiterUpgraded) return;
   window.__tmcPanelLimiterUpgraded = true;
   try{
-    // Ensure we only wrap ONCE and keep a reference to the TRULY original fetch
-    if (!window.__tmcOrigFetch) window.__tmcOrigFetch = window.fetch;
-    const ORIG_FETCH = window.__tmcOrigFetch && window.__tmcOrigFetch.bind(window);
+    const ORIG_FETCH = window.fetch.bind(window);
     const PANEL_VIEW_RE = /\/tasks\/\d+\/panel_view(\b|$)/;
 
     // --- Tuning (faster but safe) ---
@@ -3038,9 +2888,7 @@ function fixShipmentWrappingImpl() {
 }
 
 // Override fetch to handle blocked requests gracefully
-// Ensure we only wrap ONCE and keep a reference to the TRULY original fetch
-if (!window.__tmcOrigFetch) window.__tmcOrigFetch = window.fetch;
-const originalFetch = window.__tmcOrigFetch;
+const originalFetch = window.fetch;
 window.fetch = function(input, init) {
   const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
   const SUPPRESSED = /google-analytics\.com|connect\.facebook\.net|clarity\.ms/;
@@ -3533,10 +3381,8 @@ setupBlockedScriptObserver();
 
     // ===== TM Preview Performance Boost (panel_view + cache + prefetch + 429/backoff) =====
     const TM_PREVIEW = (() => {
-      // Persistent Cache: 1 hour TTL (survives refresh), RAM Cache: 5 minutes (fastest)
-      const PERSISTENT_CACHE_TTL_MS = 60 * 60 * 1000; // 1 שעה - שורד Refresh
-      const RAM_CACHE_TTL_MS = 5 * 60 * 1000; // 5 דקות - מהיר ביותר
-      const memCache = new Map(); // RAM Cache (fastest - microseconds)
+      const CACHE_TTL_MS = 5 * 60 * 1000; // 5 דקות
+      const memCache = new Map(); // fallback בזיכרון
       const inflight = new Map(); // taskId -> Promise<string>
       let backoffUntil = 0;       // epoch ms
       let backoffMs = 0;          // exponential
@@ -3568,70 +3414,29 @@ setupBlockedScriptObserver();
         return Number.isNaN(d) ? 0 : Math.max(0, d - now());
       }
 
-      // Persistent Cache: localStorage (survives refresh)
-      function persistentGet(key) {
-        try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
-      }
-      function persistentSet(key, val) {
-        try { localStorage.setItem(key, JSON.stringify(val)); } catch {}
-      }
-      
-      // Session Cache: sessionStorage (fast, but cleared on refresh)
-      function sessionGet(key) {
+      function ssGet(key) {
         try { return JSON.parse(sessionStorage.getItem(key) || 'null'); } catch { return null; }
       }
-      function sessionSet(key, val) {
+      function ssSet(key, val) {
         try { sessionStorage.setItem(key, JSON.stringify(val)); } catch {}
       }
 
       function cacheKey(taskId) { return `tm_preview_panel_view_${taskId}`; }
 
       function setCached(taskId, html) {
-        // Protect against empty/invalid cache entries
-        if (!html || typeof html !== 'string' || html.trim().length === 0) {
-          return null;
-        }
         const rec = { html, t: now() };
-        const k = cacheKey(taskId);
-        // Save to all three levels: RAM (fastest), Session (fast), Persistent (survives refresh)
+        ssSet(cacheKey(taskId), rec);
         memCache.set(taskId, rec);
-        sessionSet(k, rec);
-        persistentSet(k, rec);
         return rec;
       }
 
       function getCached(taskId) {
         const k = cacheKey(taskId);
-        const nowTime = now();
-        
-        // Level 1: RAM Cache (fastest - microseconds)
-        let rec = memCache.get(taskId);
-        if (rec && (nowTime - rec.t) <= RAM_CACHE_TTL_MS) return rec;
-        
-        // Level 2: Session Cache (fast - milliseconds)
-        rec = sessionGet(k);
-        if (rec && (nowTime - rec.t) <= RAM_CACHE_TTL_MS) {
-          memCache.set(taskId, rec); // Warm RAM cache
-          return rec;
-        }
-        
-        // Level 3: Persistent Cache (survives refresh - milliseconds)
-        rec = persistentGet(k);
-        if (rec && (nowTime - rec.t) <= PERSISTENT_CACHE_TTL_MS) {
-          memCache.set(taskId, rec); // Warm RAM cache
-          sessionSet(k, rec); // Warm session cache
-          return rec;
-        }
-        
-        // Cache expired or not found
-        if (rec && (nowTime - rec.t) > PERSISTENT_CACHE_TTL_MS) {
-          // Clean up expired cache
-          try { localStorage.removeItem(k); } catch {}
-          try { sessionStorage.removeItem(k); } catch {}
-          memCache.delete(taskId);
-        }
-        
-        return null;
+        let rec = ssGet(k);
+        if (!rec) rec = memCache.get(taskId) || null;
+        if (!rec) return null;
+        if ((now() - rec.t) > CACHE_TTL_MS) return null;
+        return rec;
       }
 
       async function fetchPanelView(taskId, { force = false, prefetch = false } = {}) {
@@ -3656,23 +3461,11 @@ setupBlockedScriptObserver();
         if (inflight.has(id)) return inflight.get(id);
 
         const p = (async () => {
-          let resp;
-          try {
-            resp = await fetch(url, {
-              method: 'POST',
-              headers: { 'accept': '*/*', 'content-type': 'application/json' },
-              body: '{}'
-            });
-          } catch (err) {
-            // Handle AbortError and network errors gracefully
-            if (err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('signal is aborted')) {
-              // Silently handle abort - don't log to console
-              throw new Error('panel_view aborted');
-            }
-            // Log other network errors for debugging
-            if (DEBUG) console.debug('[Toolbox] fetchPanelView network error:', err);
-            throw err;
-          }
+          const resp = await fetch(url, {
+            method: 'POST',
+            headers: { 'accept': '*/*', 'content-type': 'application/json' },
+            body: '{}'
+          });
 
           if (resp.status === 429) {
             // Respect Retry-After, fallback exponential (max 60s)
@@ -3686,12 +3479,9 @@ setupBlockedScriptObserver();
 
           // Read once; all callers will get the same string
           const html = await resp.text();
-          // Only cache if HTML is not empty
-          if (html && html.trim().length > 0) {
-            setCached(id, html);
-            // Warm image cache (best-effort)
-            try { await cachePreviewImages(html); } catch {}
-          }
+          setCached(id, html);        // <-- was cacheSet; fix name
+          // Warm image cache (best-effort)
+          try { await cachePreviewImages(html); } catch {}
           return html;
         })().finally(() => {
           inflight.delete(id);
@@ -3754,94 +3544,48 @@ setupBlockedScriptObserver();
         domBatch([], writeOps);
       }
 
-      // החדרת HTML יעילה ללא ג'אנק (Layout Thrashing)
+      // החדרת HTML יעילה ללא ג'אנק
       async function renderPreviewHTML(targetEl, html) {
-        // 1. יצירת DOM בזיכרון
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        
-        // 2. תיקון האלמנטים *לפני* שהם נכנסים לדף
-        // הופך את הכרטיסים ל-Multi-line ומוסיף מחלקות שלנו
-        const cards = doc.querySelectorAll('.d-flex.align-items-center.border.rounded');
-        cards.forEach(card => {
-            card.classList.add('tmc-preview-card'); // המחלקה שלנו
-            // ניקוי סגנונות inline מזיקים שמגיעים מהשרת
-            card.style.whiteSpace = 'normal';
-            card.style.minWidth = '220px';
-            
-            // פיצול שורות (מק"ט/מחיר/כמות) בזיכרון
-            const meta = card.querySelector('.text-muted');
-            if(meta) {
-               // לוגיקת הפיצול מועתקת לכאן כדי לרוץ בזיכרון
-               const raw = meta.textContent.replace(/\s+/g,' ').trim();
-               const sku   = (raw.match(/(?:מק"?ט|ברקוד)[:\s]*([0-9]{7,14})/)||[])[1] || '';
-               const qty   = (raw.match(/כמות[:\s]*([^|)]+)/)||[])[1]?.trim() || '';
-               const price = (raw.match(/מחיר[:\s]*₪?\s*([\d.,]+)/)||[])[1] || '';
-               
-               let newHtml = '';
-               if(sku) newHtml += `<div><b>ברקוד:</b> ${sku}</div>`;
-               if(price) newHtml += `<div><b>מחיר:</b> ₪${price}</div>`;
-               if(qty) {
-                 // שימוש ב-__tmcColorQtySpan אם זמינה
-                 const qtyHtml = (typeof window.__tmcColorQtySpan === 'function') 
-                   ? window.__tmcColorQtySpan(qty) 
-                   : qty;
-                 newHtml += `<div><b>כמות:</b> ${qtyHtml}</div>`;
-               }
-               
-               if(newHtml) meta.innerHTML = newHtml;
-            }
-        });
+        const frag = document.createDocumentFragment();
+        const wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        frag.appendChild(wrap);
 
-        // 3. שליפת התוכן המוכן
-        const content = doc.body.innerHTML;
-        
-        // 4. מציאת התא שבו מוזרק ה-Preview
-        const targetCell = targetEl.querySelector('.tm-preview-injection-point') || targetEl;
-        
-        // 5. הזרקה אחת ויחידה ל-DOM עם שמירת מקום
-        // משתמשים ב-requestAnimationFrame כדי לוודא שזה קורה בפריים הבא ולא תוקע את ה-UI
-        requestAnimationFrame(() => {
-            // מציגים skeleton מיד עם opacity 0.5 למניעת קפיצות
-            targetEl.replaceChildren(); // מנקה את התא/הקונטיינר של ה-preview
-            targetEl.innerHTML = `
-                <div class="tm-preview-container" style="opacity: 0.5;">
-                    ${content || '<div class="tm-loader">טוען מוצרים...</div>'}
-                </div>
-            `;
-            
-            // Mark as preview root to enable content-visibility optimizations
-            try { targetEl.classList.add('tm-preview-root'); } catch(_) {}
-            
-            // ברגע שהתוכן נטען, נחזיר את האטימות ל-1
-            const container = targetEl.querySelector('.tm-preview-container');
-            if (container && content) {
-                // משתמשים ב-requestAnimationFrame נוסף כדי להבטיח שהתוכן כבר נטען
-                requestAnimationFrame(() => {
-                    container.style.opacity = '1';
-                });
-            }
-            
-            // סימון שהאלמנט טופל כדי למנוע הרצה חוזרת של סקריפטים אחרים
-            targetEl.querySelectorAll('.tmc-preview-card').forEach(c => {
-                c.dataset.processed = "true";
-            });
-            
-            // אופטימיזציית תמונות בדיעבד (לא גורם לקפיצות)
-            optimizeImages(targetEl);
-            
-            // Decode images in background using requestIdleCallback or setTimeout
-            const imgs = Array.from(targetEl.querySelectorAll('img'));
-            if (imgs.length > 0) {
-              idleChunk(imgs, (img) => {
-                try {
-                  img.loading = 'lazy';
-                  img.decoding = 'async';
-                } catch {}
-                if (img.decode) img.decode().catch(() => {});
-              }, 12);
-            }
-        });
+        optimizeImages(wrap);
+
+        // TM: Insert HTML immediately, then decode images in background
+        targetEl.replaceChildren(); // מנקה את התא/הקונטיינר של ה-preview
+        targetEl.appendChild(frag);
+
+        // Mark as preview root to enable content-visibility optimizations
+        try { targetEl.classList.add('tm-preview-root'); } catch(_) {}
+
+        // Defer heavy post styling to idle + batch to reduce forced reflow
+        const doPostStyle = () => {
+          try {
+            // Only keep the new multi-line/bigger-photo card styling
+            domBatch([], [
+              () => splitPreviewMetaLines(targetEl)
+            ]);
+          } catch(_) {}
+        };
+        // Use setTimeout instead of requestIdleCallback for more predictable timing
+        setTimeout(doPostStyle, 0);
+
+        // Decode images in background using requestIdleCallback or setTimeout
+        const imgs = Array.from(wrap.querySelectorAll('img'));
+        if (imgs.length > 0) {
+          idleChunk(imgs, (img) => {
+            try {
+              img.loading = 'lazy';
+              img.decoding = 'async';
+            } catch {}
+            if (img.decode) img.decode().catch(() => {});
+          }, 12);
+        }
+
+        /* splitPreviewMetaLines moved into doPostStyle (batched) */
+
       }
 
       // Prefetch "אמיתי" (: ) על hover/viewport — can be hard-disabled to avoid 429
@@ -4002,7 +3746,6 @@ setupBlockedScriptObserver();
         enableResponsive: true,
         addWhatsApp: true,
         highlightMerlog: true,
-        lateCounterEnabled: false, // Late Counter - disabled by default
     };
     let productDataCache = null; // For Image Finder
     let itemCodeToBarcodeMap = null; // For Barcode Replacer
@@ -5674,9 +5417,6 @@ function showGalleryOverlay(galleryItems, startIndex) {
             if (document.body && document.body.contains(overlay)) {
                 document.body.removeChild(overlay);
             }
-            // Restore body overflow and padding
-            document.body.style.overflow = '';
-            document.body.style.paddingRight = '';
         }, 300);
     };
 
@@ -5764,12 +5504,6 @@ function showGalleryOverlay(galleryItems, startIndex) {
     };
 
     if (document.body) {
-        // Prevent layout shift when scrollbar disappears
-        const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
-        if (scrollbarWidth > 0) {
-            document.body.style.paddingRight = scrollbarWidth + 'px';
-        }
-        document.body.style.overflow = 'hidden';
         document.body.appendChild(overlay);
     }
 
@@ -5888,7 +5622,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
             adjustImageMaxHeight();
         }
     };
-    window.addEventListener('resize', resizeHandler, { passive: true });
+    window.addEventListener('resize', resizeHandler);
 
     // Add global error handler for gallery
     const galleryErrorHandler = (event) => {
@@ -5977,12 +5711,7 @@ function showGalleryOverlay(galleryItems, startIndex) {
                 display: 'block',
                 ...styleObject
             });
-            img.onerror = function() { 
-                // Prevent infinite error loop by disabling error handler before changing src
-                this.onerror = null;
-                this.src = PLACEHOLDER_IMG_URL; 
-                this.onclick = null; 
-            };
+            img.onerror = function() { this.src = PLACEHOLDER_IMG_URL; this.onclick = null; };
             img.onclick = (e) => {
                 e.stopPropagation();
 
@@ -6651,9 +6380,6 @@ function showGalleryOverlay(galleryItems, startIndex) {
             const elementsWithSku = scope.querySelectorAll('[data-original-sku]');
             elementsWithSku.forEach((el) => {
                 try {
-                    // הוסף בדיקה אם האלמנט כבר טופל
-                    if (el.dataset.tmBarcodeProcessed) return;
-                    
                     const originalSku = el.getAttribute('data-original-sku')?.trim();
                     if (!originalSku) return;
 
@@ -6667,8 +6393,6 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     if (barcode && barcode !== originalSku) {
                         processBarcodeElement(el, barcode, originalSku);
                     }
-                    // סימון שהאלמנט טופל כדי למנוע עיבוד חוזר
-                    el.dataset.tmBarcodeProcessed = "true";
                     markElementAsProcessed(el);
                 } catch (elementError) {
                     console.warn(`[${SCRIPT_NAME}] Failed to process element with data-original-sku:`, elementError);
@@ -6682,9 +6406,6 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     const elements = context.querySelectorAll('td.text-nowrap, input[type="text"], span.text-muted, strong');
                     elements.forEach((el) => {
                         try {
-                            // הוסף בדיקה אם האלמנט כבר טופל
-                            if (el.dataset.tmBarcodeProcessed) return;
-                            
                             // Skip if already processed
                             if (isElementProcessed(el)) return;
 
@@ -6700,8 +6421,6 @@ function showGalleryOverlay(galleryItems, startIndex) {
                             if (barcode && barcode !== sku) {
                                 processBarcodeElement(el, barcode, sku);
                             }
-                            // סימון שהאלמנט טופל כדי למנוע עיבוד חוזר
-                            el.dataset.tmBarcodeProcessed = "true";
                             markElementAsProcessed(el);
                         } catch (elementError) {
                             console.warn(`[${SCRIPT_NAME}] Failed to process element:`, elementError);
@@ -6756,9 +6475,6 @@ function showGalleryOverlay(galleryItems, startIndex) {
                             const hasSkuElement = skuCell.querySelector('input, span, strong');
                             const barcodeElement = skuCell.querySelector('.tampermonkey-barcode-bdi');
 
-                            // הוסף בדיקה אם האלמנט כבר טופל
-                            if (skuCell.dataset.tmBarcodeProcessed) return;
-                            
                             // Skip if already processed
                             if (isElementProcessed(skuCell)) return;
 
@@ -6793,8 +6509,6 @@ function showGalleryOverlay(galleryItems, startIndex) {
                                         skuCell.appendChild(barcodeCopyIcon);
                                     }
 
-                                    // סימון שהאלמנט טופל כדי למנוע עיבוד חוזר
-                                    skuCell.dataset.tmBarcodeProcessed = "true";
                                     markElementAsProcessed(skuCell);
                                 }
                             }
@@ -6987,20 +6701,16 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
                     }
                 });
 
-                // 1. את מה שעל המסך - פתח מיד (עם השהיה קלה)
-                visibleButtons.forEach((btn, index) => {
-                    setTimeout(() => {
-                        btn.click();
-                    }, index * 100); // השהיה של 100ms בין כל כפתור
-                });
+                // 1. את מה שעל המסך - פתח מיד
+                visibleButtons.forEach(btn => btn.click());
 
                 // 2. את השאר - פתח בהדרגה כדי לא לתקוע את הממשק (Staggering)
                 if (offscreenButtons.length > 0) {
-                    const startDelay = visibleButtons.length * 100; // התחל אחרי שסיימנו עם הנראים
+                    let delay = 50; // המתנה התחלתית קצרה
                     offscreenButtons.forEach((btn, index) => {
                         setTimeout(() => {
                             btn.click();
-                        }, startDelay + (index * 100)); // מרווח של 100ms בין לחיצה ללחיצה
+                        }, delay + (index * 20)); // מרווח של 20ms בין לחיצה ללחיצה
                     });
                 }
                 // --- SMART BATCH OPEN END ---
@@ -7572,8 +7282,11 @@ function injectWhatsAppButtons() {
 
     const createWhatsAppLink = (phone, firstName) => {
         const numberForLink = `972${phone.replace(/\D/g, '').substring(1)}`;
-        // Send empty message (no "שלום..." text)
-        const href = `https://wa.me/${numberForLink}`;
+        let href = `https://wa.me/${numberForLink}`;
+        if (firstName) {
+            const text = `שלום ${firstName}, זה מאניפט חוצות.`;
+            href += `?text=${encodeURIComponent(text)}`;
+        }
         const whatsappLink = document.createElement('a');
         whatsappLink.href = href;
         whatsappLink.target = 'whatsapp_window';
@@ -9503,7 +9216,7 @@ function prepareCopyElements() {
     // Advanced ephemeral cache system
     const rowColorCache = new Map(); // taskId -> { color: 'green'|'red'|'purple'|'purplegreen'|'brown'|'pink'|null, source: 'dom'|'panel', ts: number }
     const TTL = { green: 20*60e3, red: 20*60e3, purple: 20*60e3, purplegreen: 20*60e3, brown: 20*60e3, pink: 20*60e3, none: 3*60e3 }; // 20min
-    const MAX_CACHE_SIZE = 800;
+    const MAX_CACHE_SIZE = 500;
 
     function cacheGet(taskId) {
         const e = rowColorCache.get(taskId);
@@ -9524,16 +9237,10 @@ function prepareCopyElements() {
     }
 
     function cacheSet(taskId, color, source) {
-        // ניקוי יזום אם הקאש גדול מדי
-        if (rowColorCache.size > MAX_CACHE_SIZE) { // גבול סביר
-            const keysToDelete = [];
-            let i = 0;
-            for (const key of rowColorCache.keys()) {
-                keysToDelete.push(key);
-                i++;
-                if (i > 100) break; // מחק 100 ישנים
-            }
-            keysToDelete.forEach(k => rowColorCache.delete(k));
+        // Enforce size limit with LRU eviction
+        if (rowColorCache.size >= MAX_CACHE_SIZE) {
+            const firstKey = rowColorCache.keys().next().value;
+            rowColorCache.delete(firstKey);
         }
         rowColorCache.set(taskId, { color, source, ts: Date.now() });
     }
@@ -9636,16 +9343,7 @@ function prepareCopyElements() {
                 headers: { 'accept': '*/*', 'content-type': 'application/json' },
                 body: '{}',
                 signal
-            }).catch(err => {
-                // Handle AbortError silently - it's expected when cancelling requests
-                if (err.name === 'AbortError' || err.message?.includes('aborted')) {
-                    return null; // Return null to indicate abort
-                }
-                throw err; // Re-throw other errors
             });
-            
-            // If request was aborted, return early
-            if (!response) return false;
             if (!response.ok) {
                 if (response.status === 429) {
                     const ra = response.headers && response.headers.get && response.headers.get('Retry-After');
@@ -10704,35 +10402,7 @@ async function initialize() {
     // 1) skip while copy feedback is active
     if (window._tmCopying) return;
 
-    // 2) סינון קריטי: האם השינויים נעשו על ידי הסקריפט שלנו?
-    const isScriptMutation = mutationsList.every(m => {
-        // בודק אם האלמנט שנוסף/השתנה הוא אחד משלנו
-        const target = m.target;
-        // התעלם משינויים בתוך אלמנטים שלנו
-        if (target && target.closest && target.closest('.tampermonkey-copy-wrap, .copy-icon, .tm-name-link, .whatsapp-injected, .tampermonkey-sku-image, .tmc-preview-card[data-processed="true"]')) return true;
-        // התעלם משינויים של attributes שלנו
-        if (m.type === 'attributes' && m.attributeName && m.attributeName.startsWith('data-tm')) return true;
-        // התעלם משינויים בתוך אלמנטים עם data-tm* attributes
-        if (target && target.nodeType === 1) {
-          for (let attr of target.attributes || []) {
-            if (attr.name.startsWith('data-tm')) return true;
-          }
-        }
-        // בדוק addedNodes
-        if (m.addedNodes && m.addedNodes.length > 0) {
-          for (let node of m.addedNodes) {
-            if (node && node.nodeType === 1) {
-              if (node.matches && node.matches('.tampermonkey-copy-wrap, .copy-icon, .tm-name-link, .whatsapp-injected, .tampermonkey-sku-image, .tmc-preview-card[data-processed="true"]')) return true;
-              if (node.closest && node.closest('.tampermonkey-copy-wrap, .copy-icon, .tm-name-link, .whatsapp-injected, .tampermonkey-sku-image')) return true;
-            }
-          }
-        }
-        return false;
-    });
-
-    if (isScriptMutation) return; // יציאה מוקדמת!
-
-    // 3) ignore mutations coming from the copy icon area (בדיקה נוספת)
+    // 2) ignore mutations coming from the copy icon area
     if (mutationsList.some(m => {
       const el = (m.target?.nodeType === 1 ? m.target : m.target?.parentElement) || null;
       return el && el.closest && el.closest('.tampermonkey-copy-wrap, .copy-icon');
@@ -10740,7 +10410,6 @@ async function initialize() {
       return;
     }
 
-    // המשך לוגיקה רגילה עם Debounce
     clearTimeout(observer.debounceTimer);
     observer.debounceTimer = setTimeout(() => {
       if (!window.runMainLogicExecuting) {
@@ -10788,7 +10457,7 @@ async function initialize() {
 
       // NEW: Also add copy icons to pick order items for any DOM changes
       // addCopyIconsToPickOrderItems(); // מנוטרל בכוונה
-    }, 150); // הגדלת ה-Debounce ל-150ms לביצועים טובים יותר
+    }, 100);
   });
   if (document.body) {
     observer.observe(document.body, { childList: true, subtree: true });
@@ -10860,15 +10529,7 @@ const __tmRippleGuard = new WeakMap();
 const RIPPLE_GUARD_MS = 200;
 
 // Utility: remove copy styling/tooltip from a cell and its descendants
-// Also supports string input: strips "העתק" text from string (used by MutationObserver)
 function stripCopyFrom(root) {
-  // If it's a string, return cleaned string
-  if (typeof root === 'string') {
-    if (!root) return '';
-    // מסיר את המילה "העתק" ורווחים מיותרים שנוצרים מהאייקון
-    return root.replace(/העתק/g, '').trim();
-  }
-  // If it's an element, remove copy styling
   if (!root) return;
   root.classList.remove('copy-enabled');
   if (root.getAttribute && root.getAttribute('title') === 'לחץ להעתקה') {
@@ -10876,10 +10537,6 @@ function stripCopyFrom(root) {
   }
   root.querySelectorAll('.copy-enabled').forEach(el => el.classList.remove('copy-enabled'));
   root.querySelectorAll('[title="לחץ להעתקה"]').forEach(el => el.removeAttribute('title'));
-}
-// Ensure it's available globally for MutationObserver callbacks
-if (typeof window !== 'undefined') {
-  window.stripCopyFrom = stripCopyFrom;
 }
 
 // Proactive cleanup: remove copy styling from all dropdown-hosting cells on the page
@@ -11158,15 +10815,7 @@ if (document.body) {
 
     /* === FIX: אל תשנה display של תאי טבלה — רק יישור אנכי קלאסי === */
     td.tm-flex-cell, th.tm-flex-cell { vertical-align: middle; }
-    /* === CRITICAL FIX: Pre-flight styling for name cells to prevent "dancing" table === */
-    /* תופס את תאי השם מיד עם טעינתם ולפני עיבוד JS - מונע אות מתחת לאות */
-    td[data-label="שם"], th[data-label="שם"] { 
-      vertical-align: middle;
-      /* Pre-flight: ensure text wrapping immediately to prevent layout shifts */
-      white-space: normal !important;
-      word-wrap: break-word !important;
-      overflow-wrap: break-word !important;
-    }
+    td[data-label="שם"], th[data-label="שם"] { vertical-align: middle; }
     @keyframes tm-ripple {
       /* שמור על scale מתון כדי למנוע גלישה/גלישה */
       to { transform:scale(2.2); opacity:0; }
@@ -11602,68 +11251,49 @@ requestAnimationFrame(() => {
   const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
   if (panel) validatePhonesEverywhere(panel);
 });
-// Removed setTimeout "spaghetti" - now handled by unified MutationObserver below
+setTimeout(() => {
+  addClickableLinksToAllTables();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) addClickableLinksToAllTables();
+}, 200);
+setTimeout(() => {
+  validatePhonesEverywhere();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) validatePhonesEverywhere(panel);
+}, 200);
+setTimeout(() => {
+  addClickableLinksToAllTables();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) addClickableLinksToAllTables();
+}, 600);
+setTimeout(() => {
+  validatePhonesEverywhere();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) validatePhonesEverywhere(panel);
+}, 600);
+setTimeout(() => {
+  addClickableLinksToAllTables();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) addClickableLinksToAllTables();
+}, 1500);
+setTimeout(() => {
+  validatePhonesEverywhere();
+  const panel = document.querySelector('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view');
+  if (panel) validatePhonesEverywhere(panel);
+}, 1500);
 
-// Unified MutationObserver - Centralized table change handler for maximum performance
-// This replaces multiple scattered MutationObservers with a single efficient observer
+// MutationObserver hook for dynamically added/updated rows (including side panels)
 (function observeTablesEverywhere(){
-  // Debounced processor that runs all table-related functions in one batch
-  const processAllTableChanges = debounce((mutations) => {
-    const table = document.querySelector('#operator-store-visits-table');
-    if (!table) return;
-
-    try {
-      // Run all logic in a single batch for better performance
-      if (settings && settings.replaceBarcodes) {
-        replaceBarcodesInViews(table);
-      }
-      // highlightMerlogRows is called from runMainLogic, not here to avoid scope issues
-      if (settings && settings.lateCounterEnabled && typeof processLateCounter === 'function') {
-        processLateCounter(table);
-      }
-      validatePhonesEverywhere(table);
-      addClickableLinksToAllTables();
-    } catch (e) {
-      console.warn('[Toolbox] Error in unified table processor:', e);
-    }
-  }, 150);
-
-  // Throttled functions for immediate updates
   const runFor = oncePerAnimationFrame(() => addClickableLinksToAllTables());
   const runPhones = oncePerAnimationFrame((target = document) => validatePhonesEverywhere(target));
 
-  // Main unified observer
   const mo = new MutationObserver(muts => {
     let touched = false;
     let touchedPanel = false;
     let touchedPhonesPanel = false;
-    let touchedTable = false;
-    
-    // Skip if mutation is only checkbox changes (Select All optimization)
-    const isOnlyCheckboxChange = muts.every(m => {
-      if (m.type === 'attributes' && m.attributeName === 'checked') {
-        const el = m.target;
-        return el && (el.type === 'checkbox' || el.tagName === 'INPUT');
-      }
-      if (m.type === 'childList' && m.addedNodes.length === 0 && m.removedNodes.length === 0) {
-        return true; // Empty childList changes
-      }
-      return false;
-    });
-    if (isOnlyCheckboxChange) return; // Skip processing for checkbox-only changes
-    
     for (const m of muts) {
       if (m.addedNodes && m.addedNodes.length) {
         touched = true;
-        // Check if mutation is in the main table
-        if ([...m.addedNodes].some(n => {
-          if (n.nodeType !== 1) return false;
-          const table = n.closest?.('#operator-store-visits-table');
-          return table !== null;
-        })) {
-          touchedTable = true;
-        }
-        // Check if mutation is in a panel
         if ([...m.addedNodes].some(n =>
           n.nodeType === 1 && (n.matches?.('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view') ||
           n.closest?.('.offcanvas, .offcanvas-right, .offcanvas-custom, #panel_view')))) {
@@ -11679,16 +11309,10 @@ requestAnimationFrame(() => {
               touchedPanel = true;
               touchedPhonesPanel = true;
             }
-            if (el.closest('#operator-store-visits-table')) {
-              touchedTable = true;
-            }
           }
         }
       }
       if (m.type === 'attributes') {
-        // Skip checkbox attribute changes (already handled above)
-        if (m.attributeName === 'checked' && m.target?.type === 'checkbox') continue;
-        
         const el = m.target?.closest ? m.target.closest('td[data-label="טלפון"]') : null;
         if (el) {
           touched = true;
@@ -11696,19 +11320,9 @@ requestAnimationFrame(() => {
             touchedPanel = true;
             touchedPhonesPanel = true;
           }
-          if (el.closest('#operator-store-visits-table')) {
-            touchedTable = true;
-          }
         }
       }
     }
-    
-    // Process main table changes through unified processor
-    if (touchedTable) {
-      processAllTableChanges(muts);
-    }
-    
-    // Process general document changes
     if (touched) {
       runFor(document);
       runPhones(document);
@@ -11724,16 +11338,6 @@ requestAnimationFrame(() => {
     }
   });
 
-  // Observe main table tbody for efficient table-specific changes
-  const tableTbody = document.querySelector('#operator-store-visits-table tbody');
-  if (tableTbody) {
-    mo.observe(tableTbody, { 
-      childList: true, 
-      subtree: true 
-    });
-  }
-
-  // Also observe document.body for general changes (panels, modals, etc.)
   if (document.body) {
     mo.observe(document.body, {
       childList: true,
@@ -11750,9 +11354,6 @@ requestAnimationFrame(() => {
     if (panel){
       runFor(panel);
       validatePhonesEverywhere(panel);
-      if (settings && settings.replaceBarcodes) {
-        replaceBarcodesInViews(panel);
-      }
     }
   });
 })();
@@ -12037,12 +11638,7 @@ function togglePreviewSection(button, sectionType) {
     sessionStorage.setItem('sessionStartTime', currentTime.toString());
   } else {
     // בדוק אם יש PREVIEWs ישנים ב-sessionStorage
-    let openPreviews = [];
-    try {
-      openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
-    } catch (e) {
-      openPreviews = [];
-    }
+    const openPreviews = JSON.parse(sessionStorage.getItem('openPreviewTaskIds') || '[]');
     if (openPreviews.length > 0) {
       // נקה את ה-PREVIEWs הישנים רק אם זה session חדש (אחרי REFRESH)
       // אבל אל תמחק אם זה session ישן (אחרי שינוי סטטוס)
@@ -12645,9 +12241,7 @@ function reopenPreviews({delay=350} = {}) {
   }
 
   // FETCH
-  // Ensure we only wrap ONCE and keep a reference to the TRULY original fetch
-  if (!window.__tmcOrigFetch) window.__tmcOrigFetch = window.fetch;
-  const _origFetch = window.__tmcOrigFetch;
+  const _origFetch = window.fetch;
   window.fetch = async function hookedFetch(input, init) {
     const url = (typeof input === 'string') ? input : (input && input.url) || '';
     const method = ((init && init.method) || 'GET').toUpperCase();
@@ -12965,18 +12559,8 @@ function tmNextNonPreviewRow(from, dir){ // dir: +1 (down) or -1 (up)
     const ro = new ResizeObserver(update);
     ro.observe(map);
     ro.observe(list);
-    let ticking = false;
-    const scrollHandler = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(() => {
-          update();
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-    window.addEventListener('resize', scrollHandler, { passive:true });
-    window.addEventListener('scroll', scrollHandler, { passive:true });
+    window.addEventListener('resize', update, { passive:true });
+    window.addEventListener('scroll', update, { passive:true });
 
     // שמירה לניקוי עתידי
     window.__tmcMapSpacerRO = ro;
@@ -13309,87 +12893,4 @@ setInterval(__lwTagPhoneYellowRows, 1500);
     __lwBurstScanPhoneYellow();
     return _origToggle ? _origToggle(nextKey) : void 0;
   };
-})();
-
-// ========== Late Counter (מונה איחור) ==========
-// Counts and displays the number of late tasks
-(function installLateCounter() {
-  if (window.__lwLateCounterInstalled) return;
-  window.__lwLateCounterInstalled = true;
-
-  function processLateCounter(table) {
-    try {
-      if (!settings || !settings.lateCounterEnabled) return;
-      
-      const rows = table.querySelectorAll('tbody tr[id^="visit-row-"]');
-      let lateCount = 0;
-      
-      rows.forEach(row => {
-        // Check for late indicators in the row
-        const isLate = 
-          row.classList.contains('late-task') ||
-          row.querySelector('.late-indicator, .text-danger[title*="איחור"], .badge-danger') ||
-          row.querySelector('td[data-label*="איחור"]')?.textContent?.includes('איחור');
-        
-        if (isLate) {
-          lateCount++;
-          row.dataset.lateTask = '1';
-        } else {
-          delete row.dataset.lateTask;
-        }
-      });
-      
-      // Update counter display
-      let counterEl = document.getElementById('tmc-late-counter');
-      if (!counterEl && lateCount > 0) {
-        counterEl = document.createElement('div');
-        counterEl.id = 'tmc-late-counter';
-        counterEl.className = 'tmc-late-counter';
-        counterEl.style.cssText = `
-          position: fixed;
-          top: 10px;
-          left: 10px;
-          background: #dc3545;
-          color: white;
-          padding: 8px 16px;
-          border-radius: 20px;
-          font-weight: bold;
-          font-size: 14px;
-          z-index: 10000;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-        `;
-        document.body.appendChild(counterEl);
-      }
-      
-      if (counterEl) {
-        if (lateCount > 0) {
-          counterEl.textContent = `מאוחר: ${lateCount}`;
-          counterEl.style.display = 'block';
-        } else {
-          counterEl.style.display = 'none';
-        }
-      }
-    } catch (e) {
-      console.warn('[Toolbox] Late Counter error:', e);
-    }
-  }
-
-  // Integrate with unified observer
-  const table = document.querySelector('#operator-store-visits-table tbody');
-  if (table) {
-    const mo = new MutationObserver(() => {
-      const fullTable = document.querySelector('#operator-store-visits-table');
-      if (fullTable) processLateCounter(fullTable);
-    });
-    mo.observe(table, { childList: true, subtree: true });
-    
-    // Initial run
-    setTimeout(() => {
-      const fullTable = document.querySelector('#operator-store-visits-table');
-      if (fullTable) processLateCounter(fullTable);
-    }, 1000);
-  }
-
-  // Expose function for manual use
-  window.processLateCounter = processLateCounter;
 })();
