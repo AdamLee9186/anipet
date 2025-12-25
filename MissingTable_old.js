@@ -1,7 +1,7 @@
     // ==UserScript==
-    // @name        טבלת חוסרים 25/12/2025
+    // @name        טבלת חוסרים 26/11/2025
     // @namespace   http://tampermonkey.net/
-    // @version     8.5
+    // @version     8.1
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -10,7 +10,6 @@
     // @icon        https://www.google.com/s2/favicons?sz=64&domain=lionwheel.com
     // @grant       GM_addStyle
     // @grant       GM_xmlhttpRequest
-    // @grant       GM_registerMenuCommand
     // @updateURL   https://raw.githubusercontent.com/AdamLee9186/anipet/main/MissingTable.js
     // @downloadURL https://raw.githubusercontent.com/AdamLee9186/anipet/main/MissingTable.js
     // ==/UserScript==
@@ -31,7 +30,6 @@
             YIELD_EVERY: 50,            // yield to main thread every N heavy iterations
             VIRTUAL_THRESHOLD: 500,     // switch to virtualized rendering beyond this many rows
             CATALOG_URL: "https://raw.githubusercontent.com/AdamLee9186/anipet/main/backoffice_catalog.csv",
-            PRODUCTS_JSON_URL: "https://raw.githubusercontent.com/AdamLee9186/anipet/main/products_optimized.json", // הוספת URL לקובץ הספקים
             CACHE_NS: "catalog_csv_v1"
         }, window.MISSINGTABLE_CONFIG || {});
         const log = {
@@ -91,25 +89,7 @@
                 if (lm) localStorage.setItem(key("lm"), lm);
             } catch (err) {
                 // best-effort cache
-                log.warn("Catalog cache write failed, clearing old keys and retrying...", err);
-                // מחיקת כל מפתחות הקאש הישנים של הסקריפט כדי לפנות מקום
-                try {
-                    Object.keys(localStorage).forEach(key => {
-                        if (key.includes('catalog_csv') || key.includes('task_cache') || key.includes(CONFIG.CACHE_NS)) {
-                            localStorage.removeItem(key);
-                        }
-                    });
-                    // נסה שוב לשמור רק את הנתונים החשובים ביותר
-                    try {
-                        localStorage.setItem(key("body"), text);
-                        if (e) localStorage.setItem(key("etag"), e);
-                        if (lm) localStorage.setItem(key("lm"), lm);
-                    } catch (innerE) {
-                        log.warn("Retry after cleanup also failed", innerE);
-                    }
-                } catch (cleanupErr) {
-                    log.warn("Cache cleanup failed", cleanupErr);
-                }
+                log.warn("Catalog cache write failed (quota?)", err);
             }
             return new Response(new Blob([text]), { status: 200 });
         }
@@ -626,15 +606,8 @@
         let catalogData = null;
         let allResults = []; // Store all fetched results
         let filteredAndSortedResults = []; // Store currently filtered and sorted results
-        let selectedItemUniqueIds = new Set(); 
-        
-        // --- משתנים חדשים לספקים וגלריה ---
-        let supplierDataMap = new Map(); // ברקוד -> שם ספק
-        let supplierDataByNameMap = new Map(); // שם מוצר -> שם ספק
-        let uniqueSuppliers = new Set(); // רשימת ספקים ייחודיים לסינון
-        let selectedSupplierFilter = ''; // הספק שנבחר לסינון
-        let galleryViewMode = 'detailed'; // 'detailed' (default) or 'simple'
-        
+        let selectedItemUniqueIds = new Set(); // Stores uniqueId of selected items for export
+
         // AbortController להרצה נקייה
         let currentRun = null;
 
@@ -655,16 +628,6 @@
                     console.log(`🧹 נוקה ${k}`);
                 } catch(e) {
                     console.warn(`לא ניתן לנקות ${k}:`, e);
-                }
-            });
-        }
-
-        // רישום פקודה בתפריט Tampermonkey (לחיצה על האייקון של התוסף בדפדפן)
-        if (typeof GM_registerMenuCommand !== 'undefined') {
-            GM_registerMenuCommand("🗑️ ניקוי זיכרון מטמון (Cache)", () => {
-                if (confirm("האם לנקות את כל נתוני הקטלוג והמשימות השמורים?")) {
-                    clearOldCache();
-                    alert("הזיכרון נוקה בהצלחה. טען את הדף מחדש.");
                 }
             });
         }
@@ -976,114 +939,10 @@
                 transform:scale(0.95);
               }
 
-              /* Gallery Toolbar */
-              .gallery-toolbar {
-                  position: sticky;
-                  top: 0;
-                  z-index: 10;
-                  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-              }
-
-              /* Grid Layouts */
-              .missing-gallery-grid {
-                  padding: 15px;
-                  display: grid;
-                  gap: 15px;
-              }
-
-              /* Simple Mode (Original 100x100 tight grid) */
-              .missing-gallery-grid.mode-simple {
-                  grid-template-columns: repeat(auto-fill, 100px);
-                  grid-auto-rows: 100px;
-                  gap: 5px;
-                  padding-top: 50px;
-              }
-
-              /* Detailed Mode (Cards) */
-              .missing-gallery-grid.mode-detailed {
-                  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-                  grid-auto-rows: auto;
-                  gap: 15px;
-              }
-
-              /* Card Styling */
-              .missing-gallery-card {
-                  position: relative;
-                  background: #fff;
-                  border: 1px solid #e0e0e0;
-                  border-radius: 8px;
-                  overflow: hidden;
-                  transition: box-shadow 0.2s;
-                  display: flex;
-                  flex-direction: column;
-              }
-
-              .missing-gallery-card.detailed:hover {
-                  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-                  border-color: #b0b0b0;
-              }
-
-              /* Image Container */
-              .card-img-container {
-                  position: relative;
-                  width: 100%;
-                  /* In simple mode it fills the square, in detailed mode it has fixed height */
-              }
-
-              .missing-gallery-card.simple .card-img-container {
-                  height: 100%;
-              }
-              .missing-gallery-card.detailed .card-img-container {
-                  height: 140px;
-                  background: #f9f9f9;
-                  border-bottom: 1px solid #f0f0f0;
-              }
-
-              .card-img-container img {
-                  width: 100%;
-                  height: 100%;
-                  object-fit: contain;
-                  display: block;
-              }
-
-              /* Text Details (Detailed Mode) */
-              .card-details {
-                  padding: 10px;
-                  flex-grow: 1;
-                  display: flex;
-                  flex-direction: column;
-                  justify-content: space-between;
-              }
-
-              .card-title {
-                  font-size: 13px;
-                  font-weight: 600;
-                  color: #333;
-                  margin-bottom: 8px;
-                  line-height: 1.3;
-                  display: -webkit-box;
-                  -webkit-line-clamp: 2; /* Limit lines */
-                  -webkit-box-orient: vertical;
-                  overflow: hidden;
-                  text-align: right;
-              }
-
-              .card-meta {
-                  font-size: 11px;
-                  color: #777;
-                  display: flex;
-                  flex-direction: column;
-                  gap: 2px;
-              }
-
-              .card-supplier {
-                  color: #007bff;
-                  font-weight: 500;
-              }
-
-              /* Grid קבוע 100×100, צמוד ללא רווחים, גבול לבן 1px (for simple mode) */
-              .missing-gallery-card.simple{position:relative; width:100px; height:100px; background:#fff; border:1px solid #fff; border-radius:8px; overflow:hidden;}
-              .missing-gallery-card.simple img{width:100%; height:100%; object-fit:contain; display:block;}
+              /* Grid קבוע 100×100, צמוד ללא רווחים, גבול לבן 1px */
+              .missing-gallery-grid{display:grid; grid-template-columns:repeat(auto-fill,100px); grid-auto-rows:100px; gap:0; background:#fff; padding-top:50px;}
+              .missing-gallery-card{position:relative; width:100px; height:100px; background:#fff; border:1px solid #fff; border-radius:8px; overflow:hidden;}
+              .missing-gallery-card img{width:100%; height:100%; object-fit:contain; display:block;}
 
               /* === Quantity badge on thumbnails === */
               .lw-thumb-badge{
@@ -1574,7 +1433,7 @@ function showGalleryOverlay(items, startIndex){
           // מסלול יחיד: מאסטר CSV
           const hit = findImageForItemViaMaster(item);
           if (hit) {
-            // Log removed to reduce noise
+            console.debug('[MissingTable] image match', {by: hit.by, key: hit.key, url: hit.url, name: item?.name});
             return hit.url;
           }
           console.debug('[MissingTable] image NOT found', {barcode: item?.barcode, makt: item?.makt || item?.sku, name: item?.name});
@@ -1681,39 +1540,6 @@ function showGalleryOverlay(items, startIndex){
             } catch (e) {
                 console.error('שגיאה בטעינת קובץ CSV:', e);
                 reject(new Error('שגיאה בטעינת קובץ קטלוג.'));
-            }
-        }
-
-        /**
-         * טוען את קובץ ה-JSON של הספקים ויוצר מיפוי
-         */
-        async function loadSupplierData() {
-            if (supplierDataMap.size > 0) return; // כבר נטען
-
-            console.log('🚚 טוען נתוני ספקים...');
-            try {
-                // שימוש במנגנון הקאש הקיים במידת האפשר או fetch רגיל
-                const resp = await fetchWithValidators(CONFIG.PRODUCTS_JSON_URL);
-                if (!resp.ok) throw new Error('Failed to fetch supplier json');
-                
-                const data = await resp.json();
-                if (data && Array.isArray(data.products)) {
-                    data.products.forEach(p => {
-                        const supplier = p.supplier || 'ספק לא ידוע';
-                        
-                        // מיפוי לפי ברקוד
-                        if (p.barcode) {
-                            supplierDataMap.set(String(p.barcode).trim(), supplier);
-                        }
-                        // מיפוי לפי שם (גיבוי)
-                        if (p.name) {
-                            supplierDataByNameMap.set(String(p.name).trim(), supplier);
-                        }
-                    });
-                    console.log(`✅ נטענו ${data.products.length} מוצרים עם מידע ספק.`);
-                }
-            } catch (e) {
-                console.warn('⚠️ שגיאה בטעינת נתוני ספקים:', e);
             }
         }
 
@@ -1836,24 +1662,21 @@ function showGalleryOverlay(items, startIndex){
             // NEW: best-effort – apply "בטיפול" filter before building the table
             await applyTreatmentFilterIfExists();
 
-            // טעינה במקביל של קטלוג וספקים
-            try {
-                const promises = [];
-                if (catalogData === null) promises.push(loadCatalogData());
-                promises.push(loadSupplierData()); // טעינת ספקים
-                
-                await Promise.all(promises);
-            } catch (e) {
-                showMessageModal('שגיאה', e.message, true);
-                console.error(e);
-                // Clean up loading indicator
-                const existingLoader = document.getElementById('loading-msg');
-                const existingBackdrop = document.querySelector('.modal-backdrop.fade.show');
-                if (existingLoader && existingLoader.parentNode) existingLoader.remove();
-                if (existingBackdrop && existingBackdrop.parentNode) existingBackdrop.remove();
-                btn.addEventListener('click', handleButtonClick);
-                btn.disabled = false;
-                return;
+            if (catalogData === null) {
+                try {
+                    await loadCatalogData();
+                } catch (e) {
+                    showMessageModal('שגיאה', e.message, true);
+                    console.error(e);
+                    // Clean up loading indicator
+                    const existingLoader = document.getElementById('loading-msg');
+                    const existingBackdrop = document.querySelector('.modal-backdrop.fade.show');
+                    if (existingLoader && existingLoader.parentNode) existingLoader.remove();
+                    if (existingBackdrop && existingBackdrop.parentNode) existingBackdrop.remove();
+                    btn.addEventListener('click', handleButtonClick);
+                    btn.disabled = false;
+                    return;
+                }
             }
             await startMissingTable();
             btn.addEventListener('click', handleButtonClick); // Re-enable listener after operation
@@ -2217,27 +2040,16 @@ function showGalleryOverlay(items, startIndex){
 
                         if (catalogBarcode && catalogBarcode.trim() !== '') {
                             barcode = catalogBarcode;
-                            // Silent update to reduce console noise
+                            console.log(`עודכן ברקוד לפי מק"ט "${originalBarcode}": ${barcode}`);
                         }
                         // אם לא נמצא לפי מק"ט, ננסה לפי שם המוצר
                         else if (catalogData && catalogData[name]) {
                             const catalogBarcode = catalogData[name].barcode;
                             if (catalogBarcode && catalogBarcode.trim() !== '') {
                                 barcode = catalogBarcode;
-                                // Silent update to reduce console noise
+                                console.log(`עודכן ברקוד לפי שם "${name}": ${barcode}`);
                             }
                             makt = catalogData[name].makt;
-                        }
-
-                        // --- איתור ספק ---
-                        let supplier = 'ספק כללי';
-                        // ניסיון 1: לפי ברקוד
-                        if (supplierDataMap.has(barcode)) {
-                            supplier = supplierDataMap.get(barcode);
-                        } 
-                        // ניסיון 2: לפי שם
-                        else if (supplierDataByNameMap.has(name)) {
-                            supplier = supplierDataByNameMap.get(name);
                         }
 
                         // Determine the actual item status from the page structure
@@ -2264,10 +2076,9 @@ function showGalleryOverlay(items, startIndex){
                             missing: total - picked,
                             status: itemStatus, // This is the individual item's display status (Hebrew)
                             taskOverallStatus: taskOverallStatus, // This is the overall order status (English mapping from above)
-                            destinationRegion: destinationRegion, 
+                            destinationRegion: destinationRegion, // Add destination region
                             makt,
-                            price: price,
-                            supplier: supplier // הוספת שדה ספק
+                            price: price // Add price field
                         });
                     });
                 });
@@ -2664,15 +2475,6 @@ function showGalleryOverlay(items, startIndex){
         function showMissingModal() {
             console.log('פונקציית showMissingModal החלה. כמות תוצאות: ', allResults.length);
 
-            // Prevent interference from selection-based extensions
-            try {
-                if (document.onselectionchange) {
-                    document.onselectionchange = null;
-                }
-            } catch (e) {
-                // Ignore errors from extensions
-            }
-
             const existingBackdrop = document.querySelector('.modal-backdrop.fade.show');
             if (existingBackdrop) {
                 existingBackdrop.remove();
@@ -2703,15 +2505,11 @@ function showGalleryOverlay(items, startIndex){
                         <div class="modal-header d-flex justify-content-between align-items-center py-2 px-3" style="border-bottom: 1px solid #e9ecef; background-color: ${currentMode === 'negative' ? '#939393' : '#f8f9fa'}; border-top-left-radius: 8px; border-top-right-radius: 8px;">
                             <h4 class="modal-title m-0" style="color: ${currentMode === 'negative' ? '#ffffff' : '#000000'};">${currentMode === 'negative' ? 'טבלת נגטיב' : 'טבלת חוסרים'}</h4>
                             <div class="d-flex align-items-center gap-2">
-                                <select id="supplier-filter-select" class="form-control form-control-sm mx-1" style="width: 150px; display:inline-block;">
-                                    <option value="">כל הספקים</option>
-                                    </select>
-
                                 <button type="button" id="expand-all-btn" class="btn btn-sm btn-secondary mx-1" style="padding: 6px 10px; border-radius: 5px; cursor: pointer;">פתח את כל הקבוצות</button>
                                 <button name="button" type="submit" class="btn btn-sm btn-secondary d-flex align-items-center" formtarget="_blank" id="excel-export-btn">
                                     <i class="fa-light fa-file-excel mr-1"></i>אקסל
                                 </button>
-                                <button type="button" id="print-btn" class="btn btn-sm btn-secondary mx-1" title="הדפס/שמור כ-PDF לפי התצוגה הנוכחית" style="padding: 6px 10px; border-radius: 5px; cursor: pointer;"><i class="fa-light fa-print mr-1"></i>הדפסה</button>
+                                <button type="button" id="print-btn" class="btn btn-sm btn-secondary mx-1" style="padding: 6px 10px; border-radius: 5px; cursor: pointer;"><i class="fa-light fa-print mr-1"></i>הדפסה</button>
                                 <button id="toggle-gallery-btn" class="btn btn-sm btn-secondary ml-2" title="הצג/הסתר גלריה"><i class="fa-light fa-images mr-1"></i> גלריה</button>
                                 ${currentMode !== 'negative' ? `
                                     <div id="export-sheets-wrapper" style="position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; height: auto; margin: 0 5px;">
@@ -2731,15 +2529,9 @@ function showGalleryOverlay(items, startIndex){
                         <div class="modal-body px-4 py-3" style="flex-grow: 1; display: flex; flex-direction: column; overflow: hidden;">
                             <div id="missing-table-container" style="flex-grow: 1; overflow-y: auto; border: 1px solid #e9ecef; border-radius: 8px; background-color: #fff; box-shadow: inset 0 1px 3px rgba(0,0,0,0.06);"></div>
                             <div id="missing-gallery-container">
-                                <div class="gallery-toolbar d-flex justify-content-between align-items-center px-3 py-2 bg-white border-bottom">
-                                    <span id="gallery-count-badge" class="badge badge-light"></span>
-                                    <button id="toggle-gallery-view-btn" class="btn btn-sm btn-outline-primary">
-                                        <i class="fa-light fa-grid-2"></i> החלף תצוגה
-                                    </button>
-                                    <button id="gallery-close-btn" class="btn btn-sm btn-icon btn-light-danger" title="סגור גלריה">
-                                        <i class="ki ki-close"></i>
-                                    </button>
-                                </div>
+                                <button id="gallery-close-btn" class="gallery-close-button" title="סגור גלריה">
+                                    <i class="ki ki-close"></i>
+                                </button>
                                 <div class="missing-gallery-grid" id="missing-gallery-grid"></div>
                             </div>
                         </div>
@@ -2748,119 +2540,6 @@ function showGalleryOverlay(items, startIndex){
             `;
             document.body.appendChild(modal);
             console.log('🖼️ מודל חוסרים נוצר ונוסף ל-DOM');
-
-            // --- מילוי רשימת הספקים לסינון ---
-            const supplierSelect = document.getElementById('supplier-filter-select');
-            uniqueSuppliers = new Set(allResults.map(i => i.supplier).filter(Boolean));
-            const sortedSuppliers = Array.from(uniqueSuppliers).sort();
-            
-            sortedSuppliers.forEach(s => {
-                const op = document.createElement('option');
-                op.value = s;
-                op.textContent = s;
-                if (s === selectedSupplierFilter) op.selected = true;
-                supplierSelect.appendChild(op);
-            });
-
-            // מאזין לשינוי ספק
-            supplierSelect.addEventListener('change', (e) => {
-                selectedSupplierFilter = e.target.value;
-                applyFiltersAndSort();
-            });
-
-            // --- מאזין לכפתור החלפת תצוגה בגלריה ---
-            const toggleViewBtn = document.getElementById('toggle-gallery-view-btn');
-            if(toggleViewBtn) {
-                toggleViewBtn.onclick = () => {
-                    galleryViewMode = (galleryViewMode === 'detailed') ? 'simple' : 'detailed';
-                    toggleViewBtn.innerHTML = (galleryViewMode === 'detailed') 
-                        ? '<i class="fa-light fa-grid"></i> תצוגה פשוטה' 
-                        : '<i class="fa-light fa-id-card"></i> תצוגה מפורטת';
-                    renderMissingGallery().catch(e => console.error('Gallery render error:', e)); // רנדר מחדש
-                };
-                // Set initial text
-                 toggleViewBtn.innerHTML = (galleryViewMode === 'detailed') 
-                        ? '<i class="fa-light fa-grid"></i> תצוגה פשוטה' 
-                        : '<i class="fa-light fa-id-card"></i> תצוגה מפורטת';
-            }
-
-            // --- לוגיקת הדפסת גלריה (נשארת כפונקציה, הכפתור הוסר מה-UI) ---
-            function printGalleryView() {
-                const galleryContent = document.getElementById('missing-gallery-grid');
-                if (!galleryContent) return;
-
-                const printWin = window.open('', '_blank');
-                const modeLabel = (galleryViewMode === 'detailed') ? 'תצוגה מפורטת' : 'תצוגה פשוטה';
-                const titlePrefix = (currentMode === 'negative') ? 'גלריית נגטיב' : 'גלריית חוסרים';
-
-                printWin.document.write(`
-                    <html dir="rtl">
-                    <head>
-                        <title>${titlePrefix} - ${new Date().toLocaleDateString()}</title>
-                        <style>
-                            body { font-family: sans-serif; padding: 20px; }
-                            .missing-gallery-grid { display: grid; gap: 15px; }
-                            .missing-gallery-grid.mode-simple { grid-template-columns: repeat(auto-fill, 100px); gap: 5px; }
-                            .missing-gallery-grid.mode-detailed { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 15px; }
-
-                            .missing-gallery-card {
-                                position: relative;
-                                border: 1px solid #ccc;
-                                border-radius: 8px;
-                                overflow: hidden;
-                                break-inside: avoid;
-                                page-break-inside: avoid;
-                                display: flex;
-                                flex-direction: column;
-                            }
-
-                            .card-img-container {
-                                height: ${galleryViewMode === 'detailed' ? '140px' : '100px'};
-                                display: flex; justify-content: center; align-items: center;
-                                background: #f9f9f9;
-                                position: relative;
-                            }
-                            .card-img-container img { max-width: 100%; max-height: 100%; object-fit: contain; }
-
-                            .card-details { padding: 8px; font-size: 12px; }
-                            .card-title { font-weight: bold; margin-bottom: 5px; }
-                            .card-meta { color: #555; font-size: 10px; }
-                            .lw-thumb-badge {
-                                position: absolute !important;
-                                top: 5px !important;
-                                right: 5px !important;
-                                background: #d9534f !important;
-                                color: white !important;
-                                border-radius: 12px !important;
-                                padding: 2px 8px !important;
-                                font-size: 14px !important;
-                                font-weight: bold !important;
-                                z-index: 10 !important;
-                                -webkit-print-color-adjust: exact !important;
-                                print-color-adjust: exact !important;
-                            }
-
-                            @media print {
-                                @page { margin: 1cm; size: landscape; }
-                            }
-                        </style>
-                    </head>
-                    <body>
-                        <h2>${titlePrefix} - ${modeLabel}</h2>
-                        <div class="missing-gallery-grid mode-${galleryViewMode}">
-                            ${galleryContent.innerHTML}
-                        </div>
-                    </body>
-                    </html>
-                `);
-
-                printWin.document.close();
-                printWin.focus();
-                setTimeout(() => {
-                    printWin.print();
-                    printWin.close();
-                }, 500);
-            }
 
             // Declaratively tell toolbox.js to skip ripple/toast inside this area
             const container = document.getElementById('missing-table-container');
@@ -3013,11 +2692,6 @@ function showGalleryOverlay(items, startIndex){
                 console.log('מחיל סינון ומיון...');
                 let currentResults = [...allResults]; // Start with all original results
 
-                // --- סינון לפי ספק ---
-                if (selectedSupplierFilter && selectedSupplierFilter !== '') {
-                    currentResults = currentResults.filter(r => r.supplier === selectedSupplierFilter);
-                }
-
                 // Apply sorting if a column is selected
                 if (currentGroupHeaderSortColumn && currentGroupHeaderSortColumn !== 'select' && currentGroupHeaderSortColumn !== 'expand') {
                     console.log(`ממיין לפי עמודה: ${currentGroupHeaderSortColumn}, כיוון: ${currentGroupHeaderSortDirection}`);
@@ -3029,7 +2703,6 @@ function showGalleryOverlay(items, startIndex){
                         if (!grouped[key]) grouped[key] = {
                             name: r.name,
                             barcode: r.barcode,
-                            supplier: r.supplier, // שמירת ספק בקבוצה
                             encodedKey: key,
                             price: r.price,
                             totalMissing: 0,
@@ -3161,10 +2834,9 @@ function showGalleryOverlay(items, startIndex){
                     ...(currentMode !== 'negative' ? [{ name: '<input type="checkbox" id="select-all-checkbox" title="בחר הכל" style="vertical-align: middle;">', key: 'select', sortable: false, width: '60px' }] : []),
                     { name: '<i class="fa-light fa-chevron-left expand-all-header-icon"></i>', key: 'expand', sortable: false, width: '30px' },
                     { name: currentMode === 'negative' ? 'סה"כ לוקטו' : 'סה"כ חסרים', key: currentMode === 'negative' ? 'totalPicked' : 'totalMissing', sortable: true, width: '100px' },
-                    { name: 'ספק', key: 'supplier', sortable: true, width: '120px' }, // עמודה חדשה
-                        { name: 'שם מוצר', key: 'name', sortable: true, width: 'auto' }, // רוחב אוטומטי שימלא את השאר
-                        { name: 'ברקוד', key: 'barcode', sortable: true, width: '140px' }, // מספיק רחב לברקוד מלא
-                    { name: 'מחיר', key: 'price', sortable: true, width: '80px' }, // צר יותר
+                        { name: 'שם מוצר', key: 'name', sortable: true },
+                        { name: 'ברקוד', key: 'barcode', sortable: true },
+                    { name: 'מחיר', key: 'price', sortable: true },
                     { name: 'הזמנות', key: 'orderCount', sortable: true, width: '80px' },
                 ];
 
@@ -3228,7 +2900,6 @@ function showGalleryOverlay(items, startIndex){
                         if (!grouped[key]) grouped[key] = {
                         name: r.name,
                         barcode: r.barcode,
-                        supplier: r.supplier, // שמירת ספק בקבוצה
                         encodedKey: key,
                         price: r.price,
                         totalPicked: 0,
@@ -3316,18 +2987,6 @@ function showGalleryOverlay(items, startIndex){
                     tdSummary.style.cursor = 'copy';
                     tdSummary.onclick = (event) => { event.stopPropagation(); copyToClipboard(tdSummary.textContent, tdSummary); };
 
-                        const tdSupplier = document.createElement('td');
-                        tdSupplier.textContent = group.supplier || '-';
-                        tdSupplier.style.fontSize = '0.9em';
-                        tdSupplier.style.cursor = 'copy';
-                        // עיצוב למניעת הרחבת יתר של העמודה
-                        tdSupplier.style.maxWidth = '120px';
-                        tdSupplier.style.whiteSpace = 'nowrap';
-                        tdSupplier.style.overflow = 'hidden';
-                        tdSupplier.style.textOverflow = 'ellipsis';
-                        tdSupplier.title = group.supplier || ''; // Tooltip on hover
-                        tdSupplier.onclick = (e) => { e.stopPropagation(); copyToClipboard(group.supplier || '-', tdSupplier); };
-
                         const tdName = document.createElement('td');
                         tdName.textContent = group.name;
                         tdName.style.textAlign = 'right';
@@ -3349,7 +3008,7 @@ function showGalleryOverlay(items, startIndex){
                     tdOrderCount.style.cursor = 'copy';
                     tdOrderCount.onclick = (event) => { event.stopPropagation(); copyToClipboard(group.orderIds.size.toString(), tdOrderCount); };
 
-                    row.append(tdExpand, tdSummary, tdSupplier, tdName, tdBarcode, tdPrice, tdOrderCount);
+                    row.append(tdExpand, tdSummary, tdName, tdBarcode, tdPrice, tdOrderCount);
                         tbody.appendChild(row);
 
                         if (expandedGroups.has(group.encodedKey)) {
@@ -4123,30 +3782,18 @@ expandedGroups.clear();
                 };
             }
 
-            function printTableView() {
-                const title = (currentMode === 'negative') ? 'טבלת נגטיב' : 'רשימת חוסרים';
+            // Event listener for print button
+            document.getElementById('print-btn').onclick = () => {
                 const printWindow = window.open('', '', 'height=600,width=900');
-                printWindow.document.write(`<html dir="rtl" lang="he"><head><title>${title}</title>`);
+                printWindow.document.write('<html dir="rtl" lang="he"><head><title>רשימת חוסרים</title>');
                 printWindow.document.write('<style>body{direction:rtl;text-align:right;font-family:Arial,sans-serif}table{width:100%;border-collapse:collapse;font-size:14px;direction:rtl}td,th{border:1px solid #ccc;padding:6px;text-align:center}thead{background:#eee}h3{text-align:center;direction:rtl}</style>');
                 printWindow.document.write('</head><body>');
-                printWindow.document.write(`<h3>${title}</h3>`);
+                printWindow.document.write('<h3>רשימת חוסרים</h3>');
                 printWindow.document.write(document.getElementById('missing-table-container').innerHTML);
                 printWindow.document.close();
                 printWindow.print();
-                console.log('🖨️ חלון הדפסה נפתח (טבלה)');
-            }
-
-            // Smart print: מדפיס לפי התצוגה הנוכחית (טבלה/גלריה)
-            const printBtn = document.getElementById('print-btn');
-            if (printBtn) {
-                printBtn.onclick = () => {
-                    if (isGalleryView) {
-                        printGalleryView();
-                    } else {
-                        printTableView();
-                    }
-                };
-            }
+                console.log('🖨️ חלון הדפסה נפתח');
+            };
 
             // --- Gallery toggle ---
             const galleryBtn = document.getElementById('toggle-gallery-btn');
@@ -4221,43 +3868,28 @@ expandedGroups.clear();
             async function renderMissingGallery(){
               const grid = document.getElementById('missing-gallery-grid');
               if (!grid) return;
-              
-              // עדכון מחלקה לקונטיינר לפי מצב תצוגה
-              grid.className = `missing-gallery-grid mode-${galleryViewMode}`;
-
               grid.innerHTML = '';
-              // Loader
+              // 1) Loader מיידי (אם לא קיים)
               const skelFrag = document.createDocumentFragment();
-              const skelCount = 20; 
-              for (let i=0;i<skelCount;i++){ 
-                  const s = document.createElement('div'); 
-                  s.className = galleryViewMode === 'detailed' ? 'missing-skel detailed' : 'missing-skel'; 
-                  skelFrag.appendChild(s); 
-              }
+              const skelCount = 48;
+              for (let i=0;i<skelCount;i++){ const s = document.createElement('div'); s.className='missing-skel'; skelFrag.appendChild(s); }
               grid.appendChild(skelFrag);
 
-              await ensureImagesReady();
-              
+              // 2) הבאת דאטה + הכנת תמונות
+              await ensureImagesReady(); // ודא שמאגר התמונות זמין
+              // Aggregate by name+barcode: SUM quantities across all orders for the same item.
+              // This fixes the badge showing only a single order's quantity.
               const agg = new Map();
-              // שימוש ב-filteredAndSortedResults (כבר מסונן לפי ספק אם נבחר)
               (filteredAndSortedResults || []).forEach(r => {
                 const key = `${r.name}|||${r.barcode}`;
                 const q = Number.isFinite(+getItemQuantity(r)) ? +getItemQuantity(r) : 0;
                 if (!agg.has(key)) {
                   agg.set(key, { rep: r, qtySum: q });
                 } else {
-                  agg.get(key).qtySum += q;
+                  const s = agg.get(key);
+                  s.qtySum += q;
                 }
               });
-
-              // עדכון מונה בראש הגלריה
-              const countBadge = document.getElementById('gallery-count-badge');
-              if(countBadge) countBadge.textContent = `${agg.size} פריטים`;
-
-              const cards = [];
-              const preloadFirst = [];
-              const overlayItems = [];
-
               // 3) Placeholder טקסט שממלא 100×100
               const buildTextPlaceholder = (txt='') => {
                 const clean = (txt||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -4278,145 +3910,114 @@ expandedGroups.clear();
                 return 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><rect width="100%" height="100%" fill="#f4f5f7"/>${rows}</svg>`);
               };
 
+              // 4) דאטה עבור Overlay
+              const overlayItems = [];
+              const cards = [];
+              const preloadFirst = [];
+              // Use aggregated entries (rep = representative row, qtySum = total across rows)
               agg.forEach(({ rep: item, qtySum }) => {
-                const name = item.name || '';
-                const supplier = item.supplier || '';
-                const barcode = item.barcode || '';
-                const imgUrl = findImageForItem(item);
-                
-                // יצירת הכרטיס
+                const name    = item.name || '';
+                const imgUrl  = findImageForItem(item);
                 const card = document.createElement('div');
-                card.className = `missing-gallery-card ${galleryViewMode}`; // simple or detailed
-
-                // 1. קונטיינר לתמונה
-                const imgContainer = document.createElement('div');
-                imgContainer.className = 'card-img-container';
-                
+                card.className = 'missing-gallery-card';
                 const img = document.createElement('img');
                 img.loading = 'lazy';
                 img.alt = name;
                 img.src = imgUrl || buildTextPlaceholder(name);
 
-                imgContainer.appendChild(img);
-                
-                // כמות (Badge)
+                // Quantity already aggregated across all rows of the same item
                 const resolvedQty = Number.isFinite(+qtySum) ? +qtySum : 0;
-                if (resolvedQty > 1){
-                  const badge = document.createElement('span');
-                  badge.className = 'lw-thumb-badge';
-                  badge.textContent = 'X' + resolvedQty;
-                  imgContainer.appendChild(badge);
-                }
-                
-                card.appendChild(imgContainer);
 
-                // 2. פרטים (רק במידה וזה לא תצוגה פשוטה, או כ-Overlay בתצוגה פשוטה)
-                if (galleryViewMode === 'detailed') {
-                    const info = document.createElement('div');
-                    info.className = 'card-details';
-                    
-                    const titleDiv = document.createElement('div');
-                    titleDiv.className = 'card-title';
-                    titleDiv.textContent = name;
-                    titleDiv.title = name;
-                    
-                    const metaDiv = document.createElement('div');
-                    metaDiv.className = 'card-meta';
-                    
-                    const supplierSpan = document.createElement('span');
-                    supplierSpan.className = 'card-supplier';
-                    const truckIcon = document.createElement('i');
-                    truckIcon.className = 'fa-light fa-truck';
-                    supplierSpan.appendChild(truckIcon);
-                    supplierSpan.appendChild(document.createTextNode(' ' + supplier));
-                    
-                    const barcodeSpan = document.createElement('span');
-                    barcodeSpan.className = 'card-barcode';
-                    const barcodeIcon = document.createElement('i');
-                    barcodeIcon.className = 'fa-light fa-barcode';
-                    barcodeSpan.appendChild(barcodeIcon);
-                    barcodeSpan.appendChild(document.createTextNode(' ' + barcode));
-                    
-                    metaDiv.appendChild(supplierSpan);
-                    metaDiv.appendChild(barcodeSpan);
-                    info.appendChild(titleDiv);
-                    info.appendChild(metaDiv);
-                    card.appendChild(info);
-                } else {
-                    // Overlay לתצוגה פשוטה (קיים בקוד המקורי)
-                    const ov = document.createElement('div');
-                    ov.className = 'missing-gallery-overlay';
-                    const nameSpan = document.createElement('span');
-                    nameSpan.className = 'missing-gallery-name';
-                    nameSpan.textContent = name;
-                    const codeSpan = document.createElement('span');
-                    codeSpan.className = 'missing-gallery-code';
-                    codeSpan.textContent = supplier;
-                    ov.appendChild(nameSpan);
-                    ov.appendChild(codeSpan);
-                    card.appendChild(ov);
-                }
-
-                // אירועי לחיצה (גלריה/צ'ק מארק)
-                const idx = overlayItems.length;
+                // פריט עבור overlay (לפי המודל של toolbox)
+                const idx = overlayItems.length; // שמור אינדקס נכון ללחיצה
                 overlayItems.push({
-                    fullSizeUrl: toFullImageUrl(imgUrl || ''),
-                    productName: name,
-                    sku: item.makt || item.sku || barcode,
-                    quantity: resolvedQty,
-                    price: item.price
+                  fullSizeUrl: toFullImageUrl(imgUrl || ''),
+                  thumbnailUrl: imgUrl || '',
+                  productName: name,
+                  sku: item.makt || item.sku || (item.barcode||'').toString(),
+                  // Store aggregated quantity so overlay thumbnails show the same sum
+                  quantity: (resolvedQty > 0) ? resolvedQty : '',
+                  price: item.price || null,
+                  link: item.link || null
                 });
 
-                const openGallery = () => showGalleryOverlay(overlayItems, idx);
-
-                // --- מנגנון לחיצה ארוכה לצפייה בתמונה גדולה ---
-                let pressTimer;
-                const startPress = () => {
-                    pressTimer = setTimeout(() => {
-                        openGallery();
-                    }, 600); // 600ms נחשב לחיצה ארוכה
-                };
-                const cancelPress = () => clearTimeout(pressTimer);
-
-                card.onmousedown = startPress;
-                card.ontouchstart = startPress;
-                card.onmouseup = cancelPress;
-                card.onmouseleave = cancelPress;
-                card.ontouchend = cancelPress;
-
+                // לחיצה רגילה - toggle checkmark overlay
                 card.addEventListener('click', (e) => {
-                    // מניעת סימון אם לחצו על כפתור אחר בתוך הכרטיס
-                    if (e.target.closest('button')) return;
-                    
-                    card.classList.toggle('selected');
-                    const isSelected = card.classList.contains('selected');
-                    
-                    // עדכון ה-checkmark רק עבור הפריט הנוכחי
-                    const existingCheckmark = card.querySelector('.checkmark-overlay');
-                    if (isSelected) {
-                        if (!existingCheckmark) {
-                            toggleCheckmarkOverlay(card);
-                        }
-                    } else {
-                        if (existingCheckmark) {
-                            toggleCheckmarkOverlay(card);
-                        }
+                    // בדוק אם זה לא היה long press
+                    if (!isLongPress) {
+                        toggleCheckmarkOverlay(card);
                     }
                 });
-
-                // הוסף דאבל קליק או כפתור לפתיחת תמונה מלאה
-                imgContainer.addEventListener('dblclick', openGallery);
                 
+                // לחיצה ארוכה - פתיחת גלריה
+                let longPressTimer = null;
+                let isLongPress = false;
+                
+                // Mouse events
+                card.addEventListener('mousedown', (e) => {
+                    isLongPress = false;
+                    longPressTimer = setTimeout(() => {
+                        isLongPress = true;
+                        showGalleryOverlay(overlayItems, idx);
+                    }, 800); // 800ms for long press
+                });
+                
+                card.addEventListener('mouseup', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                card.addEventListener('mouseleave', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                // Touch events for mobile devices
+                card.addEventListener('touchstart', (e) => {
+                    isLongPress = false;
+                    longPressTimer = setTimeout(() => {
+                        isLongPress = true;
+                        showGalleryOverlay(overlayItems, idx);
+                    }, 800); // 800ms for long press
+                });
+                
+                card.addEventListener('touchend', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                card.addEventListener('touchcancel', () => {
+                    clearTimeout(longPressTimer);
+                });
+                
+                // Prevent context menu on long press
+                card.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                });
+                // === Quantity badge (grid) ===
+                const qty = resolvedQty;
+                if (qty > 1){
+                  const badge = document.createElement('span');
+                  badge.className = 'lw-thumb-badge';
+                  badge.textContent = 'X' + qty;
+                  card.appendChild(badge);
+                }
+
+                // overlay
+                const ov = document.createElement('div');
+                ov.className = 'missing-gallery-overlay';
+                const nm = document.createElement('span'); nm.className='missing-gallery-name'; nm.textContent = name;
+                const bc = document.createElement('span'); bc.className='missing-gallery-code'; bc.textContent = (item.barcode||'').toString();
+                ov.appendChild(nm); ov.appendChild(bc);
+                card.appendChild(img); card.appendChild(ov);
                 cards.push(card);
-                if (preloadFirst.length < 12 && imgUrl){
-                  const p = new Image(); p.src = imgUrl; preloadFirst.push(new Promise(r=>{ p.onload=p.onerror=()=>r(); }));
+                // נחמם 12 ראשונים כדי לאפשר מעבר Skeleton→תמונות
+                if (preloadFirst.length < 12){
+                  const p = new Image(); p.src = img.src; preloadFirst.push(new Promise(r=>{ p.onload=p.onerror=()=>r(); }));
                 }
               });
 
+              // 5) מחכים למעט תמונות/טיימאאוט, ואז מחליפים את ה-skeleton בכרטיסים
               const loader = document.querySelector('#missing-gallery-container .missing-gallery-loader');
-              if (loader) loader.remove(); 
-              try { await Promise.race([ Promise.allSettled(preloadFirst), new Promise(r=>setTimeout(r,500)) ]); } catch(_){}
-              
+              if (loader) loader.remove(); // הסר Loader – עכשיו נראה skeleton
+              try { await Promise.race([ Promise.allSettled(preloadFirst), new Promise(r=>setTimeout(r,900)) ]); } catch(_){}
               grid.innerHTML = '';
               const frag = document.createDocumentFragment(); cards.forEach(c=>frag.appendChild(c)); grid.appendChild(frag);
             }
@@ -4468,12 +4069,6 @@ expandedGroups.clear();
                     max-width: none !important;
                 }
 
-                /* Table Column Widths Adjustment */
-                /* Update existing CSS to accommodate Supplier Column */
-                /* Note: Column order: Checkbox(1), Expand(2), Total(3), Supplier(4), Name(5), Barcode(6), Price(7), Orders(8) */
-                #missing-table-container table.view-grouped thead th:nth-child(6) { width: 140px !important; } /* Barcode - Wider */
-                #missing-table-container table.view-grouped thead th:nth-child(7) { width: 80px !important; }  /* Price - Narrower */
-
                 /* Specific column widths for grouped view (main headers) */
                 /* Adjusted for new checkbox column */
                 #missing-table-container table.view-grouped thead th:nth-child(1) { /* Checkbox column */
@@ -4485,11 +4080,8 @@ expandedGroups.clear();
                 #missing-table-container table.view-grouped thead th:nth-child(3) { /* Total Missing column */
                     width: 100px;
                 }
-                #missing-table-container table.view-grouped thead th:nth-child(6) { /* Barcode column */
-                    width: 140px !important; /* Wider for full barcode */
-                }
-                #missing-table-container table.view-grouped thead th:nth-child(7) { /* מחיר column */
-                    width: 80px !important; /* Narrower */
+                #missing-table-container table.view-grouped thead th:nth-child(6) { /* מחיר column */
+                    width: 80px; /* Adjust as needed */
                 }
 
                 /* Styling for sub-headers for inner items */
@@ -4790,15 +4382,6 @@ expandedGroups.clear();
             }
             .modal-header .d-flex.align-items-center.gap-2 > .close i.ki-close {
                 color: inherit !important; /* Inherit color from parent */
-            }
-
-            /* שיפור רוחב עמודת ספק בטבלת נגטיב */
-            #missing-table-container td.col-supplier,
-            #missing-table-container th.col-supplier {
-                max-width: 150px !important;
-                overflow: hidden !important;
-                text-overflow: ellipsis !important;
-                white-space: nowrap !important;
             }
             `);
 
