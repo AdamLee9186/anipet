@@ -1,7 +1,7 @@
     // ==UserScript==
-    // @name        טבלת חוסרים 25/12/2025
+    // @name        טבלת חוסרים 27/12/2025
     // @namespace   http://tampermonkey.net/
-    // @version     8.5
+    // @version     8.6
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -4370,23 +4370,77 @@ expandedGroups.clear();
                 const openGallery = () => showGalleryOverlay(overlayItems, idx);
 
                 // --- מנגנון לחיצה ארוכה לצפייה בתמונה גדולה ---
-                let pressTimer;
-                const startPress = () => {
+                // במסכי מגע: גלילה (touchmove) לא צריכה להיחשב לחיצה ארוכה.
+                let pressTimer = null;
+                let longPressTriggered = false;
+                let touchMoved = false;
+                let touchStartX = 0;
+                let touchStartY = 0;
+
+                const clearPressTimer = () => {
+                    if (pressTimer) {
+                        clearTimeout(pressTimer);
+                        pressTimer = null;
+                    }
+                };
+
+                const startPress = (ev) => {
+                    longPressTriggered = false;
+                    touchMoved = false;
+
+                    // שמירת נקודת התחלה למסכי מגע כדי לזהות תנועה/גלילה
+                    if (ev && ev.touches && ev.touches[0]) {
+                        touchStartX = ev.touches[0].clientX;
+                        touchStartY = ev.touches[0].clientY;
+                    }
+
+                    clearPressTimer();
                     pressTimer = setTimeout(() => {
+                        longPressTriggered = true;
+                        clearPressTimer();
                         openGallery();
                     }, 600); // 600ms נחשב לחיצה ארוכה
                 };
-                const cancelPress = () => clearTimeout(pressTimer);
 
-                card.onmousedown = startPress;
-                card.ontouchstart = startPress;
-                card.onmouseup = cancelPress;
-                card.onmouseleave = cancelPress;
-                card.ontouchend = cancelPress;
+                const onTouchMove = (ev) => {
+                    // אם יש תנועה משמעותית - זו גלילה/גרירה, לא לחיצה ארוכה
+                    if (!ev || !ev.touches || !ev.touches[0]) {
+                        touchMoved = true;
+                        clearPressTimer();
+                        return;
+                    }
+                    const dx = Math.abs(ev.touches[0].clientX - touchStartX);
+                    const dy = Math.abs(ev.touches[0].clientY - touchStartY);
+                    if (dx > 8 || dy > 8) {
+                        touchMoved = true;
+                        clearPressTimer();
+                    }
+                };
+
+                const cancelPress = () => {
+                    clearPressTimer();
+                };
+
+                // Desktop / mouse
+                card.addEventListener('mousedown', startPress);
+                card.addEventListener('mouseup', cancelPress);
+                card.addEventListener('mouseleave', cancelPress);
+
+                // Touch
+                card.addEventListener('touchstart', startPress, { passive: true });
+                card.addEventListener('touchmove', onTouchMove, { passive: true });
+                card.addEventListener('touchend', cancelPress, { passive: true });
+                card.addEventListener('touchcancel', cancelPress, { passive: true });
 
                 card.addEventListener('click', (e) => {
                     // מניעת סימון אם לחצו על כפתור אחר בתוך הכרטיס
                     if (e.target.closest('button')) return;
+                    // אם זו הייתה לחיצה ארוכה (פתיחת גלריה) או גלילה במסך מגע – אל תסמן פריט
+                    if (longPressTriggered || touchMoved) {
+                        longPressTriggered = false;
+                        touchMoved = false;
+                        return;
+                    }
                     
                     card.classList.toggle('selected');
                     const isSelected = card.classList.contains('selected');
@@ -4825,21 +4879,21 @@ expandedGroups.clear();
     max-width: 120px !important;
     }
      body[data-negative-mode="true"] #missing-table-container table.view-grouped th:nth-child(3),
-    body[data-negative-mode="true"] #missing-table-container table.view-grouped td:nth-child(3) {
-    width: 380px !important;
-    min-width: 200px !important;
-    max-width: 600px !important;
-    }
-    /* טבלת נגטיב: שם מוצר רחב, ברקוד ומחיר צרים */
-    body[data-negative-mode="true"] #missing-table-container table.view-grouped th:nth-child(4),
-    body[data-negative-mode="true"] #missing-table-container table.view-grouped td:nth-child(4) {
+     body[data-negative-mode="true"] #missing-table-container table.view-grouped td:nth-child(3) {
     width: 90px !important;
     min-width: 60px !important;
     max-width: 120px !important;
     }
+    /* טבלת נגטיב: שם מוצר רחב יותר, ספק צר יותר */
+    body[data-negative-mode="true"] #missing-table-container table.view-grouped th:nth-child(4),
+    body[data-negative-mode="true"] #missing-table-container table.view-grouped td:nth-child(4) {
+    width: 380px !important;
+    min-width: 200px !important;
+    max-width: 600px !important;
+    }
       /* טבלת נגטיב: שם מוצר רחב, ברקוד ומחיר צרים */
     body[data-negative-mode="true"] #missing-table-container table.view-grouped th:nth-child(5),
-    body[data-negative-mode="true"] #missing-table-container table.view-grouped td:nth-child(45) {
+    body[data-negative-mode="true"] #missing-table-container table.view-grouped td:nth-child(5) {
     width: 90px !important;
     min-width: 60px !important;
     max-width: 120px !important;
