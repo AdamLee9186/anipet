@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.01
+// @version      13.9.03
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -19,6 +19,7 @@
 // @connect      raw.githubusercontent.com
 // @connect      *
 // @require      https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js
+// @require      https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js
 // @run-at       document-start
 // ==/UserScript==
 
@@ -3497,7 +3498,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.8.72"; // Match @version
+    const SCRIPT_VERSION = "13.9.03"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -4444,6 +4445,13 @@ setupBlockedScriptObserver();
                     console.error(`[${SCRIPT_NAME}] Error searching for barcode replacements:`, error);
                     alert(`שגיאה בחיפוש ברקודים: ${error.message}`);
                 }
+            });
+
+            // לוגיקת הפעלה/כיבוי ברקוד
+            let SHOW_BARCODES = GM_getValue("tmc_show_barcodes", true);
+            GM_registerMenuCommand(`הצגת ברקודים (128): ${SHOW_BARCODES ? '✅' : '❌'}`, () => {
+                GM_setValue("tmc_show_barcodes", !SHOW_BARCODES);
+                location.reload(); // רענון להחלת השינוי
             });
 
             // מחק את הפקודה הלא רצויה מהתפריט
@@ -6903,146 +6911,346 @@ function showGalleryOverlay(galleryItems, startIndex) {
     window.addCopyIconsToPickOrderItems = addCopyIconsToPickOrderItems;
     // MODIFICATION END
 
-    // This is the correct and ONLY definition for injectPreviewFunctionality
-    function injectPreviewFunctionality(mainTableBody) {
+    // ==================================================================
+    // Inject Preview Column & Buttons into main order table body
+    // ==================================================================
+
+    // Adds "Open All / Close All" button for the /search/* DataTables results table.
+    // IMPORTANT: We do NOT add a new column in search tables to avoid breaking DataTables.
+    function injectSearchOpenAllButton(searchTasksTable) {
         try {
-                    if (!settings || !settings.enablePreview) {
-            return;
-        }
+            if (!searchTasksTable) return null;
 
-        const headerRow = mainTableBody.closest('table').querySelector('thead tr');
-        let previewHeaderCell = null;
+            const wrapper =
+                searchTasksTable.closest('.dataTables_wrapper') ||
+                searchTasksTable.parentElement ||
+                null;
+            if (!wrapper) return null;
 
-        // MODIFICATION START: Hide the original empty TH (th.noVis.pt-2) from the header
-        // This TH is structurally present at data-column-index="1" but visually empty.
-        // We hide it to collapse its space in the header row.
-        const emptyHeaderToHide = headerRow.querySelector('th.noVis.pt-2.sorting_disabled[data-column-index="1"]');
-        if (emptyHeaderToHide) {
-            emptyHeaderToHide.classList.add('tm-hideable-column'); // Use our utility class to hide it
-        }
-        // MODIFICATION END
+            const host = wrapper.querySelector('.top') || wrapper;
 
-        // MODIFICATION START: Insert our "Toggle All" Preview Button TH at the correct position
-        // Check if already added by us
-        previewHeaderCell = headerRow.querySelector('th.preview-col');
+            // Reuse / dedupe container (DataTables sometimes creates ".top" later -> can cause duplicates)
+            const existingContainers = Array.from(
+                wrapper.querySelectorAll('.tm-search-open-all-container')
+            );
+            let container = existingContainers[0] || null;
 
-        if (!previewHeaderCell) {
-            // Find the original Checkbox header (th:nth-child(1) / data-column-index="0")
-            const checkboxHeader = headerRow.querySelector('th[data-column-index="0"]');
-            // Insert our new preview header immediately after the checkbox header.
-            // This will make our new TH `th:nth-child(2)`.
-            // The original `th.noVis.pt-2` (empty) will then be `th:nth-child(3)` (and is hidden by CSS).
-            if (checkboxHeader) {
-                previewHeaderCell = document.createElement('th');
-                previewHeaderCell.classList.add('preview-col');
-                // Insert AFTER checkbox header (safe method)
-                if (checkboxHeader && checkboxHeader.parentElement === headerRow) {
-                    safeInsertAfter(checkboxHeader, previewHeaderCell, headerRow);
-                } else {
-                    headerRow.appendChild(previewHeaderCell);
-                }
-            } else {
-                // Fallback: If checkbox header not found, insert at the beginning (less ideal for precise alignment)
-                previewHeaderCell = document.createElement('th');
-                previewHeaderCell.classList.add('preview-col');
-                // Fallback to start (safe method)
-                if (headerRow.children.length > 0) {
-                    safeInsertBefore(headerRow.children[0], previewHeaderCell, headerRow);
-                } else {
-                    headerRow.appendChild(previewHeaderCell);
-                }
+            if (existingContainers.length > 1) {
+                existingContainers.slice(1).forEach(el => {
+                    try { el.remove(); } catch (_) {}
+                });
             }
-        }
 
-if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-button')) {
-            const button = document.createElement('button');
-            button.className = 'btn btn-sm btn-icon btn-light-primary preview-toggle-all-button';
-            button.innerHTML = '<i class="fa-light fa-list-tree" title="פתח/סגור את כל הפריטים"></i>';
+            if (!container) {
+                container = document.createElement('div');
+                container.className = 'tm-search-open-all-container';
+            }
 
-            button.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+            // RTL-safe alignment: keep button on the right even when the page is RTL
+            container.style.display = 'flex';
+            container.style.direction = 'ltr';
+            container.style.justifyContent = 'flex-end';
+            container.style.margin = '0 0 8px 0';
+            container.style.width = '100%';
 
-                // קובע אם צריך לפתוח או לסגור לפי המצב הנוכחי
-                const isAnyOpen = mainTableBody.querySelector('.preview-cell button i.fa-chevron-left');
-                const targetIconClass = isAnyOpen ? 'fa-chevron-left' : 'fa-chevron-down';
+            let btn = container.querySelector('button.tm-search-open-all');
+            if (!btn) {
+                btn = document.createElement('button');
+                btn.className =
+                    'btn btn-sm btn-icon btn-light-primary preview-toggle-all-button tm-search-open-all';
+                btn.title = 'פתח/סגור את כל ה-Previews בעמוד זה';
+                btn.setAttribute('data-tmc-click-optimized', 'true');
+                btn.innerHTML = '<i class="fa-light fa-list-tree" style="pointer-events:none;"></i>';
+                container.appendChild(btn);
+            }
 
-                // מוצא את כל האייקונים הפוטנציאליים
-                const iconsToConsider = mainTableBody.querySelectorAll(`.preview-cell button i.${targetIconClass}`);
+            const runToggleAll = (forceOpen = false) => {
+                const tbody = searchTasksTable.querySelector('tbody');
+                if (!tbody) return;
 
-                // --- SMART BATCH OPEN START ---
+                // Prefer "preview row exists" as the source of truth (icons may not update in some cases)
+                const previewRows = Array.from(tbody.querySelectorAll('tr[id^="preview-for-"]'));
+                const openTaskIds = new Set(
+                    previewRows
+                        .map(r => (r && r.id ? String(r.id).replace(/^preview-for-/, '') : ''))
+                        .filter(Boolean)
+                );
+
+                let isAnyOpen = false;
+                if (!forceOpen) {
+                    isAnyOpen =
+                        openTaskIds.size > 0 ||
+                        !!tbody.querySelector(
+                            'button.tm-preview-btn i.fa-chevron-left, .preview-cell button i.fa-chevron-left'
+                        );
+                }
+
+                const allButtons = Array.from(
+                    tbody.querySelectorAll('button.tm-preview-btn, .preview-cell button')
+                );
+
+                let buttonsToClick = [];
+                
+                if (forceOpen) {
+                    // Force open: click all buttons that are currently closed
+                    buttonsToClick = allButtons.filter(b => {
+                        const tid = b.getAttribute('data-task-id');
+                        if (!tid) return false;
+                        return !openTaskIds.has(String(tid));
+                    });
+                } else {
+                    // Normal toggle: click buttons based on current state
+                    buttonsToClick = allButtons.filter(b => {
+                        const tid = b.getAttribute('data-task-id');
+                        if (!tid) return false;
+
+                        const isOpen = openTaskIds.has(String(tid));
+                        return isAnyOpen ? isOpen : !isOpen;
+                    });
+                }
+
+                // Fallback (older / edge DOM cases): rely on icon state
+                if (!buttonsToClick.length && !forceOpen) {
+                    const targetIconClass = isAnyOpen ? 'fa-chevron-left' : 'fa-chevron-down';
+                    const iconsToConsider = tbody.querySelectorAll(
+                        `button.tm-preview-btn i.${targetIconClass}, .preview-cell button i.${targetIconClass}`
+                    );
+                    buttonsToClick = Array.from(iconsToConsider)
+                        .map(icon => (icon ? icon.closest('button') : null))
+                        .filter(Boolean);
+                }
+
+                if (!buttonsToClick.length) return;
+
+                // Smart batching (visible first, then offscreen)
                 const viewportHeight = window.innerHeight;
                 const visibleButtons = [];
                 const offscreenButtons = [];
 
-                iconsToConsider.forEach(icon => {
-                    const btn = icon.closest('button');
-                    if (!btn) return;
-                    const rect = btn.getBoundingClientRect();
-                    // בדיקה אם הכפתור נמצא בתוך גבולות המסך כרגע
-                    if (rect.top >= 0 && rect.bottom <= viewportHeight) {
-                        visibleButtons.push(btn);
-                    } else {
-                        offscreenButtons.push(btn);
-                    }
+                buttonsToClick.forEach(b => {
+                    const rect = b.getBoundingClientRect();
+                    if (rect.top >= 0 && rect.bottom <= viewportHeight) visibleButtons.push(b);
+                    else offscreenButtons.push(b);
                 });
 
-                // 1. את מה שעל המסך - פתח מיד (עם השהיה קלה)
-                visibleButtons.forEach((btn, index) => {
-                    setTimeout(() => {
-                        btn.click();
-                    }, index * 100); // השהיה של 100ms בין כל כפתור
+                const step = 90;
+
+                visibleButtons.forEach((b, i) => {
+                    setTimeout(() => b.click(), i * step);
                 });
 
-                // 2. את השאר - פתח בהדרגה כדי לא לתקוע את הממשק (Staggering)
-                if (offscreenButtons.length > 0) {
-                    const startDelay = visibleButtons.length * 100; // התחל אחרי שסיימנו עם הנראים
-                    offscreenButtons.forEach((btn, index) => {
-                        setTimeout(() => {
-                            btn.click();
-                        }, startDelay + (index * 100)); // מרווח של 100ms בין לחיצה ללחיצה
+                if (offscreenButtons.length) {
+                    const startDelay = visibleButtons.length * step;
+                    offscreenButtons.forEach((b, i) => {
+                        setTimeout(() => b.click(), startDelay + (i * step));
                     });
                 }
-                // --- SMART BATCH OPEN END ---
-            }, { passive: false });
+            };
 
-            previewHeaderCell.innerHTML = '';
-            previewHeaderCell.appendChild(button);
-
-            previewHeaderCell.style.padding = '0.75rem 0.5rem';
-            previewHeaderCell.style.textAlign = 'center';
-        }
-
-        // MODIFICATION END (for TH insertion)
-
-
-        // CORRECTED FOR EACH LOOP (TD insertion logic):
-        mainTableBody.querySelectorAll('tr[data-task-id]').forEach(row => {
-            // אל תיגע בשורות שכבר עובדו
-            if (row.hasAttribute('data-preview-processed')) return;
-            if (row.querySelector('td.preview-cell')) { return; }
-            // MODIFICATION START: DO NOT remove/move content from td.noVis.pt-2.
-            // That TD (the ✅ icon) is an important visible column and should stay in its original position.
-            // We are NOT hiding it here. Its width is controlled by new CSS for '.noVis.pt-2'.
-            // MODIFICATION END
-
-            const cell = document.createElement('td'); // This is the cell for the individual preview button
-            cell.className = 'preview-cell';
-            const button = document.createElement('button');
-            button.className = 'btn btn-sm btn-icon btn-light-primary';
-            button.innerHTML = '<i class="fa-light fa-chevron-down"></i>'; // Only the chevron icon initially
-
-            button.dataset.taskId = row.dataset.taskId;
-            button.title = 'הצג פריטים'; // Base title
-
-            cell.append(button);
-            // Insert the button cell at index 1 (the second position after the original checkbox).
-            // This is crucial: [Checkbox (0)], [OUR BUTTON (1)], [✅ Icon (2)], [Order ID (3)]
-            if (row.children[1]) {
-                safeInsertBefore(row.children[1], cell, row);
-            } else {
-                row.appendChild(cell);
+            if (!btn.dataset.tmSearchOpenAllBound) {
+                btn.dataset.tmSearchOpenAllBound = '1';
+                btn.addEventListener(
+                    'click',
+                    (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        runToggleAll();
+                    },
+                    { passive: false }
+                );
             }
+
+            // Prefer DataTables "top" area; fallback insert before table (and move if needed)
+            const preferredHost = host;
+            if (preferredHost.classList && preferredHost.classList.contains('top')) {
+                if (container.parentElement !== preferredHost) preferredHost.appendChild(container);
+            } else {
+                if (container.parentElement !== wrapper) wrapper.appendChild(container);
+                if (wrapper.firstChild !== container) wrapper.insertBefore(container, wrapper.firstChild);
+            }
+
+            return runToggleAll;
+        } catch (_) {
+            return null;
+        }
+    }
+
+    // This is the correct and ONLY definition for injectPreviewFunctionality
+    function injectPreviewFunctionality(mainTableBody) {
+        safeExecute(() => {
+            if (!settings || !settings.enablePreview) return;
+
+            const tableEl = mainTableBody && mainTableBody.closest ? mainTableBody.closest('table') : null;
+            if (!tableEl) return;
+
+            const isSearchTasksTable =
+                tableEl.classList.contains('search-task-table') ||
+                window.location.pathname.startsWith('/search/');
+
+            const headerRow = tableEl.querySelector('thead tr');
+            let previewHeaderCell;
+
+            if (!isSearchTasksTable && headerRow) {
+
+                // MODIFICATION START: Hide the original empty TH from DataTables if it exists
+                const emptyHeaderToHide = headerRow.querySelector('th.noVis[aria-label=""]');
+                if (emptyHeaderToHide) {
+                    emptyHeaderToHide.style.display = 'none';
+                }
+                // MODIFICATION END
+
+                // MODIFICATION START: Insert our "Toggle All" Preview Button TH at the correct position
+                // Check if already added by us
+                previewHeaderCell = headerRow.querySelector('th.preview-col');
+
+                if (!previewHeaderCell) {
+                    // Find the original Checkbox header (th:nth-child(1) / data-column-index="0")
+                    const checkboxHeader = headerRow.querySelector('th[data-column-index="0"]');
+                    // Insert our new preview header immediately after the checkbox header.
+                    // This will make our new TH `th:nth-child(2)`.
+                    // The original `th.noVis.pt-2` (empty) will then be `th:nth-child(3)` (and is hidden by CSS).
+                    if (checkboxHeader) {
+                        previewHeaderCell = document.createElement('th');
+                        previewHeaderCell.classList.add('preview-col');
+                        // Insert AFTER checkbox header (safe method)
+                        if (checkboxHeader && checkboxHeader.parentElement === headerRow) {
+                            safeInsertAfter(checkboxHeader, previewHeaderCell, headerRow);
+                        } else {
+                            headerRow.appendChild(previewHeaderCell);
+                        }
+                    } else {
+                        // Fallback: If checkbox header not found, insert near the beginning.
+                        // Search results tables (/search/*) don't have the checkbox column, so we keep the first column as-is.
+                        previewHeaderCell = document.createElement('th');
+                        previewHeaderCell.classList.add('preview-col');
+                        if (headerRow.children.length > 0) {
+                            const refTh = (isSearchTasksTable && headerRow.children[1]) ? headerRow.children[1] : headerRow.children[0];
+                            safeInsertBefore(refTh, previewHeaderCell, headerRow);
+                        } else {
+                            headerRow.appendChild(previewHeaderCell);
+                        }
+                    }
+                }
+
+                if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-button')) {
+                    const button = document.createElement('button');
+                    button.className = 'btn btn-sm btn-icon btn-light-primary preview-toggle-all-button';
+                    button.innerHTML = '<i class="fa-light fa-list-tree" title="פתח/סגור את כל הפריטים"></i>';
+
+                    button.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+
+                        // קובע אם צריך לפתוח או לסגור לפי המצב הנוכחי
+                        const isAnyOpen = mainTableBody.querySelector('.preview-cell button i.fa-chevron-left, button.tm-preview-btn i.fa-chevron-left');
+                        const targetIconClass = isAnyOpen ? 'fa-chevron-left' : 'fa-chevron-down';
+
+                        // מוצא את כל האייקונים הפוטנציאליים
+                        const iconsToConsider = mainTableBody.querySelectorAll(`.preview-cell button i.${targetIconClass}, button.tm-preview-btn i.${targetIconClass}`);
+
+                        // --- SMART BATCH OPEN START ---
+                        const viewportHeight = window.innerHeight;
+                        const visibleButtons = [];
+                        const offscreenButtons = [];
+
+                        iconsToConsider.forEach(icon => {
+                            const btn = icon.closest('button');
+                            if (!btn) return;
+                            const rect = btn.getBoundingClientRect();
+                            // בדיקה אם הכפתור נמצא בתוך גבולות המסך כרגע
+                            if (rect.top >= 0 && rect.bottom <= viewportHeight) {
+                                visibleButtons.push(btn);
+                            } else {
+                                offscreenButtons.push(btn);
+                            }
+                        });
+
+                        // 1. את מה שעל המסך - פתח מיד (עם השהיה קלה)
+                        visibleButtons.forEach((btn, index) => {
+                            setTimeout(() => {
+                                btn.click();
+                            }, index * 100); // השהיה של 100ms בין כל כפתור
+                        });
+
+                        // 2. את השאר - פתח בהדרגה כדי לא לתקוע את הממשק (Staggering)
+                        if (offscreenButtons.length > 0) {
+                            const startDelay = visibleButtons.length * 100; // התחל אחרי שסיימנו עם הנראים
+                            offscreenButtons.forEach((btn, index) => {
+                                setTimeout(() => {
+                                    btn.click();
+                                }, startDelay + (index * 100)); // מרווח של 100ms בין לחיצה ללחיצה
+                            });
+                        }
+                        // --- SMART BATCH OPEN END ---
+                    }, { passive: false });
+
+                    previewHeaderCell.innerHTML = '';
+                    previewHeaderCell.appendChild(button);
+
+                    previewHeaderCell.style.padding = '0.75rem 0.5rem';
+                    previewHeaderCell.style.textAlign = 'center';
+                }
+
+                // MODIFICATION END (for TH insertion)
+            }
+
+        mainTableBody.querySelectorAll('tr').forEach(row => {
+            // Do not touch generated preview rows
+            if (row.id && row.id.startsWith('preview-for-')) return;
+
+            // Normalize taskId onto the row (Operator tables: tr[data-task-id], Search tables: <a.task-panel-view-open>)
+            let taskId = row.dataset.taskId;
+            if (!taskId) {
+                const taskLink = row.querySelector(
+                    'a.task-panel-view-open[data-task-id], a.task-panel-view-open[href^="/tasks/"]'
+                );
+                if (taskLink) {
+                    taskId =
+                        taskLink.getAttribute('data-task-id') ||
+                        ((taskLink.getAttribute('href') || '').match(/\/tasks\/(\d+)/) || [])[1];
+                }
+                if (taskId) row.dataset.taskId = taskId;
+            }
+            if (!taskId) return;
+
+            // Skip if preview functionality already processed for this row
+            if (row.hasAttribute('data-preview-processed')) return;
+
+            // IMPORTANT: Check if the preview UI already exists (to prevent duplicates)
+            if (row.querySelector('td.preview-cell') || row.querySelector('button.tm-preview-btn')) return;
+
+            // DO NOT HIDE: The original empty TD is now used for the copy icon.
+            // (We do not touch td.noVis.pt-2 anymore.)
+
+            const button = document.createElement('button');
+            button.className = 'btn btn-sm btn-icon btn-light-primary tm-preview-btn';
+            button.dataset.taskId = taskId;
+            button.title = 'הצג פריטים';
+            button.innerHTML = '<i class="fa-light fa-chevron-down"></i>';
+
+            if (isSearchTasksTable) {
+                // On search results tables (DataTables), avoid adding a new column. Inject the button into the shipment cell.
+                button.classList.add('tm-search-preview-btn');
+                button.style.marginInline = '0 6px';
+                button.style.verticalAlign = 'middle';
+
+                const shipmentLink = row.querySelector('a.task-panel-view-open');
+                const host = (shipmentLink && shipmentLink.parentElement) || row.children[0];
+
+                if (shipmentLink && host) safeInsertBefore(shipmentLink, button, host);
+                else if (host) host.insertBefore(button, host.firstChild);
+                else row.insertAdjacentElement('afterbegin', button);
+            } else {
+                // Operator / main table: dedicated preview column
+                const cell = document.createElement('td'); // This is the cell for the individual preview button
+                cell.className = 'preview-cell';
+                cell.append(button);
+
+                // Insert the preview cell into the row at position 1 (after the checkbox cell)
+                if (row.children[1]) safeInsertBefore(row.children[1], cell, row);
+                else row.appendChild(cell);
+            }
+
             // MODIFICATION END (for TD insertion)
 
             // Recalculate column widths if DataTables is present
@@ -7417,16 +7625,13 @@ if (previewHeaderCell && !previewHeaderCell.querySelector('.preview-toggle-all-b
             row.setAttribute('data-preview-processed', 'true');
         });
 
-        } catch (error) {
-            console.error(`[${SCRIPT_NAME}] Error injecting preview functionality:`, error);
-        }
-
         // הפעלת Prefetch אוטומטי (hover + viewport)
         TM_PREVIEW.wireHoverPrefetch(document);
         TM_PREVIEW.wireViewportPrefetch(document);
 
         // Fix shipment wrapping after injecting preview functionality
         // fixShipmentWrapping(); // Removed for performance
+        });
     }
     // MODIFICATION END: This is where the correct injectPreviewFunctionality function ends.
 
@@ -10114,6 +10319,44 @@ function prepareCopyElements() {
             if (firstOrderRow) {
                 const mainTableBody = firstOrderRow.closest('tbody');
                 if (mainTableBody) safeExecute(() => injectPreviewFunctionality(mainTableBody));
+            }
+
+            // Also support Previews inside the Advanced Search pages (/search/*)
+            // The search results table is DataTables-based and may re-render; we attach a lightweight observer.
+            const searchTasksTable = document.querySelector('table.search-task-table');
+            if (searchTasksTable) {
+                const ensureSearchPreviews = () => {
+                    const searchTbody = searchTasksTable.querySelector('tbody');
+                    if (searchTbody) injectPreviewFunctionality(searchTbody);
+                    // Add Open-All button for search results table
+                    const toggleAll = injectSearchOpenAllButton(searchTasksTable);
+
+                    // Auto-open on page entry/first load of results
+                    if (toggleAll && !searchTasksTable.dataset.tmcAutoOpened) {
+                        const rows = searchTasksTable.querySelectorAll('tbody tr[id^="visit-row-"], tbody tr[data-task-id]');
+                        if (rows.length > 0) {
+                            searchTasksTable.dataset.tmcAutoOpened = 'true';
+                            // Small delay to ensure click listeners are attached
+                            setTimeout(() => toggleAll(true), 300);
+                        }
+                    }
+                };
+
+                safeExecute(ensureSearchPreviews);
+
+                if (!searchTasksTable.hasAttribute('data-preview-observer-active')) {
+                    const debouncedEnsureSearchPreviews = debounce(() => safeExecute(ensureSearchPreviews), 250);
+                    const mo = new MutationObserver(() => debouncedEnsureSearchPreviews());
+
+                    const tb = searchTasksTable.querySelector('tbody');
+                    if (tb) {
+                        mo.observe(tb, { childList: true, subtree: true });
+                    } else {
+                        mo.observe(searchTasksTable, { childList: true, subtree: true });
+                    }
+
+                    searchTasksTable.setAttribute('data-preview-observer-active', 'true');
+                }
             }
 
             // Add MutationObserver for panel view highlighting
@@ -13392,4 +13635,283 @@ setInterval(__lwTagPhoneYellowRows, 1500);
 
   // Expose function for manual use
   window.processLateCounter = processLateCounter;
+})();
+
+
+// ========== Task ID Code128 Barcode (מספר משלוח -> ברקוד Code 128) ==========
+(function installTaskIdCode128Barcode(){
+  if (window.__tmcTaskIdCode128BarcodeInstalled) return;
+  window.__tmcTaskIdCode128BarcodeInstalled = true;
+
+  // Check if barcodes are enabled
+  const SHOW_BARCODES = GM_getValue("tmc_show_barcodes", true);
+  if (!SHOW_BARCODES) return;
+
+  // Visual-only: never steal clicks from the title / hover-copy area
+  try {
+    GM_addStyle(`
+      /* --- Task ID Code 128 barcode --- */
+      .tmc-taskid-wrap{
+        position: relative !important;
+        display: inline-block !important;
+        overflow: visible !important;
+      }
+      .tmc-taskid-barcode-slot{ display: inline-block; }
+      .tmc-taskid-barcode-slot svg{ display: block; }
+
+      /* Sidepanel (offcanvas): barcode UNDER the number, without reflow */
+      .tmc-taskid-barcode-slot--sidepanel{
+        position: absolute !important;
+        right: 0 !important;
+        top: calc(100% + 2px) !important;
+        z-index: 6 !important;
+        pointer-events: none !important;
+        overflow: visible !important;
+      }
+      .tmc-taskid-barcode-slot--sidepanel svg{
+        height: 44px !important;
+        width: auto !important;
+      }
+
+      /* Full page: barcode LEFT of the number (RTL), inline and compact */
+      .tmc-taskid-barcode-slot--fullscreen{
+        display: inline-block !important;
+        vertical-align: middle !important;
+        margin-inline-start: 12px !important; /* in RTL this is RIGHT margin (gap between number and barcode) */
+        transform: translateY(1px) !important;
+        pointer-events: none !important;
+      }
+      .tmc-taskid-barcode-slot--fullscreen svg{
+        height: 34px !important;
+        width: auto !important;
+      }
+
+      /* Avoid clipping (some Lionwheel headers have overflow constraints) */
+      .lw-sidepanel-header,
+      .lw-sidepanel-title,
+      #kt_subheader{
+        overflow: visible !important;
+      }
+
+      /* הגבהת ה-Toolbar ב-Sidepanel וסידור גמיש */
+      .lw-sidepanel-header {
+        height: auto !important;
+        min-height: 70px !important;
+        padding-bottom: 10px !important;
+        align-items: flex-start !important; /* יישור כפתורים למעלה */
+      }
+
+      /* סידור הכותרת כך שהברקוד יופיע בשורה חדשה */
+      .lw-sidepanel-title {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+      }
+
+      /* עיצוב הברקוד בתוך ה-Sidepanel */
+      .tmc-sidepanel-barcode {
+        margin-top: 8px;
+        background: white;
+        padding: 3px;
+        border-radius: 4px;
+        border: 1px solid #eee;
+        max-width: 180px;
+      }
+
+      /* מניעת הסתרה של אלמנטים בגלל overflow */
+      #task_offcanvas {
+        overflow-x: visible !important;
+      }
+    `);
+  } catch(_){}
+
+  const isDigits = (s)=>/^[0-9]{4,}$/.test(String(s||'').trim());
+  const getIdFromSpan = (span)=>String(span?.textContent || '').trim();
+
+  function __tmcRenderCode128(svgEl, value, mode){
+    try {
+      if (!window.JsBarcode) return false;
+      if (svgEl.dataset.tmcBarcodeValue === value) return true;
+
+      const opts = (mode === 'sidepanel')
+        ? { format: 'CODE128', displayValue: false, width: 2, height: 44, margin: 0 }
+        : { format: 'CODE128', displayValue: false, width: 2, height: 34, margin: 0 };
+
+      window.JsBarcode(svgEl, value, opts);
+      svgEl.dataset.tmcBarcodeValue = value;
+      return true;
+    } catch (e) {
+      console.warn('[Toolbox] Code128 render failed:', e);
+      return false;
+    }
+  }
+
+  function __tmcEnsureSidepanelBarcode(taskIdSpan){
+    const taskId = getIdFromSpan(taskIdSpan);
+    if (!isDigits(taskId)) return;
+
+    // Wrap only the number span so the barcode can be absolutely positioned under it
+    let wrap = taskIdSpan.closest('.tmc-taskid-wrap');
+    if (!wrap) {
+      wrap = document.createElement('span');
+      wrap.className = 'tmc-taskid-wrap tmc-taskid-wrap--sidepanel';
+      taskIdSpan.parentNode.insertBefore(wrap, taskIdSpan);
+      wrap.appendChild(taskIdSpan);
+    }
+
+    let slot = wrap.querySelector('.tmc-taskid-barcode-slot--sidepanel');
+    if (!slot) {
+      slot = document.createElement('span');
+      slot.className = 'tmc-taskid-barcode-slot tmc-taskid-barcode-slot--sidepanel';
+      wrap.appendChild(slot);
+    }
+
+    let svg = slot.querySelector('svg');
+    if (!svg) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('role', 'img');
+      svg.setAttribute('aria-label', 'Code 128');
+      slot.appendChild(svg);
+    }
+
+    __tmcRenderCode128(svg, taskId, 'sidepanel');
+  }
+
+  function __tmcEnsureFullscreenBarcode(taskIdSpan){
+    const taskId = getIdFromSpan(taskIdSpan);
+    if (!isDigits(taskId)) return;
+
+    // Insert immediately AFTER the number span (RTL => appears LEFT of number)
+    let slot = taskIdSpan.parentElement?.querySelector('.tmc-taskid-barcode-slot--fullscreen');
+    if (!slot) {
+      slot = document.createElement('span');
+      slot.className = 'tmc-taskid-barcode-slot tmc-taskid-barcode-slot--fullscreen';
+      taskIdSpan.insertAdjacentElement('afterend', slot);
+    } else {
+      // ensure correct placement (must be right after the task id span)
+      if (slot.previousElementSibling !== taskIdSpan) {
+        taskIdSpan.insertAdjacentElement('afterend', slot);
+      }
+    }
+
+    let svg = slot.querySelector('svg');
+    if (!svg) {
+      svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('role', 'img');
+      svg.setAttribute('aria-label', 'Code 128');
+      slot.appendChild(svg);
+    }
+
+    __tmcRenderCode128(svg, taskId, 'fullscreen');
+  }
+
+  function __tmcScanTaskIdBarcodes(){
+    try {
+      // Check if barcodes are enabled (may have changed via menu)
+      if (!GM_getValue("tmc_show_barcodes", true)) {
+        // Remove existing barcodes if disabled
+        document.querySelectorAll('.tmc-taskid-barcode-slot').forEach(el => el.remove());
+        document.querySelectorAll('.tmc-sidepanel-barcode').forEach(el => el.remove());
+        document.querySelectorAll('.tmc-taskid-wrap').forEach(wrap => {
+          const span = wrap.querySelector('span.hover-copy');
+          if (span && span.parentNode === wrap) {
+            wrap.parentNode.insertBefore(span, wrap);
+            wrap.remove();
+          }
+        });
+        // הסרת סימון מהאלמנטים
+        document.querySelectorAll('[data-barcode-attached]').forEach(el => {
+          el.removeAttribute('data-barcode-attached');
+        });
+        return;
+      }
+
+      // Sidepanel (offcanvas) toolbar title: .lw-sidepanel-title ... <span class="hover-copy ...">TASKID</span>
+      document
+        .querySelectorAll('.lw-sidepanel-header .lw-sidepanel-title span.hover-copy')
+        .forEach(__tmcEnsureSidepanelBarcode);
+
+      // Sidepanel alternative selector: #task_offcanvas ... <span class="hover-copy font-size-h2">TASKID</span>
+      // Also matches: <span class="hover-copy font-weight-bolder font-size-h2">TASKID</span>
+      document
+        .querySelectorAll('#task_offcanvas .hover-copy.font-size-h2, #task_offcanvas span.hover-copy.font-size-h2, .offcanvas .hover-copy.font-size-h2')
+        .forEach(__tmcEnsureSidepanelBarcode);
+
+      // Sidepanel with font-size-h4: #task_offcanvas ... <div class="font-size-h4"><span class="hover-copy">TASKID</span></div>
+      document
+        .querySelectorAll('#task_offcanvas .font-size-h4 .hover-copy:first-of-type, .lw-sidepanel-header .font-size-h4 .hover-copy:first-of-type')
+        .forEach(__tmcEnsureSidepanelBarcode);
+
+      // Full page toolbar title: #kt_subheader ... <span class="hover-copy">TASKID</span>
+      document
+        .querySelectorAll('#kt_subheader h5 span.hover-copy')
+        .forEach(__tmcEnsureFullscreenBarcode);
+    } catch (e) {
+      console.warn('[Toolbox] TaskId barcode scan error:', e);
+    }
+  }
+
+  // Debounced scheduler (many UI mutations on Lionwheel)
+  let __tmcBarcodeScheduled = false;
+  const __tmcScheduleScan = ()=>{
+    if (__tmcBarcodeScheduled) return;
+    __tmcBarcodeScheduled = true;
+    requestAnimationFrame(()=>{
+      __tmcBarcodeScheduled = false;
+      __tmcScanTaskIdBarcodes();
+    });
+  };
+
+  // Initial
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', __tmcScheduleScan, { once: true });
+  } else {
+    __tmcScheduleScan();
+  }
+
+  // Watch for dynamic inserts (offcanvas opens, SPA navigations)
+  const mo = new MutationObserver((mutations)=>{
+    for (const m of mutations) {
+      if (!m.addedNodes) continue;
+      for (const n of m.addedNodes) {
+        if (!n || n.nodeType !== 1) continue;
+        if (
+          (n.matches && (n.matches('.lw-sidepanel-header') || n.matches('.lw-sidepanel-title') || n.matches('#kt_subheader') || n.matches('#task_offcanvas') || n.matches('.offcanvas') || n.matches('.hover-copy.font-size-h2'))) ||
+          (n.querySelector && (n.querySelector('.lw-sidepanel-header') || n.querySelector('.lw-sidepanel-title') || n.querySelector('#kt_subheader') || n.querySelector('#task_offcanvas') || n.querySelector('.offcanvas') || n.querySelector('.hover-copy.font-size-h2')))
+        ) {
+          __tmcScheduleScan();
+          return;
+        }
+      }
+    }
+  });
+
+  const startObserve = ()=>{
+    const root = document.body || document.documentElement;
+    if (!root) return;
+    try { mo.observe(root, { childList: true, subtree: true }); } catch(_){}
+  };
+
+  if (document.readyState === 'loading' && !document.body) {
+    window.addEventListener('load', startObserve, { once: true });
+  } else {
+    startObserve();
+  }
+
+  // Also react to soft navigation (some pages update header without DOM insertion)
+  window.addEventListener('popstate', __tmcScheduleScan);
+  try {
+    const _ps = history.pushState;
+    const _rs = history.replaceState;
+    history.pushState = function(){
+      const ret = _ps.apply(this, arguments);
+      __tmcScheduleScan();
+      return ret;
+    };
+    history.replaceState = function(){
+      const ret = _rs.apply(this, arguments);
+      __tmcScheduleScan();
+      return ret;
+    };
+  } catch(_){}
 })();

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - חיפוש משלוחים דומים
 // @namespace    http://tampermonkey.net/
-// @version      3.8
+// @version      3.9
 // @description  [מבצע אופטימיזציה] מאחד בקשות רשת (items+drivers), מוסיף טעינה אסינכרונית לפריטים, ומשפר עיצוב אייקונים.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*
@@ -51,8 +51,8 @@
     // -------------------------------------------------------------------------
     const REQ_QUEUE = [];
     let REQ_ACTIVE = 0;
-    const REQ_MAX_CONCURRENT = 5; // Boost: הועלה ל-5 בקשות במקביל לניצול טוב יותר
-    const REQ_DELAY_MS = 50;      // Boost: זמן המתנה צומצם ל-50ms לשיפור תגובתיות
+    const REQ_MAX_CONCURRENT = 10; // אופטימיזציה: העלאה ל-10 בקשות במקביל
+    const REQ_DELAY_MS = 15;      // אופטימיזציה: צמצום המתנה ל-15ms בלבד
 
     function processRequestQueue() {
         if (REQ_ACTIVE >= REQ_MAX_CONCURRENT || REQ_QUEUE.length === 0) return;
@@ -68,14 +68,49 @@
             });
     }
 
-    function enqueueRequest(fn) {
+    function enqueueRequest(fn, highPriority = false) {
         return new Promise((resolve, reject) => {
-            REQ_QUEUE.push({ fn, resolve, reject });
+            if (highPriority) {
+                // מכניס לראש התור - לחיצת משתמש תמיד קודמת לטעינת רקע
+                REQ_QUEUE.unshift({ fn, resolve, reject });
+            } else {
+                REQ_QUEUE.push({ fn, resolve, reject });
+            }
             processRequestQueue();
         });
     }
 
-    const previewCache = new Map();
+    // שימוש ב-Cache קיים או טעינה מהזיכרון המקומי של הדפדפן
+    let cachedPreviewData = [];
+    try {
+        const stored = GM_getValue('previewCache', '[]');
+        cachedPreviewData = JSON.parse(stored);
+    } catch (e) {
+        cachedPreviewData = [];
+    }
+    const previewCache = new Map(cachedPreviewData);
+    
+    let cachedPhoneData = [];
+    try {
+        const stored = GM_getValue('phoneCache', '[]');
+        cachedPhoneData = JSON.parse(stored);
+    } catch (e) {
+        cachedPhoneData = [];
+    }
+    const phoneCache = new Map(cachedPhoneData);
+    
+    const ACTIVE_FETCHES = new Map(); // למניעת כפל בקשות זהות
+    
+    function persistCaches() {
+        // שמירת ה-Cache לשימוש עתידי (חוסך בקשות רשת בריענון דף)
+        try {
+            GM_setValue('previewCache', JSON.stringify(Array.from(previewCache.entries()).slice(-500)));
+            GM_setValue('phoneCache', JSON.stringify(Array.from(phoneCache.entries()).slice(-500)));
+        } catch (e) {
+            console.warn('Failed to persist caches:', e);
+        }
+    }
+    
     const PLACEHOLDER_IMG_URL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="70" viewBox="0 0 80 70"><rect width="80" height="70" fill="#fafafa"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="12px" fill="#d4d4d4">אין תמונה</text></svg>');
 
 
@@ -847,6 +882,13 @@
 
             if (driverData && Array.isArray(items)) {
                 previewCache.set(taskId, driverData);
+                
+                // שמירת טלפון ב-phoneCache אם קיים
+                if (phoneNumber) {
+                    phoneCache.set(taskId, phoneNumber);
+                }
+                
+                persistCaches();
             }
 
             if (phonePlaceholder) {
@@ -959,10 +1001,18 @@
                 let cachedData = previewCache.get(taskId);
                 
                 if (!cachedData) {
-                    cachedData = await fetchTaskDriverData(taskId);
+                    // עדיפות גבוהה: המשתמש לחץ על כפתור ה-Preview
+                    cachedData = await fetchTaskDriverData(taskId, true);
                     
                     if ((cachedData.items && cachedData.items.length > 0) || (cachedData.availableDrivers && cachedData.availableDrivers.length > 0)) {
                         previewCache.set(taskId, cachedData);
+                        
+                        // שמירת טלפון ב-phoneCache אם קיים
+                        if (cachedData.phoneNumber) {
+                            phoneCache.set(taskId, cachedData.phoneNumber);
+                        }
+                        
+                        persistCaches();
                     } else {
                         console.warn(`No items or drivers found for task ${taskId}`);
                     }
@@ -999,12 +1049,92 @@
     }
 
     /**
+     * שולף את מספר הטלפון מדף המשימה
+     * כולל cache ו-deduplication
+     */
+    async function getTaskPhone(taskId) {
+        // בדיקה ב-cache
+        if (phoneCache.has(taskId)) {
+            return phoneCache.get(taskId);
+        }
+        
+        // בדיקה אם יש בקשה פעילה - מניעת כפילות
+        const fetchKey = `phone_${taskId}`;
+        if (ACTIVE_FETCHES.has(fetchKey)) {
+            return ACTIVE_FETCHES.get(fetchKey);
+        }
+        
+        // אם יש preview cache, נשתמש בטלפון משם
+        if (previewCache.has(taskId)) {
+            const cached = previewCache.get(taskId);
+            if (cached && cached.phoneNumber) {
+                phoneCache.set(taskId, cached.phoneNumber);
+                return cached.phoneNumber;
+            }
+        }
+        
+        // נשתמש ב-fetchTaskDriverData שכבר כולל deduplication
+        const fetchPromise = fetchTaskDriverData(taskId, false)
+            .then(data => {
+                const phone = data?.phoneNumber || null;
+                if (phone) {
+                    phoneCache.set(taskId, phone);
+                    persistCaches();
+                }
+                ACTIVE_FETCHES.delete(fetchKey);
+                return phone;
+            })
+            .catch(() => {
+                ACTIVE_FETCHES.delete(fetchKey);
+                return null;
+            });
+        
+        ACTIVE_FETCHES.set(fetchKey, fetchPromise);
+        return fetchPromise;
+    }
+
+    /**
      * [שונה] שולף את דף המשימה המלא עבור *נתוני נהגים*, *השם המוצג* ו*אייקון הנהג/גשר*.
      * עוטף את הבקשה בתור הניהול כדי למנוע עומס (Traffic Jam)
+     * כולל מניעת כפילות בקשות ושמירת cache
      */
-    function fetchTaskDriverData(taskId) {
-        // עוטף את הבקשה בתור הניהול כדי למנוע עומס (Traffic Jam)
-        return enqueueRequest(() => _executeFetchTaskDriverData(taskId));
+    function fetchTaskDriverData(taskId, highPriority = false) {
+        // בדיקה אם יש cache
+        if (previewCache.has(taskId)) {
+            return Promise.resolve(previewCache.get(taskId));
+        }
+        
+        // בדיקה אם יש בקשה פעילה - מניעת כפילות
+        const fetchKey = `driver_${taskId}`;
+        if (ACTIVE_FETCHES.has(fetchKey)) {
+            return ACTIVE_FETCHES.get(fetchKey);
+        }
+        
+        // יצירת בקשה חדשה
+        const fetchPromise = enqueueRequest(() => _executeFetchTaskDriverData(taskId), highPriority)
+            .then(data => {
+                // שמירה ב-cache
+                if (data && (data.items || data.availableDrivers)) {
+                    previewCache.set(taskId, data);
+                    
+                    // שמירת טלפון ב-phoneCache אם קיים
+                    if (data.phoneNumber) {
+                        phoneCache.set(taskId, data.phoneNumber);
+                    }
+                    
+                    persistCaches();
+                }
+                
+                ACTIVE_FETCHES.delete(fetchKey);
+                return data;
+            })
+            .catch(err => {
+                ACTIVE_FETCHES.delete(fetchKey);
+                throw err;
+            });
+        
+        ACTIVE_FETCHES.set(fetchKey, fetchPromise);
+        return fetchPromise;
     }
 
     /**
