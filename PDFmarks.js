@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Print Labels Region Mark (Smart Page Count + Thermal Fix)
 // @namespace    https://members.lionwheel.com/
-// @version      11.8.0
+// @version      11.9.0
 // @description  Dynamic page count, Black stripes for thermal print, Crash fixes, XHR interception, direct PDF replacement, multi-CDN fallback, and direct print.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*/print_labels
@@ -30,6 +30,7 @@
 
   const state = {
     taskOrder: [],
+    taskMeta: null,
     pdfBlobUrl: '',
     lastModifiedUrl: '',
     processing: false,
@@ -54,7 +55,8 @@
   function saveToCache(orderData) {
       if (!state.taskId) state.taskId = getTaskId();
       try {
-          sessionStorage.setItem('LW_Tasks_' + state.taskId, JSON.stringify(orderData));
+          const payload = { taskOrder: orderData, taskMeta: state.taskMeta || null };
+          sessionStorage.setItem('LW_Tasks_' + state.taskId, JSON.stringify(payload));
           console.log(TAG, 'Data saved to session cache for ID:', state.taskId);
       } catch (e) {}
   }
@@ -64,8 +66,17 @@
       try {
           const cached = sessionStorage.getItem('LW_Tasks_' + state.taskId);
           if (cached) {
-              state.taskOrder = JSON.parse(cached);
-              console.log(TAG, 'Restored data from cache:', state.taskOrder.length, 'pages');
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed)) {
+                // backward-compat: older cache stored only the array
+                state.taskOrder = parsed;
+                state.taskMeta = null;
+              } else if (parsed && typeof parsed === 'object') {
+                state.taskOrder = Array.isArray(parsed.taskOrder) ? parsed.taskOrder : [];
+                state.taskMeta = Array.isArray(parsed.taskMeta) ? parsed.taskMeta : null;
+              }
+              console.log(TAG, 'Restored data from cache:', state.taskOrder.length, 'pages',
+                state.taskMeta ? '(meta restored)' : '(no meta)');
               return true;
           }
       } catch (e) {}
@@ -156,20 +167,136 @@
     return state.pdfLibPromise;
   }
 
+  function buildTaskOrder(mode) {
+    // mode: 'perTask' | 'perPackage'
+    if (!Array.isArray(state.taskMeta)) return null;
+    const out = [];
+    for (const m of state.taskMeta) {
+      const qty = Math.max(1, parseInt(m.qty || 1));
+      const lane = (m.lane === 0 || m.lane === 1 || m.lane === 2) ? m.lane : 0;
+      const needs = !!m.needsGrocery;
+      if (mode === 'perPackage') {
+        for (let i = 0; i < qty; i++) { out.push(lane); if (needs) out.push(null); }
+      } else {
+        for (let i = 0; i < qty; i++) out.push(lane);
+        if (needs) out.push(null);
+      }
+    }
+    return out;
+  }
+
+  // Heuristic: label pages usually contain XObjects (barcode image / form), grocery list pages often don't.
+  function pageHasXObjects(page, PDFLib) {
+    try {
+      if (!page || !page.node) return false;
+      const resFn = page.node.Resources;
+      const res = (typeof resFn === 'function') ? resFn.call(page.node) : null;
+      if (!res || typeof res.lookup !== 'function') return false;
+
+      const PDFName = PDFLib && PDFLib.PDFName;
+      if (!PDFName || typeof PDFName.of !== 'function') return false;
+
+      const xobj = res.lookup(PDFName.of('XObject'));
+      if (!xobj) return false;
+
+      // Try to read dict size if available
+      if (typeof xobj.size === 'function') return xobj.size() > 0;
+      if (xobj.dict && typeof xobj.dict.size === 'function') return xobj.dict.size() > 0;
+
+      // If we can't measure, but XObject exists – assume it's a label page
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function getLikelyLabelPageIndexes(pages, PDFLib) {
+    const idx = [];
+    for (let i = 0; i < pages.length; i++) {
+      if (pageHasXObjects(pages[i], PDFLib)) idx.push(i);
+    }
+    return idx;
+  }
+
+  function drawStripeOnPage(page, lane, cfg, color) {
+    if (lane === null) return;
+    const { width, height } = page.getSize();
+    const x = (lane === 0) ? width * 0.08 : (lane === 1) ? width * 0.51 : width * 0.92;
+    page.drawLine({
+      start: { x, y: cfg.marginY },
+      end:   { x, y: height - cfg.marginY },
+      thickness: cfg.thickness,
+      color
+    });
+  }
+
+  function reconcileTaskOrderWithPdfPages(pdfPagesLen) {
+    // Try alternate grocery placement strategies and pick the one matching PDF page count
+    if (!Array.isArray(state.taskMeta)) return false;
+    const perTask = buildTaskOrder('perTask');
+    const perPackage = buildTaskOrder('perPackage');
+    if (perTask && perTask.length === pdfPagesLen) {
+      state.taskOrder = perTask;
+      saveToCache(perTask);
+      console.log(TAG, 'Reconciled mapping: perTask');
+      return true;
+    }
+    if (perPackage && perPackage.length === pdfPagesLen) {
+      state.taskOrder = perPackage;
+      saveToCache(perPackage);
+      console.log(TAG, 'Reconciled mapping: perPackage');
+      return true;
+    }
+    return false;
+  }
+
   async function stampPdf(pdfBytes) {
     const PDFLib = await ensurePdfLib();
     const pdfDoc = await PDFLib.PDFDocument.load(pdfBytes);
     let pages = pdfDoc.getPages();
 
+    // --- Robust path: align ONLY label pages (ignore grocery list pages) ---
+    // If we can detect label pages in the PDF and their count matches the number of label lanes we have,
+    // we can safely stamp without needing exact page-count parity.
+    const lanesOnly = Array.isArray(state.taskOrder) ? state.taskOrder.filter(v => v !== null) : [];
+    const labelPageIdx = getLikelyLabelPageIndexes(pages, PDFLib);
+
+    if (labelPageIdx.length > 0 && lanesOnly.length > 0 && labelPageIdx.length === lanesOnly.length) {
+      if (pages.length !== state.taskOrder.length) {
+        console.warn(TAG, `Mismatch detected (PDF total pages: ${pages.length}, mapping: ${state.taskOrder.length}). Using label-page heuristic alignment: labels=${labelPageIdx.length}.`);
+      }
+
+      const color = PDFLib.rgb(
+        (STRIPE_CFG.color[0] || 0) / 255,
+        (STRIPE_CFG.color[1] || 0) / 255,
+        (STRIPE_CFG.color[2] || 0) / 255
+      );
+
+      for (let j = 0; j < labelPageIdx.length; j++) {
+        const page = pages[labelPageIdx[j]];
+        const lane = lanesOnly[j];
+        drawStripeOnPage(page, lane, STRIPE_CFG, color);
+      }
+
+      return await pdfDoc.save();
+    }
+
     if (pages.length !== state.taskOrder.length) {
-        console.warn(TAG, `Mismatch detected. PDF: ${pages.length}, Data: ${state.taskOrder.length}`);
+      console.warn(TAG, `Mismatch detected. PDF: ${pages.length}, Data: ${state.taskOrder.length}`);
+
+      // 1) First try the robust fix: rebuild mapping to match the actual PDF page count
+      if (reconcileTaskOrderWithPdfPages(pages.length)) {
+        console.log(TAG, `Mismatch resolved by strategy selection. New Data Pages: ${state.taskOrder.length}`);
+      } else {
+        // 2) Backward/legacy auto-fix: data has one extra null
         if (state.taskOrder.length === pages.length + 1) {
-            const lastNullIndex = state.taskOrder.lastIndexOf(null);
-            if (lastNullIndex !== -1) {
-                state.taskOrder.splice(lastNullIndex, 1);
-                console.log(TAG, "Auto-fix: Removed one grocery page from data mapping.");
-            }
+          const lastNullIndex = state.taskOrder.lastIndexOf(null);
+          if (lastNullIndex !== -1) {
+            state.taskOrder.splice(lastNullIndex, 1);
+            console.log(TAG, "Auto-fix: Removed one grocery page from data mapping.");
+          }
         }
+      }
     }
 
     if (pages.length !== state.taskOrder.length) {
@@ -178,15 +305,12 @@
         throw new Error(msg + "\nנסה לרענן את העמוד (F5)");
     }
 
-    const color = PDFLib.rgb(STRIPE_CFG.color[0], STRIPE_CFG.color[1], STRIPE_CFG.color[2]); // RGB 0-1 range not needed if we pass 0,0,0
-    pages.forEach((page, i) => {
-      const lane = state.taskOrder[i];
-      if (lane === null) return;
-
-      const { width, height } = page.getSize();
-      let x = (lane === 0) ? width * 0.08 : (lane === 1) ? width * 0.51 : width * 0.92;
-      page.drawLine({ start: { x: x, y: STRIPE_CFG.marginY }, end: { x: x, y: height - STRIPE_CFG.marginY }, thickness: STRIPE_CFG.thickness, color: color });
-    });
+    const color = PDFLib.rgb(
+      (STRIPE_CFG.color[0] || 0) / 255,
+      (STRIPE_CFG.color[1] || 0) / 255,
+      (STRIPE_CFG.color[2] || 0) / 255
+    );
+    pages.forEach((page, i) => drawStripeOnPage(page, state.taskOrder[i], STRIPE_CFG, color));
     return await pdfDoc.save();
   }
 
@@ -194,17 +318,42 @@
     let tasks = obj.tasks || (obj.data && obj.data.tasks);
     if (!Array.isArray(tasks)) return false;
 
-    const newOrder = [];
+    const getItemsCount = (t) => {
+      // Prefer explicit counters if present (handles truncation of order_items array)
+      const numericCandidates = [
+        t.order_items_count,
+        t.items_count,
+        t.total_items,
+        t.total_items_count,
+        t.orderItemsCount,
+        t.order_items_total
+      ];
+      for (const v of numericCandidates) {
+        const n = parseInt(v);
+        if (Number.isFinite(n) && n >= 0) return n;
+      }
+      // Fall back to arrays commonly used
+      const arrCandidates = [t.order_items, t.items, t.products, t.orderProducts];
+      for (const a of arrCandidates) {
+        if (Array.isArray(a)) return a.length;
+      }
+      return 0;
+    };
+
+    state.taskMeta = [];
+    const newOrder = []; // default mode for UI/logging; final selection can be reconciled later in stampPdf
     tasks.forEach(t => {
-        const qty = Math.max(1, parseInt(t.packages_quantity || 1));
-        const region = (t.dest_region || "").trim().replace(/\s+/g, ' ');
-        const lane = REGION_RULES.find(r => r.match.some(m => region.includes(m)))?.lane || 0;
+      const qty = Math.max(1, parseInt(t.packages_quantity || 1));
+      const region = (t.dest_region || "").trim().replace(/\s+/g, ' ');
+      const lane = REGION_RULES.find(r => r.match.some(m => region.includes(m)))?.lane || 0;
+      const itemsCount = getItemsCount(t);
+      const needsGrocery = itemsCount >= MIN_ITEMS_FOR_EXTRA_PAGE;
 
-        for (let i = 0; i < qty; i++) { newOrder.push(lane); }
+      state.taskMeta.push({ qty, lane, itemsCount, needsGrocery });
 
-        if (t.order_items && t.order_items.length >= MIN_ITEMS_FOR_EXTRA_PAGE) {
-            newOrder.push(null);
-        }
+      // Keep existing behavior as default (perTask). If mismatch happens, stampPdf will choose perPackage if needed.
+      for (let i = 0; i < qty; i++) { newOrder.push(lane); }
+      if (needsGrocery) newOrder.push(null);
     });
 
     state.taskOrder = newOrder;
