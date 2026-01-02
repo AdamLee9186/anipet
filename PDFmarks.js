@@ -3,7 +3,7 @@
 // @namespace    https://members.lionwheel.com/
 // @version      11.8.0
 // @description  Dynamic page count, Black stripes for thermal print, Crash fixes, XHR interception, direct PDF replacement, multi-CDN fallback, and direct print.
-// @author       Gemini & AdamLee
+// @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*/print_labels
 // @match        https://members.lionwheel.com/tasks/print_labels
 // @run-at       document-start
