@@ -1,13 +1,15 @@
 // ==UserScript==
-// @name         Lionwheel - Print Labels Region Mark (Smart Page Count + Thermal Fix)
+// @name         Lionwheel - Print Labels Region Mark
 // @namespace    https://members.lionwheel.com/
-// @version      11.9.0
+// @version      11.10.0
 // @description  Dynamic page count, Black stripes for thermal print, Crash fixes, XHR interception, direct PDF replacement, multi-CDN fallback, and direct print.
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/tasks/*/print_labels
 // @match        https://members.lionwheel.com/tasks/print_labels
 // @run-at       document-start
 // @grant        none
+// @downloadURL  https://github.com/AdamLee9186/anipet/raw/refs/heads/main/PDFmarks.js
+// @updateURL    https://github.com/AdamLee9186/anipet/raw/refs/heads/main/PDFmarks.js
 // ==/UserScript==
 
 (function () {
@@ -15,6 +17,9 @@
 
   const TAG = '[LabelsMark]';
   const MIN_ITEMS_FOR_EXTRA_PAGE = 5;
+  const REACT_SCAN_MAX_MS = 12000;   // Stop scanning after 12s (first-load recovery window)
+  const REACT_SCAN_INTERVAL_MS = 250; // Scan cadence while waiting
+  const REACT_SCAN_BUDGET_NODES = 80; // Max DOM nodes to probe per scan tick (performance guard)
 
   const STRIPE_CFG = {
     thickness: 2.0,       // עובי מוגבר מעט למדפסות תרמיות
@@ -44,7 +49,10 @@
     taskId: null,
     hooksInjected: false,
     lastWaitLogAt: 0,
-    pdfLibPromise: null
+    pdfLibPromise: null,
+    reactScanStartedAt: 0,
+    reactScanTimer: null,
+    reactScanFound: false
   };
 
   function getTaskId() {
@@ -573,6 +581,162 @@
     console.log(TAG, 'Hooks injected (fetch + XHR + createObjectURL).');
   }
 
+  // -----------------------------
+  // React Fiber / in-memory fallback (fixes first-load race where fetch/XHR hooks miss labels_data)
+  // -----------------------------
+
+  function getReactFiberFromNode(node) {
+    if (!node) return null;
+    // React attaches non-standard keys like: __reactFiber$xxxx or __reactInternalInstance$xxxx (older)
+    for (const k in node) {
+      if (k.startsWith('__reactFiber$') || k.startsWith('__reactInternalInstance$')) {
+        try { return node[k]; } catch (_) { return null; }
+      }
+    }
+    return null;
+  }
+
+  function looksLikeTasksArray(arr) {
+    if (!Array.isArray(arr) || arr.length === 0) return false;
+    // We accept partial, but require at least one object with some expected fields.
+    for (let i = 0; i < Math.min(arr.length, 5); i++) {
+      const t = arr[i];
+      if (!t || typeof t !== 'object') continue;
+      if (
+        'dest_region' in t ||
+        'packages_quantity' in t ||
+        'order_items_count' in t ||
+        'order_items' in t
+      ) return true;
+    }
+    return false;
+  }
+
+  function deepFindTasksCandidate(root, maxNodes = 800) {
+    // BFS over plain JS object graph with hard caps to avoid hanging.
+    const q = [root];
+    const seen = new Set();
+    let visited = 0;
+
+    const enqueue = (v) => {
+      if (!v || typeof v !== 'object') return;
+      if (seen.has(v)) return;
+      seen.add(v);
+      q.push(v);
+    };
+
+    while (q.length && visited < maxNodes) {
+      const cur = q.shift();
+      visited++;
+
+      // Direct candidates: { tasks: [...] } or { data: { tasks: [...] } }
+      try {
+        if (cur && typeof cur === 'object') {
+          const tasks = cur.tasks || (cur.data && cur.data.tasks);
+          if (looksLikeTasksArray(tasks)) {
+            return cur;
+          }
+        }
+      } catch (_) {}
+
+      // Expand keys (best-effort)
+      try {
+        const keys = Object.keys(cur);
+        for (let i = 0; i < keys.length; i++) {
+          const v = cur[keys[i]];
+          if (!v) continue;
+          if (typeof v === 'object') enqueue(v);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  function extractCandidatesFromFiber(fiber) {
+    // Try likely containers in Fiber nodes: memoizedProps, memoizedState, pendingProps, stateNode, return chain
+    const out = [];
+    try {
+      let f = fiber;
+      let hops = 0;
+      while (f && hops < 25) {
+        if (f.memoizedProps) out.push(f.memoizedProps);
+        if (f.pendingProps) out.push(f.pendingProps);
+        if (f.memoizedState) out.push(f.memoizedState);
+        if (f.stateNode) out.push(f.stateNode);
+        // Walk up to parent to reach providers / routers / root
+        f = f.return;
+        hops++;
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  function runReactScanTick() {
+    if (state.reactScanFound) return;
+    if (state.taskOrder && state.taskOrder.length) { stopReactScan(); return; }
+
+    const now = Date.now();
+    if (!state.reactScanStartedAt) state.reactScanStartedAt = now;
+    if (now - state.reactScanStartedAt > REACT_SCAN_MAX_MS) {
+      console.warn(TAG, 'React scan timeout: could not recover labels_data from memory.');
+      stopReactScan();
+      return;
+    }
+
+    // Collect a small sample of nodes to probe (performance guard)
+    const nodes = [];
+    try {
+      const all = document.querySelectorAll('body *');
+      const step = Math.max(1, Math.floor(all.length / REACT_SCAN_BUDGET_NODES));
+      for (let i = 0; i < all.length && nodes.length < REACT_SCAN_BUDGET_NODES; i += step) {
+        nodes.push(all[i]);
+      }
+    } catch (_) {}
+
+    for (const node of nodes) {
+      const fiber = getReactFiberFromNode(node);
+      if (!fiber) continue;
+
+      const candidates = extractCandidatesFromFiber(fiber);
+      for (const c of candidates) {
+        const found = deepFindTasksCandidate(c);
+        if (found) {
+          try {
+            const tasks = found.tasks || (found.data && found.data.tasks);
+            if (looksLikeTasksArray(tasks)) {
+              // Feed into existing pipeline
+              if (harvestTasks(found)) {
+                state.reactScanFound = true;
+                console.log(TAG, 'Recovered labels_data via React memory scan.');
+                stopReactScan();
+                maybeProcess();
+                return;
+              }
+            }
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  function startReactScan(reason) {
+    if (state.reactScanTimer || state.reactScanFound) return;
+    if (state.taskOrder && state.taskOrder.length) return;
+    state.reactScanStartedAt = Date.now();
+    console.warn(TAG, `Starting React memory scan (${reason || 'unknown'})…`);
+    updateStatus('idle', 'Recovering labels_data from page memory…');
+    state.reactScanTimer = setInterval(runReactScanTick, REACT_SCAN_INTERVAL_MS);
+    // Run immediately once
+    setTimeout(runReactScanTick, 0);
+  }
+
+  function stopReactScan() {
+    if (state.reactScanTimer) {
+      try { clearInterval(state.reactScanTimer); } catch (_) {}
+      state.reactScanTimer = null;
+    }
+  }
+
   window.addEventListener('message', (e) => {
     if (!e.data || !e.data.__LM_MSG) return;
 
@@ -580,6 +744,8 @@
       if (e.data.payload !== state.pdfBlobUrl && e.data.payload !== state.lastModifiedUrl) {
           state.pdfBlobUrl = e.data.payload;
           console.log(TAG, 'PDF Intercepted');
+          // If PDF arrived before data (or hooks missed data), recover via React memory scan.
+          if (!state.taskOrder || !state.taskOrder.length) startReactScan('pdf_before_data');
           maybeProcess();
       }
     }
@@ -597,6 +763,8 @@
   const bootUI = () => { 
       initUI(); 
       loadFromCache();
+      // First-load recovery: if we don't have taskOrder soon, try in-memory scan (does not require network).
+      if (!state.taskOrder || !state.taskOrder.length) startReactScan('boot');
   };
   if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', bootUI); else bootUI();
 
