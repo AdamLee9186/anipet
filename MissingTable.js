@@ -1,7 +1,7 @@
     // ==UserScript==
-    // @name        טבלת חוסרים 27/12/2025
+    // @name        טבלת חוסרים 01/01/2026
     // @namespace   http://tampermonkey.net/
-    // @version     8.6
+    // @version     9
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -496,11 +496,30 @@
         // תאימות לאזכורים קיימים של saveTaskCache():
         const saveTaskCache = safeSaveTaskCache;
 
+        /**
+         * Build a robust "version signature" for a task row.
+         * The previous implementation used a single date/time cell, which often does NOT change
+         * when picked quantities are edited, so cached panel_view HTML could become stale.
+         *
+         * We instead hash/sign a slice of the row's visible text so changes in status/progress/qty
+         * invalidate the cache.
+         */
         function getUpdatedAtFromRow(taskId){
             const row = document.querySelector(`tr[data-task-id="${taskId}"]`);
-            // דוגמה: תא 4 מכיל תאריך/שעה – להתאים לשדה האמיתי אצלך
-            const t = row?.querySelectorAll('td')[4]?.textContent.trim() || '';
-            return t; // משתמש כמזהה גרסה
+            if (!row) return '';
+
+            const tds = Array.from(row.querySelectorAll('td'));
+            // Normalize and keep only a limited number of cells to avoid huge strings
+            const normalized = tds
+                .slice(0, 12)
+                .map(td => (td.textContent || '')
+                    .replace(/\s+/g, ' ')
+                    .trim())
+                .filter(Boolean);
+
+            // Fallback (keeps backwards compatibility if table layout is weird)
+            const sig = normalized.join(' | ');
+            return sig || (row.textContent || '').replace(/\s+/g, ' ').trim() || '';
         }
 
         function readTaskFromCache(id, ver) {
@@ -2293,23 +2312,20 @@ function showGalleryOverlay(items, startIndex){
                         // But include PENDING orders (approved and waiting for picking)
                         const hasStartedPicking = item.taskOverallStatus !== 'NEW' && item.taskOverallStatus !== 'UNASSIGNED';
 
-                        // Additional check: filter out items from orders that are fully picked (לוקט)
-                        const isNotFullyPicked = item.taskOverallStatus !== 'PICKED';
-
                         // Additional safety check for excluded regions
                         const isNotExcludedRegion = !item.destinationRegion || !item.destinationRegion.includes(EXCLUDED_REGION);
 
                         if (!hasStartedPicking) {
                             console.log(`Filtering out item from order that hasn't started picking: ${item.name} | Task Status: ${item.taskOverallStatus} | Task ID: ${item.taskId}`);
                         }
-                        if (!isNotFullyPicked) {
-                            console.log(`🚫 מסנן החוצה פריט מהזמנה שכבר לוקטה במלואה: ${item.name} | סטטוס הזמנה: ${item.taskOverallStatus} | מזהה הזמנה: ${item.taskId}`);
-                        }
                         if (!isNotExcludedRegion) {
                             console.log(`Filtering out item from excluded region: ${item.name} | Region: ${item.destinationRegion}`);
                         }
 
-                        return isValidMissingItem && hasStartedPicking && isNotFullyPicked && isNotExcludedRegion;
+                        // NOTE:
+                        // taskOverallStatus is an ORDER-level status, not item-level.
+                        // Item-level missing is determined strictly by (item.missing > 0).
+                        return isValidMissingItem && hasStartedPicking && isNotExcludedRegion;
                     });
                 }
 
