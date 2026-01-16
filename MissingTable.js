@@ -1,7 +1,7 @@
     // ==UserScript==
-    // @name        טבלת חוסרים 09/01/2026
+    // @name        טבלת חוסרים 16/01/2026
     // @namespace   http://tampermonkey.net/
-    // @version     9
+    // @version     9.1
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -40,6 +40,29 @@
             warn:  (...a) => console.warn("[MT]", ...a),
             error: (...a) => console.error("[MT]", ...a),
         };
+
+        // ---------------------------------------------------------------------------
+        // Task cache invalidation (fix stale missing-qty)
+        // ---------------------------------------------------------------------------
+        // Missing quantities in Lionwheel can change after the task was cached.
+        // We therefore:
+        //  1) apply TTL to task cache entries (default: 10 minutes)
+        //  2) allow manual force-refresh (Shift+Click on "חוסרים"/"נגטיב")
+        //
+        // NOTE: Catalog caches (CSV/JSON) can stay long-lived; task cache must be short-lived.
+        const MT_TASK_CACHE_VERSION = 2;
+        const MT_TASK_CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+
+        function mtNow() { return Date.now(); }
+
+        function mtBuildTaskCacheKey(taskId) {
+            // bumping version invalidates old formats automatically
+            return `mt_task_cache_v${MT_TASK_CACHE_VERSION}:${String(taskId)}`;
+        }
+
+        function mtTryParseJson(s) {
+            try { return JSON.parse(s); } catch (_) { return null; }
+        }
 
         // Small helper to keep the UI responsive in long loops
         const yieldToMain = () => new Promise(r => setTimeout(r, 0));
@@ -522,15 +545,58 @@
             return sig || (row.textContent || '').replace(/\s+/g, ' ').trim() || '';
         }
 
-        function readTaskFromCache(id, ver) {
+        function readTaskFromCache(id, ver, opts) {
+            opts = opts || {};
+            const forceRefresh = !!opts.forceRefresh;
+            const maxAgeMs = typeof opts.maxAgeMs === 'number' ? opts.maxAgeMs : MT_TASK_CACHE_TTL_MS;
+
+            if (forceRefresh) return null;
+
             const c = taskCache[id];
-            return (c && c.ver === ver) ? c.data : null;
+            if (!c || c.ver !== ver) return null;
+
+            // Check TTL: if ts exists and is too old, treat as miss
+            const cachedAt = Number(c.ts || 0);
+            if (cachedAt && Number.isFinite(cachedAt)) {
+                const age = mtNow() - cachedAt;
+                if (age > maxAgeMs) {
+                    // Expired -> treat as miss
+                    return null;
+                }
+            }
+
+            return c.data ?? null;
         }
 
         function writeTaskToCache(id, ver, data) {
             if (disableTaskCache) return;
-            taskCache[id] = { ver, data, ts: Date.now() }; // ts לצורך LRU
+            taskCache[id] = { ver, data, ts: Date.now() }; // ts לצורך LRU + TTL
             saveTaskCache();
+        }
+
+        function deleteTaskFromCache(id) {
+            try {
+                if (taskCache[id]) {
+                    delete taskCache[id];
+                    saveTaskCache();
+                }
+            } catch (_) {}
+        }
+
+        function deleteManyTasksFromCache(taskIds) {
+            if (!Array.isArray(taskIds)) return;
+            let deleted = false;
+            for (const id of taskIds) {
+                if (taskCache[id]) {
+                    delete taskCache[id];
+                    deleted = true;
+                }
+            }
+            if (deleted) {
+                try {
+                    saveTaskCache();
+                } catch (_) {}
+            }
         }
 
         function getDestinationRegion(taskId, doc) {
@@ -1793,16 +1859,20 @@ function showGalleryOverlay(items, startIndex){
         // Don't call updateButtonStyles() initially - let both buttons stay light blue
 
         // Event listeners for both buttons
-        leftBtn.addEventListener('click', () => {
+        // Shift+Click forces refresh (bypass cache + clear cached tasks)
+        leftBtn.title = (leftBtn.title || 'הצג נגטיב') + ' (Shift+Click לרענון מלא)';
+        rightBtn.title = (rightBtn.title || 'הצג חוסרים') + ' (Shift+Click לרענון מלא)';
+
+        leftBtn.addEventListener('click', (ev) => {
             currentMode = 'negative';
             updateButtonStyles();
-            handleButtonClick();
+            handleButtonClick(ev);
         });
 
-        rightBtn.addEventListener('click', () => {
+        rightBtn.addEventListener('click', (ev) => {
             currentMode = 'missing';
             updateButtonStyles();
-            handleButtonClick();
+            handleButtonClick(ev);
         });
 
         // Insert the button into the toolbar
@@ -1822,9 +1892,13 @@ function showGalleryOverlay(items, startIndex){
         /**
          * Handles the click event for the "Show Missing Items" button.
          */
-        const handleButtonClick = async () => {
+        const handleButtonClick = async (ev) => {
+            const forceRefresh = !!(ev && ev.shiftKey);
             console.log('🔘 כפתור "הצג חוסרים" נלחץ!');
             console.log('🎯 מצב נוכחי:', currentMode === 'negative' ? 'נגטיב' : 'חוסרים');
+            if (forceRefresh) {
+                console.warn('[MissingTable] Force refresh requested (Shift+Click): bypassing task cache and clearing cached tasks.');
+            }
 
             // ============ התיקון כאן ============
             // הגדר את המשתנה הגלובלי שהפונקציה getItemQuantity
@@ -1874,12 +1948,10 @@ function showGalleryOverlay(items, startIndex){
                 btn.disabled = false;
                 return;
             }
-            await startMissingTable();
+            await startMissingTable(forceRefresh);
             btn.addEventListener('click', handleButtonClick); // Re-enable listener after operation
             btn.disabled = false;
         };
-
-        btn.addEventListener('click', handleButtonClick);
         console.log('🎯 מאזין לחיצה נוסף לכפתור');
 
         /**
@@ -1971,7 +2043,7 @@ function showGalleryOverlay(items, startIndex){
             return { html, id };
         }
 
-        async function startMissingTable() {
+        async function startMissingTable(forceRefresh = false) {
             console.log('🚀 פונקציית startMissingTable החלה');
             console.log('📊 מצב:', currentMode === 'negative' ? 'נגטיב' : 'חוסרים');
 
@@ -2028,6 +2100,11 @@ function showGalleryOverlay(items, startIndex){
 
             console.log(`📋 נמשיך עם ${taskIds.length} משימות (מתוך ${allTaskIds.length})`);
 
+            // If force refresh: clear cache for relevant tasks BEFORE fetching
+            if (forceRefresh && Array.isArray(taskIds) && taskIds.length) {
+                deleteManyTasksFromCache(taskIds);
+            }
+
             const excludedBarcodes = ['10000', '491', '1948', '1949', '555503', '2543'];
             const fetchedRawItems = []; // Temporary array to hold raw fetched item data with their task statuses
 
@@ -2039,11 +2116,16 @@ function showGalleryOverlay(items, startIndex){
                 const tasksToProcess = [];
                 for (const id of taskIds) {
                     const ver = getUpdatedAtFromRow(id);
-                    const cached = readTaskFromCache(id, ver);
+                    const cached = readTaskFromCache(id, ver, { forceRefresh });
                     if (cached) {
-                        console.log(`📦 משתמש בקאש עבור Task ${id}`);
+                        console.log(`📦 משתמש בקאש עבור Task ${id} (TTL OK)`);
                         fetchedRawItems.push(cached);
                     } else {
+                        if (!forceRefresh) {
+                            console.log(`🔄 קאש חסר/פג תוקף עבור Task ${id} -> נרענן מהשרת`);
+                        } else {
+                            console.log(`🔄 Force refresh: מתעלם מקאש עבור Task ${id} -> נרענן מהשרת`);
+                        }
                         tasksToProcess.push(id);
                     }
                 }
