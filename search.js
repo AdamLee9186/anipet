@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Enhanced Search with JSON
 // @namespace    http://tampermonkey.net/
-// @version      1.4.0
+// @version      1.4.1
 // @description  Match barcode or SKU from JSON and integrate with Select2 dropdown directly with Fuse.js advanced search
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
@@ -15,6 +15,57 @@
 
 (function () {
   'use strict';
+
+  const observeWarned = new Set();
+
+  function isNode(x) {
+    return !!(x && (x.nodeType === 1 || x.nodeType === 9 || x.nodeType === 11));
+  }
+
+  function warnOnce(key, message, payload) {
+    if (observeWarned.has(key)) return;
+    observeWarned.add(key);
+    try {
+      console.warn(message, payload);
+    } catch (_) {}
+  }
+
+  function resolveTarget(targetOrGetter) {
+    return typeof targetOrGetter === 'function' ? targetOrGetter() : targetOrGetter;
+  }
+
+  function safeObserve(observer, targetOrGetter, options, label, retryOptions = null) {
+    if (!observer) return false;
+
+    const target = resolveTarget(targetOrGetter);
+    if (!isNode(target)) {
+      const warnKey = `${label || 'observe'}:invalid`;
+      warnOnce(warnKey, `[LW-Search] observe skipped (invalid target)${label ? ' - ' + label : ''}:`, target);
+
+      if (retryOptions && retryOptions.attempts > 0) {
+        const delay = typeof retryOptions.delay === 'number' ? retryOptions.delay : 400;
+        setTimeout(() => {
+          safeObserve(
+            observer,
+            targetOrGetter,
+            options,
+            label,
+            { attempts: retryOptions.attempts - 1, delay }
+          );
+        }, delay);
+      }
+      return false;
+    }
+
+    try {
+      observer.observe(target, options);
+      return true;
+    } catch (e) {
+      const warnKey = `${label || 'observe'}:error`;
+      warnOnce(warnKey, `[LW-Search] observe failed${label ? ' - ' + label : ''}:`, e);
+      return false;
+    }
+  }
 
   const JSON_URL = 'https://raw.githubusercontent.com/AdamLee9186/anipet/main/product_data.json';
   
@@ -579,10 +630,10 @@
     // Observe Select2 dropdown
     const select2Dropdown = document.querySelector('.select2-dropdown');
     if (select2Dropdown) {
-      observer.observe(select2Dropdown, {
+      safeObserve(observer, () => document.querySelector('.select2-dropdown'), {
         childList: true,
         subtree: true
-      });
+      }, 'enhanceSelect2Results(select2Dropdown)', { attempts: 2, delay: 400 });
     }
   }
 
@@ -614,10 +665,10 @@
     document.addEventListener('DOMContentLoaded', () => {
       const select2Dropdowns = document.querySelectorAll('.select2-dropdown');
       select2Dropdowns.forEach(dropdown => {
-        observer.observe(dropdown, {
+        safeObserve(observer, dropdown, {
           attributes: true,
           attributeFilter: ['style']
-        });
+        }, 'watchSelect2Dropdown(dropdown)');
       });
     });
     
@@ -627,20 +678,20 @@
         if (mutation.type === 'childList') {
           mutation.addedNodes.forEach((node) => {
             if (node.nodeType === 1 && node.classList && node.classList.contains('select2-dropdown')) {
-              observer.observe(node, {
+              safeObserve(observer, node, {
                 attributes: true,
                 attributeFilter: ['style']
-              });
+              }, 'watchSelect2Dropdown(new dropdown)');
             }
           });
         }
       });
     });
     
-    bodyObserver.observe(document.body, {
+    safeObserve(bodyObserver, () => document.body, {
       childList: true,
       subtree: true
-    });
+    }, 'watchSelect2Dropdown(bodyObserver)', { attempts: 2, delay: 400 });
   }
 
   // Highlight matching terms in text
@@ -1417,10 +1468,10 @@
       });
     });
     
-    observer.observe(container, {
+    safeObserve(observer, container, {
       childList: true,
       subtree: true
-    });
+    }, 'watchForSelect2Elements(container)');
     
   }
 
@@ -2116,10 +2167,10 @@
     }
   });
 
-  observer.observe(document.body, {
+  safeObserve(observer, () => document.body, {
     childList: true,
     subtree: true
-  });
+  }, 'startObserver(document.body)', { attempts: 2, delay: 400 });
 
     // Also check immediately in case fields already exist
     setTimeout(() => {
@@ -2805,10 +2856,10 @@
       });
     });
     
-    observer.observe(modal, {
+    safeObserve(observer, modal, {
       childList: true,
       subtree: true
-    });
+    }, 'watchForNewRows(modal)');
   }
   
   // Ensure row has proper structure

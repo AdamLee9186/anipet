@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.04
+// @version      13.9.05
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -22,6 +22,30 @@
 // @require      https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js
 // @run-at       document-start
 // ==/UserScript==
+
+(function __tmcPatchMutationObserverObserveOnce() {
+  try {
+    if (MutationObserver.prototype.__tmcPatchedObserve) return;
+    MutationObserver.prototype.__tmcPatchedObserve = true;
+
+    const _origObserve = MutationObserver.prototype.observe;
+    MutationObserver.prototype.observe = function (target, options) {
+      // Prevent: "parameter 1 is not of type 'Node'"
+      if (!target || !(target instanceof Node)) {
+        try {
+          // Keep it quiet in production; still available when DEBUG is enabled
+          if (typeof DEBUG !== 'undefined' && DEBUG) {
+            console.warn('[Toolbox] MutationObserver.observe skipped (invalid target):', target);
+          }
+        } catch (_) {}
+        return;
+      }
+      return _origObserve.call(this, target, options);
+    };
+  } catch (_e) {
+    // If anything goes wrong, do not break the page
+  }
+})();
 
 /* ── Analytics Noise Firewall: kill GA/Clarity/FB at the source ───────────── */
 (function __tmcInstallAnalyticsFirewall(){
@@ -3484,7 +3508,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.9.04"; // Match @version
+    const SCRIPT_VERSION = "13.9.05"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -7731,6 +7755,17 @@ function injectWhatsAppButtons() {
         whatsappLink.onclick = e => e.stopPropagation();
         return whatsappLink;
     };
+    const createTelLink = (phone, firstName) => {
+        const digits = String(phone || '').replace(/\D/g, '');
+        if (!digits) return null;
+        const telLink = document.createElement('a');
+        telLink.href = `tel:${digits}`;
+        telLink.className = 'phone-link-button';
+        telLink.title = firstName ? `חייג ל${firstName}` : 'חייג';
+        telLink.innerHTML = '<i class="fa-light fa-mobile"></i>';
+        telLink.onclick = (e) => e.stopPropagation();
+        return telLink;
+    };
     const findFirstName = (container) => {
         if (!container) return null;
         const nameEl = container.querySelector('[data-name="destination_recipient_name"] .hover-copy, a[href*="/crm/"], td[data-label="שם"]');
@@ -7761,6 +7796,8 @@ function injectWhatsAppButtons() {
             const phoneSpan = document.createElement('span');
             phoneSpan.className = 'whatsapp-injected';
             phoneSpan.appendChild(createWhatsAppLink(phoneText, firstName));
+            const telLink = createTelLink(phoneText, firstName);
+            if (telLink) phoneSpan.appendChild(telLink);
             phoneSpan.appendChild(document.createTextNode(" " + phoneText));
             fragment.appendChild(phoneSpan);
             lastIndex = offset + match.length;
@@ -7980,6 +8017,8 @@ function injectGlobalStyles() {
     .whatsapp-injected, a.whatsapp-injected { display: inline-flex !important; align-items: center; white-space: nowrap; vertical-align: middle; }
 .whatsapp-button i { font-size: 1.6em; height: 30px; line-height: 30px; color: #3699ff !important; transition: color 0.2s ease-in-out; margin-left: 5px; }
 .whatsapp-button:hover i { color: #0073e9 !important; }
+.phone-link-button i { font-size: 1.6em; height: 30px; line-height: 30px; color: #3699ff !important; transition: color 0.2s ease-in-out; margin-left: 5px; }
+.phone-link-button:hover i { color: #0073e9 !important; }
 
     .lwh-whatsapp-button {
     display: inline-block;
@@ -12156,6 +12195,12 @@ const enhancedSafeObserver = new MutationObserver((mutations) => {
                 injectImagesInOrderItemRows(modal);
                 replaceBarcodesInViews(modal); // Unified barcode replacement
             });
+            if (!tbody || !(tbody instanceof Node)) {
+                if (typeof DEBUG !== 'undefined' && DEBUG) {
+                    console.warn('[Toolbox] observe skipped (tbody missing):', tbody);
+                }
+                return;
+            }
             observer.observe(tbody, { childList: true, subtree: true });
         }
     }, 300); // בדיקה כל 300ms
@@ -12213,6 +12258,12 @@ window.addEventListener('enhanced-modal-ready', () => {
                 injectImagesInOrderItemRows(modal);
                 replaceBarcodesInViews(modal); // Unified barcode replacement
             });
+            if (!tbody || !(tbody instanceof Node)) {
+                if (typeof DEBUG !== 'undefined' && DEBUG) {
+                    console.warn('[Toolbox] observe skipped (tbody missing):', tbody);
+                }
+                return;
+            }
             observer.observe(tbody, { childList: true, subtree: true });
         }
     }, 300); // בדיקה כל 300ms
@@ -12359,7 +12410,9 @@ function togglePreviewSection(button, sectionType) {
     });
     });
 
-    observer.observe(tbody, { childList: true, subtree: true });
+    if (tbody && tbody.nodeType === 1) {
+      observer.observe(tbody, { childList: true, subtree: true });
+    }
   }
 
   setupObserver();

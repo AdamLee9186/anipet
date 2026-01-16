@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel – כפתורי סטטוס
 // @namespace    https://github.com/AdamLee9186/anipet
-// @version      2.0.5
+// @version      2.0.6
 // @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. Ctrl+click או החזקה ארוכה: חצי־וי — אושר → לוקט חלקית, איקס — אושר → המתנה. יוצר: Adam Lee
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
@@ -638,11 +638,23 @@
       return cachedHeaderRow;
     }
     
-    // 1) Offcanvas (existing behavior)
-    const panel = qs("#task_offcanvas");
-    if (panel) {
-      const offcanvasHeader = qsa(".d-flex.align-items-center.flex-wrap", panel)
-        .find((el) => el.querySelector(".ajax-status-container"));
+    // 1) Current offcanvas container (#offcanvas-modals) - PRIORITY
+    const currentPanel = qs("#offcanvas-modals");
+    if (currentPanel) {
+      // Multiple selectors to catch different header structures
+      let offcanvasHeader = qsa(".d-flex.align-items-center.flex-wrap", currentPanel)
+        .find((el) => el.querySelector(".ajax-status-container, .position-relative.ajax-status-container"));
+      
+      // Fallback: search more broadly within offcanvas
+      if (!offcanvasHeader) {
+        offcanvasHeader = currentPanel.querySelector(".ajax-status-container")?.closest(".d-flex.align-items-center.flex-wrap");
+      }
+      
+      // Also try to find by task-header-bar or similar classes
+      if (!offcanvasHeader) {
+        offcanvasHeader = currentPanel.querySelector(".task-header-bar, [class*='header'], [class*='topbar']")?.querySelector(".ajax-status-container")?.closest(".d-flex.align-items-center.flex-wrap");
+      }
+      
       if (offcanvasHeader) {
         cachedHeaderRow = offcanvasHeader;
         lastHeaderCheck = now;
@@ -650,7 +662,19 @@
       }
     }
     
-    // 2) Fullscreen order header: look globally for a row that contains the ajax-status-container
+    // 2) Legacy offcanvas container (#task_offcanvas) - fallback
+    const panel = qs("#task_offcanvas");
+    if (panel) {
+      const offcanvasHeader = qsa(".d-flex.align-items-center.flex-wrap", panel)
+        .find((el) => el.querySelector(".ajax-status-container, .position-relative.ajax-status-container"));
+      if (offcanvasHeader) {
+        cachedHeaderRow = offcanvasHeader;
+        lastHeaderCheck = now;
+        return offcanvasHeader;
+      }
+    }
+    
+    // 3) Fullscreen order header: look globally for a row that contains the ajax-status-container
     //    The fullscreen page renders the controls inside the subheader toolbar area.
     const fullscreenHeader =
       qsa(".container-fluid.d-flex.align-items-center.justify-content-between.flex-wrap.flex-sm-nowrap, .row.justify-content-start.ml-0, .d-flex.align-items-center.flex-wrap")
@@ -1615,7 +1639,9 @@
     
     // Apply the new tight layout fix for sidepanel headers
     if (headerIsOffcanvas(headerRow)) {
-      const sidepanel = headerRow.closest(".offcanvas, .drawer, [data-offcanvas]") || document;
+      const sidepanel =
+        headerRow.closest("#task_offcanvas, #offcanvas-modals, .offcanvas, .drawer, [data-offcanvas], [id*='offcanvas']") ||
+        document;
       tightenSidepanelTopbar(sidepanel);
     }
   }
@@ -1624,7 +1650,11 @@
   // Layout helpers (compacting & CSS)
   // ------------------------------------------------------------
   function headerIsOffcanvas(headerRow){
-    return !!headerRow.closest("#task_offcanvas");
+    // Support multiple LW containers:
+    // - legacy: #task_offcanvas
+    // - current (as reported): #offcanvas-modals
+    // - fallback: any .offcanvas / id contains "offcanvas"
+    return !!headerRow.closest("#task_offcanvas, #offcanvas-modals, .offcanvas, [id*='offcanvas']");
   }
 
   // Reduce spacing ONLY in the offcanvas header when we detect overflow.
@@ -1722,24 +1752,136 @@
     });
   }
 
-  // Optimized mutation observer with debouncing
+  // ============================================================
+  // Init scheduling (race-safe) + Offcanvas hooks
+  // ============================================================
   let initTimeout;
+  let retryUntilTs = 0;
+  let retryTimer = 0;
   let isInitializing = false;
-  
-  function debouncedInit() {
-    if (isInitializing) return;
-    
+  let offcanvasMo = null; // MutationObserver for #offcanvas-modals
+
+  function scheduleInit(reason = "unknown") {
+    // Debounce bursts (mutations / offcanvas rendering)
     clearTimeout(initTimeout);
+    
+    // For offcanvas events, clear cache immediately to force fresh search
+    if (reason.includes("offcanvas")) {
+      cachedHeaderRow = null;
+      lastHeaderCheck = 0;
+    }
+    
     initTimeout = setTimeout(() => {
-      isInitializing = true;
-      init();
-      isInitializing = false;
-    }, 100);
+      // Extended timeout for offcanvas, especially for "new" status orders
+      const timeoutMs = reason.includes("offcanvas") ? 3500 : 2500;
+      initWithRetry({ reason, timeoutMs, tickMs: 50 });
+    }, 60);
   }
-  
-  init();
-  const mo = new MutationObserver(debouncedInit);
+
+  function initWithRetry({ reason, timeoutMs = 2500, tickMs = 60 } = {}) {
+    // If already in progress, just extend retry window.
+    const now = Date.now();
+    retryUntilTs = Math.max(retryUntilTs, now + timeoutMs);
+    if (retryTimer) return;
+
+    const tick = () => {
+      const t0 = Date.now();
+      if (isInitializing) {
+        // try again shortly (prevents overlapping init)
+        if (Date.now() < retryUntilTs) {
+          retryTimer = window.setTimeout(tick, tickMs);
+          return;
+        }
+        retryTimer = 0;
+        return;
+      }
+
+      isInitializing = true;
+      try {
+        // IMPORTANT: init() returns early if headerRow doesn't exist yet.
+        init();
+      } catch (e) {
+        console.warn("[status-shortcuts] initWithRetry error", { reason }, e);
+      } finally {
+        isInitializing = false;
+      }
+
+      // If we still don't have a headerRow, keep retrying until timeout window ends.
+      const headerRow = findHeaderRow();
+      if (!headerRow && Date.now() < retryUntilTs) {
+        // For offcanvas retries, try slightly more frequently
+        const nextTick = reason.includes("offcanvas") ? Math.min(tickMs, 40) : tickMs;
+        retryTimer = window.setTimeout(tick, nextTick);
+        return;
+      }
+      
+      // Success: if we found a headerRow, verify wrapper was created (defensive check)
+      if (headerRow) {
+        const wrapper = qs('[data-lw-quick-wrapper="1"]', headerRow);
+        if (!wrapper && Date.now() < retryUntilTs) {
+          // Header found but wrapper missing - retry once more
+          retryTimer = window.setTimeout(tick, 30);
+          return;
+        }
+      }
+
+      retryTimer = 0;
+      if (DEBUG_PERFORMANCE) {
+        logPerformance(`initWithRetry(${reason})`, t0);
+      }
+    };
+
+    tick();
+  }
+
+  // First run
+  scheduleInit("boot");
+
+  // Global observer remains as a fallback, but init is now race-safe.
+  const mo = new MutationObserver(() => scheduleInit("mutation"));
   mo.observe(document.documentElement, { childList: true, subtree: true });
+
+  // Offcanvas deterministic hooks (your container: #offcanvas-modals)
+  function wireOffcanvasHooks() {
+    const oc = document.getElementById("offcanvas-modals");
+    if (!oc || oc.dataset.lwQuickHooks) return;
+    oc.dataset.lwQuickHooks = "1";
+
+    // Bootstrap Offcanvas events (when available)
+    oc.addEventListener("shown.bs.offcanvas", () => {
+      // Clear cache when offcanvas is shown to force fresh search for new order
+      cachedHeaderRow = null;
+      lastHeaderCheck = 0;
+      scheduleInit("offcanvas:shown");
+    }, { passive: true });
+    
+    oc.addEventListener("hidden.bs.offcanvas", () => scheduleInit("offcanvas:hidden"), { passive: true });
+
+    // Mutation observer specifically for #offcanvas-modals content changes
+    // This catches when a new order is loaded (especially "new" status orders)
+    if (offcanvasMo) {
+      offcanvasMo.disconnect();
+    }
+    offcanvasMo = new MutationObserver((mutations) => {
+      // Only react to child additions (new content inserted)
+      const hasAdditions = mutations.some(m => m.addedNodes.length > 0);
+      if (hasAdditions) {
+        cachedHeaderRow = null;
+        lastHeaderCheck = 0;
+        scheduleInit("offcanvas:content-change");
+      }
+    });
+    
+    // Observe only direct children and subtree of #offcanvas-modals
+    offcanvasMo.observe(oc, { childList: true, subtree: true });
+
+    // Also listen to clicks that typically open offcanvas (defensive)
+    oc.addEventListener("click", () => scheduleInit("offcanvas:click"), { passive: true });
+  }
+
+  // Try wiring now and also on future DOM changes (in case LW injects it late)
+  wireOffcanvasHooks();
+  scheduleInit("wireOffcanvasHooks");
 
   // ===== Tampermonkey Menu =====
   try {
@@ -1772,9 +1914,14 @@
     if (resizeTimeout) clearTimeout(resizeTimeout);
     if (resizeRAF) cancelAnimationFrame(resizeRAF);
     if (initTimeout) clearTimeout(initTimeout);
+    if (retryTimer) clearTimeout(retryTimer);
     
-    // Disconnect mutation observer
+    // Disconnect mutation observers
     if (mo) mo.disconnect();
+    if (offcanvasMo) {
+      offcanvasMo.disconnect();
+      offcanvasMo = null;
+    }
     
     // Clear DOM cache
     clearDomCache();
