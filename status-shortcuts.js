@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel – כפתורי סטטוס
 // @namespace    https://github.com/AdamLee9186/anipet
-// @version      2.0.6
+// @version      2.0.7
 // @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. Ctrl+click או החזקה ארוכה: חצי־וי — אושר → לוקט חלקית, איקס — אושר → המתנה. יוצר: Adam Lee
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
@@ -638,33 +638,13 @@
       return cachedHeaderRow;
     }
     
-    // 1) Current offcanvas container (#offcanvas-modals) - PRIORITY
-    const currentPanel = qs("#offcanvas-modals");
-    if (currentPanel) {
-      // Multiple selectors to catch different header structures
-      let offcanvasHeader = qsa(".d-flex.align-items-center.flex-wrap", currentPanel)
-        .find((el) => el.querySelector(".ajax-status-container, .position-relative.ajax-status-container"));
-      
-      // Fallback: search more broadly within offcanvas
-      if (!offcanvasHeader) {
-        offcanvasHeader = currentPanel.querySelector(".ajax-status-container")?.closest(".d-flex.align-items-center.flex-wrap");
-      }
-      
-      // Also try to find by task-header-bar or similar classes
-      if (!offcanvasHeader) {
-        offcanvasHeader = currentPanel.querySelector(".task-header-bar, [class*='header'], [class*='topbar']")?.querySelector(".ajax-status-container")?.closest(".d-flex.align-items-center.flex-wrap");
-      }
-      
-      if (offcanvasHeader) {
-        cachedHeaderRow = offcanvasHeader;
-        lastHeaderCheck = now;
-        return offcanvasHeader;
-      }
-    }
-    
-    // 2) Legacy offcanvas container (#task_offcanvas) - fallback
-    const panel = qs("#task_offcanvas");
-    if (panel) {
+    // 1) Offcanvas / Sidepanel
+    // Lionwheel has used multiple ids over time:
+    // - #task_offcanvas (older)
+    // - #offcanvas-modals (current, per user's DOM)
+    const offcanvasPanels = [qs("#offcanvas-modals"), qs("#task_offcanvas")].filter(Boolean);
+    for (const panel of offcanvasPanels) {
+      // The header actions row contains the ajax-status-container
       const offcanvasHeader = qsa(".d-flex.align-items-center.flex-wrap", panel)
         .find((el) => el.querySelector(".ajax-status-container, .position-relative.ajax-status-container"));
       if (offcanvasHeader) {
@@ -674,7 +654,7 @@
       }
     }
     
-    // 3) Fullscreen order header: look globally for a row that contains the ajax-status-container
+    // 2) Fullscreen order header: look globally for a row that contains the ajax-status-container
     //    The fullscreen page renders the controls inside the subheader toolbar area.
     const fullscreenHeader =
       qsa(".container-fluid.d-flex.align-items-center.justify-content-between.flex-wrap.flex-sm-nowrap, .row.justify-content-start.ml-0, .d-flex.align-items-center.flex-wrap")
@@ -1650,11 +1630,8 @@
   // Layout helpers (compacting & CSS)
   // ------------------------------------------------------------
   function headerIsOffcanvas(headerRow){
-    // Support multiple LW containers:
-    // - legacy: #task_offcanvas
-    // - current (as reported): #offcanvas-modals
-    // - fallback: any .offcanvas / id contains "offcanvas"
-    return !!headerRow.closest("#task_offcanvas, #offcanvas-modals, .offcanvas, [id*='offcanvas']");
+    // Support both old and current sidepanel roots
+    return !!headerRow.closest("#task_offcanvas, #offcanvas-modals");
   }
 
   // Reduce spacing ONLY in the offcanvas header when we detect overflow.
