@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.06
+// @version      13.9.07
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -10002,19 +10002,8 @@ function prepareCopyElements() {
                 // Determine if this is the specific Merlog area
                 const isMerlogArea = areaText === "מרלוג צור יגאל (צ'יטה)";
                 
-                // Determine if driver is "שיגור למרלוג"
-                const isMerlogDriver = driverText === "שיגור למרלוג";
-
-                // CASE 1: איזור מרלוג + נהג שיגור למרלוג → FADE בלבד (בלי אדום)
-                if (isMerlogArea && isMerlogDriver) {
-                    row.classList.add('tmc-merlog-fade');
-                    highlightedCount++;
-                    if (taskId) {
-                        cacheSet(taskId, 'fade', 'dom');
-                    }
-                
                 // CASE 2: רק איזור מרלוג → אדום
-                } else if (isMerlogArea) {
+                if (isMerlogArea) {
                     row.classList.add('merlog-row-highlight');
                     
                     // Visually emphasize the "בוטל" status option inside the status dropdown
