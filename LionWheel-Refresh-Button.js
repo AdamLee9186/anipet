@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         LionWheel Refresh Button
 // @namespace    http://tampermonkey.net/
-// @version      6.6
+// @version      6.7
 // @description  Combined script: Auto-redirect to full open range in LionWheel with refresh button and loading animation
-// @match        https://members.lionwheel.com/*
+// @match        https://members.lionwheel.com/operator/store_visits*
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -54,11 +54,13 @@
     const SESSION_KEY = 'lionwheel_redirect_session';
     const DELAY_OPTION_KEY = 'redirect_delay_ms';
     const DEFAULT_DELAY = 100;
-    const SLOW_REDIRECT_THRESHOLD = 2000;
+    const NO_REDIRECT_PARAM = 'lw_no_redirect';
+    const NO_REDIRECT_SESSION_KEY = 'lw_no_redirect_session';
+    const NO_REDIRECT_TTL_MS = 30 * 60 * 1000; // 30 minutes TTL for override session
 
     // Debug mode detection from URL parameter
     const debugMode = new URL(location.href).searchParams.get('debug') === 'true';
-    const forceVerbose = GM_getValue('force_verbose_logs', true);
+    const forceVerbose = GM_getValue('force_verbose_logs', false);
 
     // Initialize global script logging
     if (!window._tmScriptsRunLog) {
@@ -69,7 +71,15 @@
     let refreshButton = null;
     let isRedirecting = false;
     let loadingMonitorInterval = null;
-    let buttonObserver = null;
+    // Track observers for cleanup (prevent memory leaks)
+    const preloaderObservers = new WeakMap();
+    const docObservers = new WeakMap();
+
+    // ===== PAGE GUARD: Only run on store_visits =====
+    function shouldRunOnThisPage() {
+        const { pathname } = new URL(location.href);
+        return pathname === '/operator/store_visits';
+    }
 
     // ===== LOGGING SYSTEM =====
     function log(message, level = 'info') {
@@ -118,6 +128,12 @@
 
     // Watch the .data-preloader class changes in any doc (main + iframes)
     function watchPreloaderInDoc(doc) {
+        // Clean up existing observer if any
+        if (preloaderObservers.has(doc)) {
+            preloaderObservers.get(doc).disconnect();
+            preloaderObservers.delete(doc);
+        }
+
         const attach = () => {
             const pre = doc.querySelector('.data-preloader');
             if (!pre) return;
@@ -133,6 +149,7 @@
                 if (muts.some(m => m.type === 'attributes' && m.attributeName === 'class')) update();
             });
             mo.observe(pre, { attributes: true, attributeFilter: ['class'] });
+            preloaderObservers.set(doc, mo);
         };
 
         if (doc.readyState === 'loading') doc.addEventListener('DOMContentLoaded', attach);
@@ -163,8 +180,9 @@
     }
 
     function startLoadingMonitor() {
+        // Prevent multiple instances - if already running, just return
         if (loadingMonitorInterval) {
-            clearInterval(loadingMonitorInterval);
+            return;
         }
         
         log('Starting LionWheel loading monitor', 'debug');
@@ -176,7 +194,7 @@
                 clearInterval(loadingMonitorInterval);
                 loadingMonitorInterval = null;
             }
-        }, 100); // Check every 100ms
+        }, 250); // Check every 250ms (reduced frequency, MutationObserver is primary)
         
         // Safety timeout - stop after 30 seconds maximum
         setTimeout(() => {
@@ -191,10 +209,26 @@
 
     // ===== ALWAYS SPIN DURING MANUAL PAGE REFRESH AND WHILE .DATA-PRELOADER IS VISIBLE =====
     // Flip the button to loading/non-loading by class
-    function setRefreshButtonLoadingState(isLoading) {
-        if (!refreshButton) return;
-        refreshButton.classList.toggle('is-loading', !!isLoading);
-        refreshButton.disabled = !!isLoading;
+    function setRefreshButtonLoadingState(isLoading, retryCount = 0) {
+        // Retry mechanism: if button doesn't exist yet, try again (max 5 retries, 200ms apart)
+        if (!refreshButton) {
+            if (retryCount < 5) {
+                setTimeout(() => {
+                    setRefreshButtonLoadingState(isLoading, retryCount + 1);
+                }, 200);
+                return;
+            }
+            // After max retries, give up silently
+            return;
+        }
+        
+        // מונע spam גם במצב verbose - לא לעדכן אם המצב כבר זהה
+        const next = !!isLoading;
+        const cur = refreshButton.classList.contains('is-loading');
+        if (cur === next) return;
+        
+        refreshButton.classList.toggle('is-loading', next);
+        refreshButton.disabled = next;
         
         if (isLoading) {
             log('Refresh button set to loading state', 'debug');
@@ -224,6 +258,99 @@
             } catch {}
         });
         return out;
+    }
+
+    // ===== NO-REDIRECT OVERRIDE UTILITIES =====
+    function isModifierClick(ev) {
+        // Ctrl/Cmd/Shift/Alt או לחצן אמצעי
+        return !!(ev.ctrlKey || ev.metaKey || ev.shiftKey || ev.altKey || ev.button === 1);
+    }
+
+    function setNoRedirectSession(reason = '') {
+        try {
+            sessionStorage.setItem(NO_REDIRECT_SESSION_KEY, JSON.stringify({
+                v: 1,
+                ts: Date.now(),
+                reason
+            }));
+        } catch {}
+    }
+
+    function clearNoRedirectSession(reason = '') {
+        try {
+            sessionStorage.removeItem(NO_REDIRECT_SESSION_KEY);
+            if (reason) log(`No-redirect override cleared (${reason})`, 'debug');
+        } catch {}
+    }
+
+    function hasNoRedirectSession() {
+        try {
+            const raw = sessionStorage.getItem(NO_REDIRECT_SESSION_KEY);
+            if (!raw) return false;
+            const obj = JSON.parse(raw);
+            if (!obj || obj.v !== 1) return false;
+            
+            // Check TTL: if expired, remove and return false
+            const age = Date.now() - (obj.ts || 0);
+            if (age > NO_REDIRECT_TTL_MS) {
+                clearNoRedirectSession('ttl_expired');
+                return false;
+            }
+            
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function consumeNoRedirectParam() {
+        // אם נכנסו עם ?lw_no_redirect=1, נפעיל session override וננקה את הפרמטר מה־URL
+        try {
+            const url = new URL(location.href);
+            if (url.searchParams.get(NO_REDIRECT_PARAM) !== '1') return false;
+            setNoRedirectSession('url_param');
+            url.searchParams.delete(NO_REDIRECT_PARAM);
+            history.replaceState(null, '', url.toString());
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function isNoRedirectActive() {
+        // Note: param gets consumed (removed) early; session is the ongoing source of truth.
+        return hasNoRedirectSession();
+    }
+
+    function wireNoRedirectOverrideOnStatusButtons() {
+        const anchors = queryAllDocs('.btn-group.btn-group-sm a.btn[href^="/operator/store_visits"]');
+        for (const a of anchors) {
+            if (a.dataset.lwNoRedirectWired === '1') continue;
+
+            a.addEventListener('click', (ev) => {
+                // Normal click = user intent; clear no-redirect to restore normal automation.
+                if (!isModifierClick(ev)) {
+                    clearNoRedirectSession('normal_status_click');
+                    return;
+                }
+
+                // Modifier click: suppress redirects in current tab, and open a no-redirect tab.
+                setNoRedirectSession('modifier_click');
+
+                try {
+                    const abs = new URL(a.getAttribute('href'), location.origin);
+                    abs.searchParams.set(NO_REDIRECT_PARAM, '1');
+
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    window.open(abs.toString(), '_blank', 'noopener');
+                } catch (e) {
+                    log(`Failed to open modifier-click tab: ${e?.message || e}`, 'warn');
+                }
+            }, { capture: true });
+
+            a.dataset.lwNoRedirectWired = '1';
+        }
     }
 
     // ===== MAKE THE 'משלוחים' MENU GO STRAIGHT TO "כל הפתוחים" =====
@@ -340,17 +467,56 @@
     // ===== BOOTSTRAP + ROBUST DOM WATCHING (SPA + IFRAMES) =====
     function observeDoc(doc) {
         if (!doc?.body) return;
+        
+        // Clean up existing observer if any
+        if (docObservers.has(doc)) {
+            docObservers.get(doc).disconnect();
+            docObservers.delete(doc);
+        }
+        
+        let scheduled = false;
+        let lastRun = 0;
+        const COOLDOWN_MS = 200; // Throttle: minimum 200ms between runs
+        
         const mo = new MutationObserver(() => {
-            addRefreshButtonExactlyThere();
-            ensureAllOpenOnMenu();
+            if (scheduled) return;
+            scheduled = true;
+            
+            const now = Date.now();
+            const timeSinceLastRun = now - lastRun;
+            
+            requestAnimationFrame(() => {
+                scheduled = false;
+                
+                // Additional throttle: don't run more than once per COOLDOWN_MS
+                if (timeSinceLastRun < COOLDOWN_MS) {
+                    // Reschedule for later
+                    setTimeout(() => {
+                        const now2 = Date.now();
+                        if (now2 - lastRun >= COOLDOWN_MS) {
+                            lastRun = now2;
+                            addRefreshButtonExactlyThere();
+                            ensureAllOpenOnMenu();
+                            wireNoRedirectOverrideOnStatusButtons();
+                        }
+                    }, COOLDOWN_MS - timeSinceLastRun);
+                } else {
+                    lastRun = now;
+                    addRefreshButtonExactlyThere();
+                    ensureAllOpenOnMenu();
+                    wireNoRedirectOverrideOnStatusButtons();
+                }
+            });
         });
         mo.observe(doc.body, { childList: true, subtree: true });
+        docObservers.set(doc, mo);
     }
 
     function bootstrapReloadButton() {
         // First attempt immediately
         addRefreshButtonExactlyThere();
         ensureAllOpenOnMenu();
+        wireNoRedirectOverrideOnStatusButtons();
 
         // Watch main doc
         observeDoc(document);
@@ -359,13 +525,14 @@
         document.querySelectorAll('iframe').forEach(ifr => {
             try {
                 const d = ifr.contentDocument || ifr.contentWindow?.document;
-                if (d) { observeDoc(d); ensureAllOpenOnMenu(); }
+                if (d) { observeDoc(d); ensureAllOpenOnMenu(); wireNoRedirectOverrideOnStatusButtons(); }
                 ifr.addEventListener('load', () => {
                     try {
                         const idoc = ifr.contentDocument || ifr.contentWindow?.document;
                         observeDoc(idoc);
                         addRefreshButtonExactlyThere();
                         ensureAllOpenOnMenu();
+                        wireNoRedirectOverrideOnStatusButtons();
                     } catch {}
                 });
             } catch {}
@@ -407,11 +574,6 @@
         (document.head || document.documentElement).appendChild(style);
     }
 
-    // Legacy function kept for compatibility - redirects to ensureSpinCSS
-    function addSpinAnimation() {
-        ensureSpinCSS();
-        log('Spin animation CSS injected', 'debug');
-    }
 
     // ===== SESSION TRACKING =====
     function getSessionId() {
@@ -491,85 +653,107 @@
 
     // ===== REDIRECT FUNCTIONALITY =====
     function performRedirect() {
-        console.time(`${SCRIPT_NAME} - Redirect Operation`);
+        const shouldProfile = debugMode || forceVerbose;
+        if (shouldProfile) console.time(`${SCRIPT_NAME} - Redirect Operation`);
         
         try {
+            const pageUrl = new URL(location.href);
+            if (pageUrl.pathname !== '/operator/store_visits') {
+                log(`Not on /operator/store_visits (pathname=${pageUrl.pathname}), skipping redirect`, 'debug');
+                return;
+            }
+
+            if (isNoRedirectActive()) {
+                log('No-redirect override active; skipping auto-redirect', 'info');
+                setTimeout(() => setRefreshButtonLoadingState(false), 0);
+                return;
+            }
+
             const url = new URL(location.href);
             const params = url.searchParams;
-            
-            const isDateRange = params.get('date') === 'range';
-            const isFromDefault = params.get('from') === DEFAULT_FROM;
-            const isToDefault = params.get('to') === DEFAULT_TO;
-            const isAllOpen = isDateRange && isFromDefault && isToDefault;
 
-            if (params.size === 0 || !isAllOpen) {
-                log('Redirecting to all open range...');
-                
-                // Set loading state for refresh button IMMEDIATELY if it exists
-                isRedirecting = true;
-                setRefreshButtonLoadingState(true);
-                
-                params.set('date', 'range');
-                params.set('from', DEFAULT_FROM);
-                params.set('to', DEFAULT_TO);
-                
-                url.search = params.toString();
-                const newUrl = url.toString();
-                
-                log(`Redirecting to: ${newUrl}`);
-                
-                // Shorter delay since we now monitor LionWheel loading
-                setTimeout(() => {
-                    location.replace(newUrl);
-                }, 300);
+            const type = (params.get('type') || '').toLowerCase();
+            const isCompleted = type === 'completed';
+            const isCanceled = type === 'canceled';
+
+            let targetUrl = null;
+            if (isCompleted || isCanceled) {
+                const { from, to } = getWeekRangeSundayToSaturday(new Date());
+                targetUrl = buildStoreVisitsUrl({ from, to, type });
             } else {
-                log('Already in all open range, no redirect needed');
-                // Check if LionWheel is currently loading
+                targetUrl = buildStoreVisitsUrl({ from: DEFAULT_FROM, to: DEFAULT_TO, type: '' });
+            }
+
+            const curHash = hashParams(new URL(location.href).toString());
+            const tgtHash = hashParams(targetUrl);
+            if (curHash && tgtHash && curHash === tgtHash) {
+                log('Already at desired range; no redirect needed', 'debug');
                 if (isLionWheelLoading()) {
-                    log('LionWheel is loading, starting animation');
                     setRefreshButtonLoadingState(true);
                 } else {
-                    // Clear loading state if we're not redirecting
-                    setTimeout(() => {
-                        setRefreshButtonLoadingState(false);
-                    }, 500);
+                    setTimeout(() => setRefreshButtonLoadingState(false), 500);
                 }
+                return;
             }
+
+            log(`Redirecting to: ${targetUrl}`);
+            isRedirecting = true;
+            setRefreshButtonLoadingState(true);
+            
+            // Use redirectDelay from settings (read fresh value)
+            const currentDelay = GM_getValue(DELAY_OPTION_KEY, DEFAULT_DELAY);
+            setTimeout(() => {
+                location.replace(targetUrl);
+            }, currentDelay);
 
         } catch (error) {
             log(`Error processing URL: ${error.message}`, 'error');
             setRefreshButtonLoadingState(false);
         } finally {
-            console.timeEnd(`${SCRIPT_NAME} - Redirect Operation`);
+            if (shouldProfile) console.timeEnd(`${SCRIPT_NAME} - Redirect Operation`);
         }
     }
 
-    // ===== SAFE MUTATION OBSERVER WRAPPER =====
-    function createSafeMutationObserver(callback) {
-        return new MutationObserver((mutations, observer) => {
-            try {
-                callback(mutations, observer);
-            } catch (e) {
-                console.warn('[LionWheel] MutationObserver callback error:', e);
-            }
-        });
+    // ===== DATE UTILITIES ("השבוע") =====
+    function pad2(n) {
+        return String(n).padStart(2, '0');
     }
 
-    function safeObserve(observer, target, options) {
-        if (!target || !target.nodeType || target.nodeType !== Node.ELEMENT_NODE) {
-            console.warn('[LionWheel] Invalid target for MutationObserver:', target);
-            return false;
-        }
-        try {
-            observer.observe(target, options);
-            return true;
-        } catch (e) {
-            console.warn('[LionWheel] Failed to observe target:', e);
-            return false;
-        }
+    function formatDDMMYYYY(d) {
+        return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
     }
+
+    function getWeekRangeSundayToSaturday(now = new Date()) {
+        // Israel UI shows weeks as Sun->Sat (example: 18/01/2026 to 24/01/2026)
+        const d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const day = d.getDay(); // 0=Sun
+        const start = new Date(d);
+        start.setDate(d.getDate() - day);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
+        return { from: formatDDMMYYYY(start), to: formatDDMMYYYY(end) };
+    }
+
+    function buildStoreVisitsUrl({ from, to, type }) {
+        const url = new URL(`${location.origin}/operator/store_visits`);
+        url.searchParams.set('date', 'range');
+        url.searchParams.set('from', from);
+        url.searchParams.set('to', to);
+        if (type) url.searchParams.set('type', type);
+        return url.toString();
+    }
+
 
     // ===== INITIALIZATION =====
+    // Guard: Exit early if not on the correct page
+    if (!shouldRunOnThisPage()) {
+        // חשוב: לא redirect, לא כפתור, לא שינוי תפריט
+        return;
+    }
+
+    // בדיקת override - אם נכנסו עם Ctrl+Click או פרמטר URL
+    consumeNoRedirectParam();
+    
     const startTime = performance.now();
     const sessionId = getSessionId();
     log(`Script started - Session: ${sessionId}`, debugMode ? 'debug' : 'info');
@@ -585,12 +769,7 @@
     window._lionwheelCombinedRunning = true;
 
     // Add CSS animations
-    addSpinAnimation();
-    
-    // Call once on script init:
-    bootstrapReloadButton();
-    watchAllDocsPreloader();
-    hookManualRefreshIndicators();
+    ensureSpinCSS();
 
     // ===== MENU COMMANDS =====
     GM_registerMenuCommand(
@@ -682,33 +861,44 @@
     );
 
     GM_registerMenuCommand(
-        '🔊 Toggle verbose logs',
+        '🧹 בטל Override (הפעל שוב redirect אוטומטי)',
         () => {
-            const cur = GM_getValue('force_verbose_logs', true);
-            GM_setValue('force_verbose_logs', !cur);
-            showNotification(`Verbose logs: ${!cur ? 'ON' : 'OFF'}`, 'info', 2000);
+            clearNoRedirectSession('menu_command');
+            showNotification('Override בוטל. רענן דף כדי לאפשר redirect אוטומטי.', 'info', 3000);
+        }
+    );
+
+    GM_registerMenuCommand(
+        forceVerbose ? '🧹 כבה לוגים מפורטים (Verbose)' : '🧪 הפעל לוגים מפורטים (Verbose)',
+        () => {
+            const newState = !GM_getValue('force_verbose_logs', false);
+            GM_setValue('force_verbose_logs', newState);
+            showNotification(
+                newState ? '✅ לוגים מפורטים הופעלו. רענן את הדף.' : '🧹 לוגים מפורטים כובו. רענן את הדף.',
+                'info',
+                3500
+            );
         }
     );
 
     // ===== MAIN EXECUTION =====
+    // Bootstrap handles all DOM watching (main doc + iframes) with throttle
+    bootstrapReloadButton();
+    watchAllDocsPreloader();
+    hookManualRefreshIndicators();
+    
+    consumeNoRedirectParam();
+    wireNoRedirectOverrideOnStatusButtons();
+    
     if (!enabled) {
         log('Auto-redirect disabled, but refresh button will still be added');
-        
-        // Add refresh button even if redirect is disabled
-        const disabledModeObserver = createSafeMutationObserver((mutationsList, observer) => {
-            if (addRefreshButtonExactlyThere()) {
-                // Continuous monitoring handled by bootstrapReloadButton
-                observer.disconnect();
-                log('Refresh button observer disconnected (redirect disabled mode), continuous monitoring active.');
-            }
-        });
-        if (!safeObserve(disabledModeObserver, document.body, { childList: true, subtree: true })) {
-            log('Document body not ready for disabled mode observer', 'warn');
-        }
-        
-        // Note: Font Awesome no longer needed - using inline SVG spinner
-        
+        // bootstrapReloadButton already handles button injection and menu updates
         return;
+    }
+
+    if (isNoRedirectActive()) {
+        log('No-redirect override is ON for this tab/session; skipping auto-redirect', 'info');
+        return; // עדיין נשארים עם כפתור רענן + watchers, אבל בלי performRedirect
     }
 
     // Check for redirect loop
@@ -717,52 +907,13 @@
         return;
     }
 
-    // ===== COMBINED EXECUTION =====
-    // First, set up the refresh button observer
-    const initialObserver = createSafeMutationObserver((mutationsList, observer) => {
-        if (addRefreshButtonExactlyThere()) {
-            log('Refresh button added, starting continuous monitoring.');
-            ensureAllOpenOnMenu();
-            
-            // Continuous monitoring handled by bootstrapReloadButton
-            
-            // Perform redirect check after button is ready with a small delay
-            if (enabled && !isRedirecting) {
-                setTimeout(() => {
-                    log('Starting redirect check with animation...');
-                    performRedirect();
-                }, Math.max(redirectDelay, 200)); // Ensure minimum 200ms delay
-            }
-            
-            observer.disconnect();
-            log('Initial button observer disconnected, continuous monitoring active.');
-        }
-    });
-
-    if (safeObserve(initialObserver, document.body, { childList: true, subtree: true })) {
-        log('Initial observer started successfully');
-    } else {
-        log('Document body not ready for initial observer, waiting for DOM ready', 'warn');
-        // אם ה-body לא קיים, נחכה ל-DOM ready
-        const waitForBody = () => {
-            if (safeObserve(initialObserver, document.body, { childList: true, subtree: true })) {
-                log('Initial observer started after waiting');
-            } else {
-                setTimeout(waitForBody, 100); // נבדוק שוב אחרי 100ms
-            }
-        };
-        waitForBody();
-    }
-
-    // Immediate injection attempt
+    // Perform redirect once after bootstrap setup, using configured delay
     setTimeout(() => {
-        if (!addRefreshButtonExactlyThere()) {
-            log('Immediate attempt failed, relying on observers...', 'warn');
+        if (!isRedirecting) {
+            log('Starting redirect check with animation...');
+            performRedirect();
         }
-        ensureAllOpenOnMenu();
-    }, 0);
-
-    // iframe monitoring handled by bootstrapReloadButton
+    }, Math.max(redirectDelay, 200)); // Ensure minimum 200ms delay
 
     // Note: Font Awesome no longer needed - using inline SVG spinner
 
@@ -777,15 +928,17 @@
         setTimeout(() => {
             window._lionwheelCombinedRunning = false;
             
-            // Clean up observers and intervals
-            if (buttonObserver) {
-                buttonObserver.disconnect();
-                buttonObserver = null;
-            }
+            // Clean up intervals
             if (loadingMonitorInterval) {
                 clearInterval(loadingMonitorInterval);
                 loadingMonitorInterval = null;
             }
+            
+            // Clean up all observers
+            preloaderObservers.forEach(obs => obs.disconnect());
+            preloaderObservers.clear();
+            docObservers.forEach(obs => obs.disconnect());
+            docObservers.clear();
         }, 100);
     });
 
