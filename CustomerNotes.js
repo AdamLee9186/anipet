@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Customer Notes (Supabase Cloud)
 // @namespace    https://anipet.app/lionwheel
-// @version      1.0.0
+// @version      1.0.1
 // @description  Global customer notes for Lionwheel stored in Supabase. Adds note icon in the main orders table and in task pages, with the same bubble editor.
 // @match        https://members.lionwheel.com/*
 // @run-at       document-start
@@ -18,7 +18,7 @@
 (function() {
   'use strict';
   
-  const LWCN_CSS = '/* ---------- Button (inline near phone) ---------- */\n.lwcn-btn {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  margin-inline-start: 8px;\n  width: 28px;\n  height: 28px;\n  border-radius: 10px;\n  border: 1px solid rgba(17,24,39,0.15);\n  background: linear-gradient(180deg, #ffffff, #f7f7f9);\n  cursor: pointer;\n  user-select: none;\n  font-size: 14px;\n  box-shadow: 0 6px 14px rgba(0,0,0,0.08);\n  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;\n}\n.lwcn-btn:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 10px 18px rgba(0,0,0,0.12);\n  border-color: rgba(17,24,39,0.28);\n}\n.lwcn-btn i {\n  font-size: 14px;\n  color: rgba(17,24,39,0.88);\n}\n.lwcn-btn.lwcn-has-note {\n  /* Stronger "has note" signal */\n  border-color: rgba(249,115,22,0.55);\n  background: rgba(255,189,46,0.22); /* light orange fill */\n  box-shadow: 0 0 0 2px rgba(249,115,22,0.16);\n}\n\n.lwcn-btn.lwcn-has-note i {\n  color: #F97316; /* darker orange icon */\n}\n\n@keyframes lwcnPulse {\n  0%   { transform: scale(1);     box-shadow: 0 0 0 0 rgba(245,158,11,0.38); }\n  50%  { transform: scale(1.035); box-shadow: 0 0 0 7px rgba(245,158,11,0.10); }\n  100% { transform: scale(1);     box-shadow: 0 0 0 0 rgba(245,158,11,0.00); }\n}\n.lwcn-blink {\n  animation: lwcnPulse 1.8s ease-in-out infinite;\n  border-color: rgba(245,158,11,0.75) !important;\n}\n\n/* ---------- Bubble (single window: view + edit) ---------- */\n.lwcn-bubble {\n  position: fixed !important; /* Fixed positioning for real-time tracking - position set dynamically by JS */\n  z-index: 2147483647;\n  width: 360px;\n  max-width: min(360px, calc(100vw - 24px));\n  background: rgba(255,255,255,0.98);\n  border: 1px solid rgba(17,24,39,0.14);\n  border-radius: 14px;\n  box-shadow: 0 14px 34px rgba(0,0,0,0.14);\n  backdrop-filter: blur(6px);\n  padding: 0;\n  direction: rtl;\n  /* Match Lionwheel typography (fallback if CSS vars not present) */\n  font-family: var(--font-family-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");\n  text-align: right;\n  --lwcn-caret-top: 22px; /* will be set dynamically by JS */\n  overflow: visible; /* ensure caret outside is visible */\n\n  /* actual fade-in */\n  transition: opacity 160ms ease, transform 160ms ease;\n  will-change: opacity, transform;\n}\n\n/* Ensure all children inherit the same font (avoid serif surprises) */\n.lwcn-bubble * {\n  font-family: inherit;\n}\n\n/* Smooth enter (no layout shift / no "jump") */\n.lwcn-bubble.lwcn-enter {\n  opacity: 0;\n  /* start slightly below + tiny scale (no horizontal shift = no "left jump") */\n  transform: translate3d(0, 6px, 0) scale(0.985);\n}\n\n.lwcn-bubble.lwcn-enter.lwcn-enter--show {\n  opacity: 1;\n  transform: translate3d(0, 0, 0);\n}\n\n/* Caret arrow pointing to the button (right side, RTL) */\n.lwcn-bubble::before {\n  content: "";\n  position: absolute;\n  right: -10px;\n  top: calc(var(--lwcn-caret-top) - 10px);\n  border-width: 10px;\n  border-style: solid;\n  border-color: transparent transparent transparent rgba(0,0,0,0.12);\n  z-index: 2;\n  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.10));\n}\n.lwcn-bubble::after {\n  content: "";\n  position: absolute;\n  right: -9px;\n  top: calc(var(--lwcn-caret-top) - 9px);\n  border-width: 9px;\n  border-style: solid;\n  border-color: transparent transparent transparent #ffffff;\n  z-index: 3;\n}\n\n.lwcn-bubble[data-side="right"]::before,\n.lwcn-bubble[data-side="right"]::after {\n  right: auto;\n  left: -10px;\n  transform: rotate(180deg);\n}\n\n.lwcn-bubble .top {\n  position: relative;\n  padding: 12px 12px 10px 12px;\n  padding-left: 36px; /* room for X on the far top-left */\n  border-bottom: 1px solid rgba(17,24,39,0.08);\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 10px;\n}\n\n.lwcn-bubble .lh { min-width: 0; }\n\n.lwcn-bubble .title {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  font-weight: 800;\n  font-size: 14px;\n  color: #111827;\n  letter-spacing: 0.1px;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.lwcn-titleicon {\n  width: 14px;\n  height: 14px;\n  flex-shrink: 0;\n  opacity: 0.92;\n  vertical-align: middle;\n}\n\n/* Title icon orange only when there\'s a note */\n.lwcn-bubble.lwcn-has-note .lwcn-titleicon {\n  color: #F97316;\n}\n.lwcn-bubble:not(.lwcn-has-note) .lwcn-titleicon {\n  color: #9ca3af;\n}\n\n/* SVG icons in close button */\n.lwcn-closebtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* SVG icons in updated line */\n.lwcn-updated svg {\n  width: 10px;\n  height: 10px;\n  opacity: 0.75;\n  margin-left: 6px;\n  vertical-align: middle;\n}\n\n.lwcn-bubble .mini {\n  margin-top: 3px;\n  font-size: 12px;\n  color: #6b7280;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.lwcn-bubble .actions {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  flex: 0 0 auto;\n}\n\n/* (Removed) lwcn-linkbtn was for an old "edit" button UX */\n\n/* Close button: true top-left corner */\n.lwcn-closebtn {\n  position: absolute;\n  top: 6px;\n  left: 6px;\n  width: 28px;\n  height: 28px;\n  border-radius: 10px;\n  border: 1px solid rgba(17,24,39,0.14);\n  background: #fff;\n  color: #111827;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n  transition: background .12s ease, transform .12s ease;\n}\n.lwcn-closebtn:hover { background: #f3f4f6; }\n.lwcn-closebtn:active { transform: translateY(1px); }\n.lwcn-closebtn i { font-size: 14px; }\n\n.lwcn-bubble .body {\n  padding: 12px;\n}\n\n.lwcn-bubble .noteview {\n  border: 1px solid rgba(17,24,39,0.10);\n  border-radius: 12px;\n  background: #fff;\n  padding: 10px 10px;\n  min-height: 72px;\n  line-height: 1.45;\n  font-size: 13px;\n  color: #111827;\n  cursor: text;\n  box-shadow: 0 6px 14px rgba(0,0,0,0.06);\n  white-space: pre-wrap;\n}\n\n.lwcn-bubble .noteview.is-empty {\n  background: linear-gradient(180deg, #ffffff, #fbfbfc);\n  border-style: dashed;\n  box-shadow: none;\n}\n\n.lwcn-empty {\n  color: #6b7280;\n  font-weight: 600;\n}\n\n.lwcn-footnote {\n  margin-top: 8px;\n  font-size: 11px;\n  color: #6b7280;\n  user-select: none;\n}\n\n.lwcn-textarea {\n  width: 100%;\n  min-height: 120px; /* Use min-height instead of fixed height */\n  resize: none; /* we\'ll auto-size in JS */\n  border-radius: 10px;\n  border: 1px solid #d1d5db;\n  padding: 10px;\n  font-size: 13px;\n  outline: none;\n  line-height: 1.42;\n  text-align: right;\n  direction: rtl;\n  display: block;\n  box-sizing: border-box; /* Include padding in height calculation */\n  overflow-y: hidden; /* Default to no scrollbar, JS will add if needed */\n}\n\n.lwcn-textarea[readonly] {\n  background: #fff;\n  cursor: text;\n}\n\n.lwcn-textarea.is-empty {\n  background: linear-gradient(180deg, #ffffff, #fbfbfc);\n  border-style: dashed;\n}\n\n.lwcn-textarea:focus {\n  border-color: rgba(59,130,246,0.75);\n  box-shadow: 0 0 0 3px rgba(59,130,246,0.15);\n}\n\n.lwcn-autosave-hint {\n  margin-top: 8px;\n  font-size: 11px;\n  color: #6b7280;\n  user-select: none;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.lwcn-updated {\n  margin-top: 4px;\n  font-size: 11px;\n  color: #6b7280;\n  user-select: none;\n  display: flex;\n  align-items: center;\n  gap: 6px;\n}\n\n.lwcn-updated i {\n  font-size: 10px;\n  opacity: 0.75;\n}\n\n/* Mac-like status dots */\n.lwcn-dot {\n  width: 10px;\n  height: 10px;\n  border-radius: 999px;\n  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18);\n  display: inline-block;\n}\n.lwcn-dot.ok { background: #28CA40; }     /* saved */\n.lwcn-dot.saving { background: #FFBD2E; } /* saving */\n.lwcn-dot.err { background: #FF605C; }    /* error */\n.lwcn-statusline {\n  margin-top: 6px;\n  font-size: 12px;\n  color: #6b7280;\n  min-height: 16px;\n}\n';
+  const LWCN_CSS = '/* ---------- Button (inline near phone) ---------- */\n.lwcn-btn {\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  margin-inline-start: 8px;\n  width: 28px;\n  height: 28px;\n  border-radius: 10px;\n  border: 1px solid rgba(17,24,39,0.15);\n  background: linear-gradient(180deg, #ffffff, #f7f7f9);\n  cursor: pointer;\n  user-select: none;\n  font-size: 14px;\n  box-shadow: 0 6px 14px rgba(0,0,0,0.08);\n  transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease;\n}\n.lwcn-btn:hover {\n  transform: translateY(-1px);\n  box-shadow: 0 10px 18px rgba(0,0,0,0.12);\n  border-color: rgba(17,24,39,0.28);\n}\n.lwcn-btn i {\n  font-size: 14px;\n  color: rgba(17,24,39,0.88);\n}\n.lwcn-btn.lwcn-has-note {\n  /* Stronger "has note" signal */\n  border-color: rgba(249,115,22,0.55);\n  background: rgba(255,189,46,0.22); /* light orange fill */\n  box-shadow: 0 0 0 2px rgba(249,115,22,0.16);\n}\n\n.lwcn-btn.lwcn-has-note i {\n  color: #F97316; /* darker orange icon */\n}\n\n@keyframes lwcnPulse {\n  0%   { transform: scale(1);     box-shadow: 0 0 0 0 rgba(245,158,11,0.38); }\n  50%  { transform: scale(1.035); box-shadow: 0 0 0 7px rgba(245,158,11,0.10); }\n  100% { transform: scale(1);     box-shadow: 0 0 0 0 rgba(245,158,11,0.00); }\n}\n.lwcn-blink {\n  animation: lwcnPulse 1.8s ease-in-out infinite;\n  border-color: rgba(245,158,11,0.75) !important;\n}\n\n/* ---------- Bubble (single window: view + edit) ---------- */\n.lwcn-bubble {\n  position: fixed !important; /* Fixed positioning for real-time tracking - position set dynamically by JS */\n  z-index: 2147483647;\n  width: 360px;\n  max-width: min(360px, calc(100vw - 24px));\n  background: rgba(255,255,255,0.98);\n  border: 1px solid rgba(17,24,39,0.14);\n  border-radius: 14px;\n  box-shadow: 0 14px 34px rgba(0,0,0,0.14);\n  backdrop-filter: blur(6px);\n  padding: 0;\n  direction: rtl;\n  /* Match Lionwheel typography (fallback if CSS vars not present) */\n  font-family: "Noto Sans Hebrew", "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, Helvetica, sans-serif;\n  text-align: right;\n  --lwcn-caret-top: 22px; /* will be set dynamically by JS */\n  overflow: visible; /* ensure caret outside is visible */\n\n  /* actual fade-in */\n  transition: opacity 160ms ease, transform 160ms ease;\n  will-change: opacity, transform;\n}\n\n/* Ensure all children inherit the same font (avoid serif surprises) */\n.lwcn-bubble * {\n  font-family: inherit;\n}\n\n/* Smooth enter (no layout shift / no "jump") */\n.lwcn-bubble.lwcn-enter {\n  opacity: 0;\n  /* start slightly below + tiny scale (no horizontal shift = no "left jump") */\n  transform: translate3d(0, 6px, 0) scale(0.985);\n}\n\n.lwcn-bubble.lwcn-enter.lwcn-enter--show {\n  opacity: 1;\n  transform: translate3d(0, 0, 0);\n}\n\n/* Caret arrow pointing to the button (right side, RTL) */\n.lwcn-bubble::before {\n  content: "";\n  position: absolute;\n  right: -10px;\n  top: calc(var(--lwcn-caret-top) - 10px);\n  border-width: 10px;\n  border-style: solid;\n  border-color: transparent transparent transparent rgba(0,0,0,0.12);\n  z-index: 2;\n  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.10));\n}\n.lwcn-bubble::after {\n  content: "";\n  position: absolute;\n  right: -9px;\n  top: calc(var(--lwcn-caret-top) - 9px);\n  border-width: 9px;\n  border-style: solid;\n  border-color: transparent transparent transparent #ffffff;\n  z-index: 3;\n}\n\n.lwcn-bubble[data-side="right"]::before,\n.lwcn-bubble[data-side="right"]::after {\n  right: auto;\n  left: -10px;\n  transform: rotate(180deg);\n}\n\n.lwcn-bubble .top {\n  position: relative;\n  padding: 12px 12px 10px 12px;\n  padding-left: 36px; /* room for X on the far top-left */\n  border-bottom: 1px solid rgba(17,24,39,0.08);\n  display: flex;\n  align-items: flex-start;\n  justify-content: space-between;\n  gap: 10px;\n}\n\n.lwcn-bubble .lh { min-width: 0; }\n\n.lwcn-bubble .title {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  font-weight: 800;\n  font-size: 14px;\n  color: #111827;\n  letter-spacing: 0.1px;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.lwcn-titleicon {\n  width: 14px;\n  height: 14px;\n  flex-shrink: 0;\n  opacity: 0.92;\n  vertical-align: middle;\n}\n\n/* Title icon orange only when there\'s a note */\n.lwcn-bubble.lwcn-has-note .lwcn-titleicon {\n  color: #F97316;\n}\n.lwcn-bubble:not(.lwcn-has-note) .lwcn-titleicon {\n  color: #9ca3af;\n}\n\n/* SVG icons in close button */\n.lwcn-closebtn svg {\n  width: 14px;\n  height: 14px;\n}\n\n/* SVG icons in updated line */\n.lwcn-updated svg {\n  width: 10px;\n  height: 10px;\n  opacity: 0.75;\n  margin-left: 6px;\n  vertical-align: middle;\n}\n\n.lwcn-bubble .mini {\n  margin-top: 3px;\n  font-size: 12px;\n  color: #6b7280;\n  white-space: nowrap;\n  overflow: hidden;\n  text-overflow: ellipsis;\n}\n\n.lwcn-bubble .actions {\n  display: inline-flex;\n  align-items: center;\n  gap: 8px;\n  flex: 0 0 auto;\n}\n\n/* (Removed) lwcn-linkbtn was for an old "edit" button UX */\n\n/* Close button: true top-left corner */\n.lwcn-closebtn {\n  position: absolute;\n  top: 6px;\n  left: 6px;\n  width: 28px;\n  height: 28px;\n  border-radius: 10px;\n  border: 1px solid rgba(17,24,39,0.14);\n  background: #fff;\n  color: #111827;\n  display: inline-flex;\n  align-items: center;\n  justify-content: center;\n  cursor: pointer;\n  transition: background .12s ease, transform .12s ease;\n}\n.lwcn-closebtn:hover { background: #f3f4f6; }\n.lwcn-closebtn:active { transform: translateY(1px); }\n.lwcn-closebtn i { font-size: 14px; }\n\n.lwcn-bubble .body {\n  padding: 12px;\n}\n\n.lwcn-bubble .noteview {\n  border: 1px solid rgba(17,24,39,0.10);\n  border-radius: 12px;\n  background: #fff;\n  padding: 10px 10px;\n  min-height: 72px;\n  line-height: 1.45;\n  font-size: 13px;\n  color: #111827;\n  cursor: text;\n  box-shadow: 0 6px 14px rgba(0,0,0,0.06);\n  white-space: pre-wrap;\n}\n\n.lwcn-bubble .noteview.is-empty {\n  background: linear-gradient(180deg, #ffffff, #fbfbfc);\n  border-style: dashed;\n  box-shadow: none;\n}\n\n.lwcn-empty {\n  color: #6b7280;\n  font-weight: 600;\n}\n\n.lwcn-footnote {\n  margin-top: 8px;\n  font-size: 11px;\n  color: #6b7280;\n  user-select: none;\n}\n\n.lwcn-textarea {\n  width: 100%;\n  min-height: 120px;\n  max-height: 360px;\n  resize: none;\n  border: none;\n  outline: none;\n  padding: 10px;\n  font-size: 13px;\n  line-height: 1.42;\n  text-align: right;\n  direction: rtl;\n  display: none; /* Hidden by default (Gemini-style) */\n  box-sizing: border-box;\n  background: #fff;\n  color: #333;\n  font-family: inherit;\n  overflow-y: auto;\n}\n\n.lwcn-textarea.is-editing {\n  display: block;\n}\n\n.lwcn-textarea[readonly] {\n  background: #fff;\n  cursor: text;\n}\n\n.lwcn-textarea.is-empty {\n  background: linear-gradient(180deg, #ffffff, #fbfbfc);\n  border-style: dashed;\n}\n\n.lwcn-textarea:focus {\n  outline: none;\n}\n\n.lwcn-autosave-hint {\n  margin-top: 8px;\n  font-size: 11px;\n  color: #6b7280;\n  user-select: none;\n  display: flex;\n  align-items: center;\n  gap: 8px;\n}\n\n.lwcn-updated {\n  margin-top: 4px;\n  font-size: 11px;\n  color: #6b7280;\n  user-select: none;\n  display: flex;\n  align-items: center;\n  gap: 6px;\n}\n\n.lwcn-updated i {\n  font-size: 10px;\n  opacity: 0.75;\n}\n\n/* Mac-like status dots */\n.lwcn-dot {\n  width: 10px;\n  height: 10px;\n  border-radius: 999px;\n  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.18);\n  display: inline-block;\n}\n.lwcn-dot.ok { background: #28CA40; }     /* saved */\n.lwcn-dot.saving { background: #FFBD2E; } /* saving */\n.lwcn-dot.err { background: #FF605C; }    /* error */\n.lwcn-statusline {\n  margin-top: 6px;\n  font-size: 12px;\n  color: #6b7280;\n  min-height: 16px;\n}\n\n/* Editor wrapper (contains both view and edit) */\n.lwcn-editor-wrapper {\n  position: relative;\n  width: 100%;\n  min-height: 120px;\n  border-radius: 10px;\n  border: 1px solid #d1d5db;\n  background: #fff;\n  overflow: hidden;\n  box-sizing: border-box;\n}\n\n/* Preview div for formatted markdown display */\n.lwcn-preview {\n  width: 100%;\n  min-height: 120px;\n  padding: 10px;\n  font-size: 13px;\n  line-height: 1.42;\n  text-align: right;\n  direction: rtl;\n  display: none;\n  box-sizing: border-box;\n  background: #fff;\n  cursor: text;\n  white-space: pre-wrap;\n  word-wrap: break-word;\n  max-height: 360px;\n  overflow-y: auto;\n}\n\n.lwcn-preview.is-visible {\n  display: block;\n}\n\n.lwcn-preview.is-empty {\n  background: linear-gradient(180deg, #ffffff, #fbfbfc);\n  color: #6b7280;\n  font-weight: 600;\n}\n\n/* Markdown formatting in preview */\n.lwcn-preview strong,\n.lwcn-preview b {\n  font-weight: 700;\n  color: #111827;\n}\n\n.lwcn-preview em,\n.lwcn-preview i {\n  font-style: italic;\n  color: #111827;\n}\n\n.lwcn-preview u {\n  text-decoration: underline;\n  text-decoration-color: rgba(17,24,39,0.4);\n}\n\n.lwcn-preview s,\n.lwcn-preview del {\n  text-decoration: line-through;\n  text-decoration-color: rgba(17,24,39,0.5);\n  opacity: 0.7;\n}\n\n.lwcn-preview ul,\n.lwcn-preview ol {\n  margin: 0;\n  padding-right: 20px;\n  margin-top: 4px;\n  margin-bottom: 4px;\n}\n\n.lwcn-preview li {\n  margin-top: 2px;\n  margin-bottom: 2px;\n}\n\n/* When textarea is editing, hide preview (Gemini-style) */\n.lwcn-textarea.is-editing ~ .lwcn-preview {\n  display: none !important;\n}\n';
   
   function injectGlobalCss(cssText) {
     try {
@@ -35,6 +35,13 @@
   // Ensure base styles exist for the inline buttons (table + task page)
   try {
     injectGlobalCss(LWCN_CSS);
+    injectGlobalCss(`
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+Hebrew:wght@400;600;700;800&display=swap');
+      .lwcn-bubble,
+      .lwcn-bubble * {
+        font-family: "Noto Sans Hebrew", "Segoe UI", Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+      }
+    `);
   
     // Main table cells often use ellipsis/overflow hidden. For long names, the note icon
     // can be clipped. We'll wrap the name cell content in a flex container and keep
@@ -66,6 +73,12 @@
       td.lwcn-note-cell .lwcn-btn:hover {
         transform: none;
         box-shadow: none;
+      }
+
+      /* ---------- Bubble title font override ---------- */
+      .lwcn-bubble .top .title,
+      .lwcn-bubble .top .title span {
+        font-family: "Noto Sans Hebrew", "Segoe UI", Arial, system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
       }
     `);
   } catch (_) {}
@@ -1068,6 +1081,44 @@
     return false;
   }
   
+  // Convert Markdown-style formatting to HTML (Gemini-style simple approach)
+  function markdownToHtml(text) {
+    if (!text) return '<span style="color:#6b7280; font-style:italic;">לחץ כדי להוסיף הערה...</span>';
+    
+    // Escape HTML to prevent injection
+    let html = escapeHtml(text);
+    
+    // Split lines to handle bullets and formatting
+    const lines = html.split('\n');
+    const processedLines = lines.map(line => {
+      let processed = line;
+      
+      // 1. Bold (*text*) - handle single asterisk
+      processed = processed.replace(/\*([^*\n]+)\*/g, '<b>$1</b>');
+      
+      // 2. Italic (_text_) - handle single underscore
+      processed = processed.replace(/_([^_\n]+)_/g, '<i>$1</i>');
+      
+      // 3. Underline (__text__) - handle double underscore (check before single)
+      processed = processed.replace(/__([^_\n]+)__/g, '<u style="text-decoration: underline;">$1</u>');
+      
+      // 4. Strikethrough (~text~)
+      processed = processed.replace(/~([^~\n]+)~/g, '<s style="color:#777;">$1</s>');
+      
+      // 5. Bullets (* at start of line) - Gemini style with visual bullet
+      if (processed.trim().startsWith('* ')) {
+        // Remove the asterisk and wrap in a styled bullet div
+        const content = processed.replace(/^\s*\*\s/, '');
+        return `<div style="display:flex; align-items:flex-start; margin-bottom:4px;"><span style="margin-left:8px; color:#555; font-size:16px;">•</span><span>${content}</span></div>`;
+      }
+      
+      // Regular line
+      return `<div style="margin-bottom:4px;">${processed || '<br>'}</div>`;
+    });
+    
+    return processedLines.join('');
+  }
+  
   function lwcnPositionBubbleOnce(bubble, btn) {
     // Position relative to the button, with left/right fallback
     const r = btn.getBoundingClientRect();
@@ -1178,8 +1229,11 @@
         </button>
       </div>
       <div class="body" dir="rtl">
-        <textarea class="lwcn-textarea ${hasNote ? "" : "is-empty"}" readonly
-          placeholder="לחץ כדי להוסיף הערה..."></textarea>
+        <div class="lwcn-editor-wrapper">
+          <div class="lwcn-preview ${hasNote ? "" : "is-empty"} is-visible" data-role="preview"></div>
+          <textarea class="lwcn-textarea ${hasNote ? "" : "is-empty"}" readonly
+            placeholder="לחץ כדי להוסיף הערה..."></textarea>
+        </div>
         <div class="lwcn-autosave-hint">
           <span class="lwcn-dot ok" data-role="dot"></span>
           <span data-role="hint">שמירה אוטומטית</span>
@@ -1192,12 +1246,44 @@
     bubble.style.pointerEvents = "auto";
   
     const ta = bubble.querySelector(".lwcn-textarea");
+    const preview = bubble.querySelector('[data-role="preview"]');
     const dot = bubble.querySelector('[data-role="dot"]');
     const updatedEl = bubble.querySelector('[data-role="updated"]');
     const hintEl = bubble.querySelector('[data-role="hint"]');
   
+    // Function to update preview with formatted HTML (Gemini-style)
+    function updatePreview() {
+      const text = ta.value || "";
+      preview.innerHTML = markdownToHtml(text);
+      if (!text.trim()) {
+        preview.classList.add("is-empty");
+      } else {
+        preview.classList.remove("is-empty");
+      }
+    }
+    
+    // Toggle Logic (Gemini-style)
+    function showEdit() {
+      preview.classList.remove("is-visible");
+      ta.classList.add("is-editing");
+      ta.removeAttribute("readonly");
+      autosize();
+      ta.focus();
+      // Place cursor at end
+      const len = ta.value.length;
+      ta.setSelectionRange(len, len);
+    }
+    
+    function showView() {
+      ta.classList.remove("is-editing");
+      ta.setAttribute("readonly", "");
+      updatePreview();
+      preview.classList.add("is-visible");
+    }
+  
     // IMPORTANT: set textarea value via .value (prevents leading whitespace/indent bugs)
     ta.value = noteTextClean;
+    updatePreview();
   
     // updated line (if exists) - pencilIconSVG already defined above
     if (updatedAtText) {
@@ -1392,6 +1478,8 @@
         }
         ta.classList.toggle("is-empty", !v);
         bubble.classList.toggle("lwcn-has-note", !!v);
+        // Update preview after save
+        updatePreview();
         // Update button state
         lwcnSetButtonState(btn, !!v);
       } catch (e) {
@@ -1410,29 +1498,98 @@
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => saveNow().catch(() => {}), 450);
     }
-  
-    // click-to-edit (same UI)
-    ta.addEventListener("click", () => {
-      if (ta.hasAttribute("readonly")) {
-        ta.removeAttribute("readonly");
-        ta.focus();
-        // place cursor at end
-        const len = ta.value.length;
-        ta.setSelectionRange(len, len);
+
+    // --- Formatting Logic (WhatsApp Style) ---
+    ta.addEventListener("keydown", (e) => {
+      // 1. Shortcuts: Ctrl+B (Bold), Ctrl+I (Italic), Ctrl+U (Underline), Ctrl+S (Strikethrough)
+      // משתמשים ב-* / _ / __ / ~ בסגנון WhatsApp/Markdown.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const key = e.key.toLowerCase();
+        const map = {
+          "b": "*",   // bold: *טקסט*
+          "i": "_",   // italic: _טקסט_
+          "u": "__",  // underline: __טקסט__
+          "s": "~"    // strikethrough: ~טקסט~
+        };
+
+        if (map[key]) {
+          e.preventDefault();
+          const char = map[key];
+          const start = ta.selectionStart;
+          const end = ta.selectionEnd;
+          const val = ta.value;
+          const selected = val.substring(start, end);
+
+          const before = val.substring(0, start);
+          const after = val.substring(end);
+          ta.value = before + char + selected + char + after;
+
+          // הסמן יישב בתוך הטקסט – בין הסימנים
+          ta.selectionStart = start + char.length;
+          ta.selectionEnd = end + char.length;
+
+          // מפעיל autosize + autosave כרגיל
+          ta.dispatchEvent(new Event("input"));
+          return;
+        }
+      }
+
+      // 2. Smart Bullet List (* + Enter)
+      if (e.key === "Enter") {
+        const start = ta.selectionStart;
+        const val = ta.value;
+
+        // תחילת השורה הנוכחית
+        const lastNewLine = val.lastIndexOf("\n", start - 1);
+        const lineStart = lastNewLine + 1;
+        const currentLineToCursor = val.substring(lineStart, start);
+
+        // שורה שמתחילה ב-* (עם רווחים אפשריים לפני/אחרי)
+        const match = currentLineToCursor.match(/^(\s*\*\s)/);
+
+        if (match) {
+          const bulletPrefix = match[1]; // למשל "* " או "  * "
+
+          // A. אם השורה ריקה חוץ מהכוכבית → יציאה מהרשימה
+          if (currentLineToCursor.trim() === "*") {
+            e.preventDefault();
+            const beforeLine = val.substring(0, lineStart);
+            const afterCursor = val.substring(start);
+            ta.value = beforeLine + afterCursor;
+            ta.selectionStart = ta.selectionEnd = lineStart;
+            ta.dispatchEvent(new Event("input"));
+            return;
+          }
+
+          // B. פריט רגיל → יצירת שורה חדשה עם "* "
+          e.preventDefault();
+          const before = val.substring(0, start);
+          const after = val.substring(start);
+          const insertion = "\n" + bulletPrefix;
+
+          ta.value = before + insertion + after;
+          ta.selectionStart = ta.selectionEnd = start + insertion.length;
+          ta.dispatchEvent(new Event("input"));
+        }
       }
     });
+
+    // Click on preview to edit (Gemini-style)
+    preview.addEventListener("click", showEdit);
   
     ta.addEventListener("input", () => {
       autosize();
+      // Update preview in real-time (for live preview while editing)
+      updatePreview();
       // Reposition as user types (content height changes)
       if (activeUpdatePos) activeUpdatePos();
       scheduleSave();
     });
   
     ta.addEventListener("blur", () => {
-      // return to readonly for "view" feel
-      ta.setAttribute("readonly", "");
-      // Recalculate height after returning to readonly
+      // return to view mode (Gemini-style)
+      showView();
+      // Recalculate height after returning to view
       requestAnimationFrame(() => {
         autosize();
         if (activeUpdatePos) activeUpdatePos();
