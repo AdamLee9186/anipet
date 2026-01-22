@@ -3560,9 +3560,63 @@ setupBlockedScriptObserver();
       }
     `);
 
+    // ---[ Pick modal mobile fix: prevent letter-by-letter + keep checkmark visible ]---
+    GM_addStyle(`
+      /* === Pick modal mobile fix: prevent letter-by-letter + keep checkmark visible === */
+      @media (max-width: 520px) {
+        /* 1) IMPORTANT: override the Stepper's nowrap on mobile */
+        .modal-dialog .pick-order-item-table .pick-order-item-row .row.d-flex.align-items-center {
+          flex-wrap: wrap !important;
+          align-items: flex-start !important;
+        }
+
+        /* 2) Put the name block on its own full-width row */
+        .modal-dialog .pick-order-item-table .pick-order-item-row .col-sm-6 {
+          flex: 0 0 100% !important;
+          max-width: 100% !important;
+          min-width: 0 !important;
+        }
+
+        /* Make sure Hebrew/long names wrap normally (not letter-by-letter) */
+        .modal-dialog .pick-order-item-table .pick-order-item-row .col-sm-6 .text-break,
+        .modal-dialog .pick-order-item-table .pick-order-item-row .col-sm-6 span.text-dark-75 {
+          white-space: normal !important;
+          word-break: normal !important;
+          overflow-wrap: break-word !important;
+        }
+
+        /* 3) Second row: quantity + checkmark side-by-side */
+        .modal-dialog .pick-order-item-table .pick-order-item-row .col-sm-4 {
+          flex: 1 1 auto !important;
+          max-width: none !important;
+          margin-top: 8px !important;
+        }
+        .modal-dialog .pick-order-item-table .pick-order-item-row .col-sm-2 {
+          flex: 0 0 auto !important;
+          width: auto !important;
+          margin-top: 8px !important;
+        }
+
+        /* 4) Reduce thumb on narrow screens so it doesn't eat the row */
+        .modal-dialog .pick-order-item-table td.pick-order-item-row
+          .d-flex.align-items-center > div[style*="width: 50px"][style*="height: 50px"] {
+          width: 44px !important;
+          height: 44px !important;
+          flex: 0 0 44px !important;
+          margin-inline-end: 10px !important;
+          margin-right: 10px !important;
+        }
+
+        /* 5) Keep the "/ max" on one line (Stepper already tries, reinforce for safety) */
+        .modal-dialog .pick-order-item-table .pick-order-item-row .col-sm-4 .mx-1 {
+          white-space: nowrap !important;
+        }
+      }
+    `);
+
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.9.06"; // Match @version
+    const SCRIPT_VERSION = "13.9.07"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -10002,8 +10056,19 @@ function prepareCopyElements() {
                 // Determine if this is the specific Merlog area
                 const isMerlogArea = areaText === "מרלוג צור יגאל (צ'יטה)";
                 
+                // Determine if driver is "שיגור למרלוג"
+                const isMerlogDriver = driverText === "שיגור למרלוג";
+
+                // CASE 1: איזור מרלוג + נהג שיגור למרלוג → FADE בלבד (בלי אדום)
+                if (isMerlogArea && isMerlogDriver) {
+                    row.classList.add('tmc-merlog-fade');
+                    highlightedCount++;
+                    if (taskId) {
+                        cacheSet(taskId, 'fade', 'dom');
+                    }
+                
                 // CASE 2: רק איזור מרלוג → אדום
-                if (isMerlogArea) {
+                } else if (isMerlogArea) {
                     row.classList.add('merlog-row-highlight');
                     
                     // Visually emphasize the "בוטל" status option inside the status dropdown

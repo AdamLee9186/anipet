@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel Quantity Stepper
 // @namespace    adam.lionwheel.touch.stepper
-// @version      2.2.1
+// @version      2.2.2
 // @description  Touch-friendly quantity input with smart animation and accessibility
 // @author       Adam Lee
 // @license      MIT
@@ -23,7 +23,7 @@
 
   // Configuration
   const CONFIG = {
-    VERSION: '2.2.1',
+    VERSION: '2.2.2',
     MIN_VALUE: -999,
     MAX_VALUE: 999999,
     HOLD_DELAY: 400,
@@ -282,8 +282,14 @@
     .pick-order-item-row .col-sm-4 > .d-flex.align-items-center { overflow: visible; }
 
     /* --- Prevent title from colliding with "/ max" by reserving space for the stepper --- */
-    /* Keep row on one line */
-    .pick-order-item-row .row.d-flex.align-items-center { flex-wrap: nowrap; }
+    /* Desktop only: keep row on one line */
+    @media (min-width: 768px) {
+      .pick-order-item-row .row.d-flex.align-items-center { flex-wrap: nowrap; }
+    }
+    /* Mobile: allow wrapping so the title doesn't collapse */
+    @media (max-width: 767px) {
+      .pick-order-item-row .row.d-flex.align-items-center { flex-wrap: wrap; }
+    }
 
     /* Title column: takes the remaining width and can wrap */
     .pick-order-item-row .col-sm-6 {
@@ -291,8 +297,15 @@
       min-width: 0 !important;               /* allow wrapping instead of overflow */
     }
     .pick-order-item-row .col-sm-6 .text-break {
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
       word-break: break-word;
+    }
+    /* Mobile: prevent aggressive letter-by-letter breaking */
+    @media (max-width: 767px) {
+      .pick-order-item-row .col-sm-6 .text-break {
+        overflow-wrap: break-word !important;
+        word-break: normal !important;
+      }
     }
 
     /* Middle column: fixed, non-wrapping width that fits (-)[qty](+) + " / max" */
