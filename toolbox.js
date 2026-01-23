@@ -9582,18 +9582,6 @@ tr.merlog-row-highlight {
     background-color: rgba(220, 53, 69, 0.18) !important;
 }
 
-/* Merlog table rows should be visually de-emphasized (fade) */
-/* When both classes exist, fade overrides (legacy support) */
-tr.merlog-row-highlight.tmc-merlog-fade {
-    opacity: 0.15 !important;
-    filter: grayscale(60%);
-}
-
-/* Merlog internal rows - fade only (no red) - מרלוג פנימי */
-tr.tmc-merlog-fade {
-    opacity: 0.15 !important;
-    filter: grayscale(60%);
-}
 
 /* Make the "בוטל" status option visually prominent for Merlog rows */
 tr.merlog-row-highlight .tmc-merlog-cancel {
@@ -10017,7 +10005,7 @@ function prepareCopyElements() {
                 }
 
                 // Clear previous highlighting from this row (important for re-runs / mutation observers)
-                row.classList.remove('merlog-row-highlight', 'tmc-merlog-fade');
+                row.classList.remove('merlog-row-highlight');
                 Array.from(row.cells).forEach(cell => {
                     if (!cell.classList.contains('preview-cell')) {
                         cell.classList.remove('merlog-highlight');
@@ -10061,12 +10049,20 @@ function prepareCopyElements() {
                 // Determine if driver is "שיגור למרלוג"
                 const isMerlogDriver = driverText === "שיגור למרלוג";
 
-                // CASE 1: איזור מרלוג + נהג שיגור למרלוג → FADE בלבד (בלי אדום)
+                // CASE 1: איזור מרלוג + נהג שיגור למרלוג → אדום (כמו CASE 2)
                 if (isMerlogArea && isMerlogDriver) {
-                    row.classList.add('tmc-merlog-fade');
+                    row.classList.add('merlog-row-highlight');
+                    
+                    // Visually emphasize the "בוטל" status option inside the status dropdown
+                    try {
+                        const cancelOpt = row.querySelector('.ajax-status-container [data-new-status="CANCELED"], .ajax-status-container .canceled-task');
+                        if (cancelOpt) cancelOpt.classList.add('tmc-merlog-cancel');
+                    } catch (_) {}
+                    
                     highlightedCount++;
+                    // Cache the red result with DOM source
                     if (taskId) {
-                        cacheSet(taskId, 'fade', 'dom');
+                        cacheSet(taskId, 'red', 'dom');
                     }
                 
                 // CASE 2: רק איזור מרלוג → אדום
