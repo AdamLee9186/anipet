@@ -1,11 +1,13 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.07
+// @version      13.9.08
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
 // @match        *://*.lionwheel.com/*
+// @match        *://api.whatsapp.com/*
+// @match        *://wa.me/*
 // @updateURL    https://raw.githubusercontent.com/AdamLee9186/anipet/main/toolbox.js
 // @downloadURL  https://raw.githubusercontent.com/AdamLee9186/anipet/main/toolbox.js
 // @grant        GM_xmlhttpRequest
@@ -3248,10 +3250,10 @@ setupBlockedScriptObserver();
     'use strict';
 
     // ---< WhatsApp Tab Closer >---
-    if (window.location.hostname.includes('api.whatsapp.com')) {
+    if (window.location.hostname.includes('api.whatsapp.com') || window.location.hostname.includes('wa.me')) {
         setTimeout(() => {
             window.close();
-        }, 1000);
+        }, 3500);
         return;
     }
 
@@ -3616,7 +3618,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.9.07"; // Match @version
+    const SCRIPT_VERSION = "13.9.08"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
