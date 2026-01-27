@@ -1,9 +1,9 @@
 // ==UserScript==
 // @name         LionWheel Refresh Button
 // @namespace    http://tampermonkey.net/
-// @version      6.7
+// @version      6.8
 // @description  Combined script: Auto-redirect to full open range in LionWheel with refresh button and loading animation
-// @match        https://members.lionwheel.com/operator/store_visits*
+// @match        https://members.lionwheel.com/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_setValue
 // @grant        GM_getValue
@@ -74,12 +74,6 @@
     // Track observers for cleanup (prevent memory leaks)
     const preloaderObservers = new WeakMap();
     const docObservers = new WeakMap();
-
-    // ===== PAGE GUARD: Only run on store_visits =====
-    function shouldRunOnThisPage() {
-        const { pathname } = new URL(location.href);
-        return pathname === '/operator/store_visits';
-    }
 
     // ===== LOGGING SYSTEM =====
     function log(message, level = 'info') {
@@ -743,13 +737,6 @@
         return url.toString();
     }
 
-
-    // ===== INITIALIZATION =====
-    // Guard: Exit early if not on the correct page
-    if (!shouldRunOnThisPage()) {
-        // חשוב: לא redirect, לא כפתור, לא שינוי תפריט
-        return;
-    }
 
     // בדיקת override - אם נכנסו עם Ctrl+Click או פרמטר URL
     consumeNoRedirectParam();
