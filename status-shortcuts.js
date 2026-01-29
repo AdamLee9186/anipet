@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel – כפתורי סטטוס
 // @namespace    https://github.com/AdamLee9186/anipet
-// @version      2.0.7
+// @version      2.0.8
 // @description  מוסיף ב-Offcanvas של Lionwheel שלושה כפתורים עם SVG בצבעים קבועים: וי ירוק, חצי־וי כתום, איקס אדום. פעולות: וי — אושר → נהג ברירת מחדל (ניתן לבחירה) → לוקט → פתיחת מודל חבילות; חצי־וי — בהעברה → לוקט חלקית → פתיחת חלונית ליקוט; איקס — בהעברה → המתנה. Ctrl+click או החזקה ארוכה: חצי־וי — אושר → לוקט חלקית, איקס — אושר → המתנה. יוצר: Adam Lee
 // @author       Adam Lee
 // @match        https://members.lionwheel.com/*
@@ -67,29 +67,29 @@
         transition: transform .06s ease, opacity .15s ease, filter .15s ease;
         transform: translateX(var(--tx)) scale(var(--scale));
       }
-      .lw-quick-btn:hover{ 
+      .lw-quick-btn:hover{
         filter: brightness(1.2);
       }
       .lw-quick-btn:active{ --scale: 0.96; }
       .lw-quick-btn svg{ width:100%; height:100%; display:block; }
       .lw-quick-btn[disabled]{ opacity:.6; cursor:not-allowed; }
-      
+
       /* Spinning animation for loader */
       /* Rotate only the SVG so button-level translateX/scale stay intact */
       .lw-quick-btn.spinning svg { animation: spin 1s linear infinite; }
-      
+
       @keyframes spin {
         from { transform: rotate(0deg); }
         to   { transform: rotate(360deg); }
       }
-      
+
       /* Long press visual feedback */
       .lw-quick-btn.long-pressing {
         --scale: 0.9;
         opacity: 0.8;
         transition: transform 0.1s ease, opacity 0.1s ease;
       }
-      
+
       /* Sidepanel "Olympics": 3 on top, 2 centered under the gaps — without growing width */
       .lw-sidepanel-header .lw-quick-wrapper.lw-quick--stacked{
         --slot: 36px;        /* sidepanel button size - same as fullscreen */
@@ -107,25 +107,25 @@
         align-self: flex-start;
         margin-top: -4px;   /* tweak: -2..-6px to match your exact toolbar height */
       }
-      
+
       /* Make sure long neighbors don't wrap because of grid sizing */
       .lw-sidepanel-actions{ flex-wrap: nowrap; }
-      
+
       /* Top-align the whole actions bar when the stacked quick-buttons exist */
       .lw-sidepanel-header .lw-sidepanel-actions{
         align-items: flex-start !important;
       }
-      
+
       /* Make sure the stacked grid itself uses the top edge, not center */
       .lw-sidepanel-header .lw-quick-wrapper.lw-quick--stacked{
         align-self: flex-start;
         align-content: start;         /* grid's cross-axis distribution */
         margin-top: 0 !important;     /* cancel the earlier nudge */
       }
-      
+
       /* Make sure grid items use the top edge as their baseline (prevents subtle re-centering) */
       .lw-quick--stacked .lw-quick-btn{ align-self: start; }
-      
+
       /* Top row (✓, ◐, ✕) fills the 3 columns */
       .lw-quick--stacked .lw-quick-btn:nth-child(1){ grid-column: 1; grid-row: 1; }
       .lw-quick--stacked .lw-quick-btn:nth-child(2){ grid-column: 2; grid-row: 1; }
@@ -148,29 +148,29 @@
       .lw-quick--stacked.lw-quick--six .lw-quick-btn:nth-child(6){
         grid-column: 3; grid-row: 2; --tx: 0;
       }
-      
+
       /* Size (sidepanel) */
       .lw-quick--stacked .lw-quick-btn{ width: var(--slot); height: var(--slot); }
       .lw-quick--stacked .lw-quick-btn svg{ width: 36px; height: 36px; }
-      
+
       /* Auto-tighten when space is tight (uses your existing classes) */
       .lw-quick-wrapper.lw-compact{ --slot: 38px; --gap: 6px; }
       .lw-quick-wrapper.lw-ultra  { --slot: 32px; --gap: 4px; }
-      
+
       /* Compact mode when space is tight */
       .lw-quick-wrapper.lw-compact{gap:.35rem; margin-right:.25rem; padding-left: 0.35rem}
       .lw-quick-wrapper.lw-compact .lw-quick-btn{width:30px; height:30px}
       /* Ultra-compact as last resort */
       .lw-quick-wrapper.lw-ultra{gap:.25rem; padding-left: 0.25rem}
       .lw-quick-wrapper.lw-ultra .lw-quick-btn{width:26px; height:26px}
-      
+
       /* Fix side panel header layout issues */
       .offcanvas .task-header-bar {
         display: flex;
         flex-wrap: nowrap !important;
       }
-      .offcanvas .task-header-bar > * { 
-        min-width: 0; 
+      .offcanvas .task-header-bar > * {
+        min-width: 0;
       }
       .offcanvas .task-header-bar .text-nowrap.ml-4 {
         max-width: 8rem;
@@ -178,10 +178,10 @@
         text-overflow: ellipsis;
         white-space: nowrap;
       }
-      .lw-quick-wrapper { 
-        flex: 0 0 auto; 
+      .lw-quick-wrapper {
+        flex: 0 0 auto;
       }
-      
+
       /* Sidepanel header layout - tight, safe fix */
       .lw-sidepanel-header {               /* applied to the top bar row */
         flex-wrap: nowrap !important;      /* keep title + actions on the same row */
@@ -195,7 +195,7 @@
         display: flex;
         align-items: center;
       }
-      
+
       /* Add spacing between "משלוח" and the order number */
       .lw-sidepanel-title .font-size-h2:first-child {
         margin-left: 0.5rem;  /* Add right margin to create space after "משלוח" */
@@ -238,26 +238,26 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const qs = (s, r = document) => r.querySelector(s);
   const qsa = (s, r = document) => Array.from(r.querySelectorAll(s));
-  
+
   // DOM element cache for frequently accessed elements
   const domCache = new Map();
-  
+
   // Cached query selector with automatic cache invalidation
   function cachedQuery(selector, root = document, cacheKey = null) {
     const key = cacheKey || selector;
     const cached = domCache.get(key);
-    
+
     if (cached && document.contains(cached)) {
       return cached;
     }
-    
+
     const element = root.querySelector(selector);
     if (element) {
       domCache.set(key, element);
     }
     return element;
   }
-  
+
   // Clear DOM cache when page changes
   function clearDomCache() {
     domCache.clear();
@@ -274,23 +274,23 @@
     const startPress = (e) => {
       // Check if Ctrl key is pressed (for mouse events)
       isCtrlPressed = e.ctrlKey || e.metaKey;
-      
+
       // If Ctrl is pressed, don't start long press timer - let the click handler deal with it
       if (isCtrlPressed && e.type === 'mousedown') {
         return;
       }
-      
+
       hasMoved = false;
       startX = e.type === 'mousedown' ? e.clientX : e.touches[0].clientX;
       startY = e.type === 'mousedown' ? e.clientY : e.touches[0].clientY;
-      
+
       // Add visual feedback when long press threshold is reached
       visualTimer = setTimeout(() => {
         if (!hasMoved) {
           element.classList.add('long-pressing');
         }
       }, longPressDelay - 100); // Show feedback slightly before action
-      
+
       pressTimer = setTimeout(() => {
         if (!hasMoved) {
           onLongPress(e);
@@ -305,7 +305,7 @@
     const endPress = (e) => {
       // Remove visual feedback
       element.classList.remove('long-pressing');
-      
+
       // Clear all timers
       if (pressTimer) {
         clearTimeout(pressTimer);
@@ -315,7 +315,7 @@
         clearTimeout(visualTimer);
         visualTimer = null;
       }
-      
+
       // If Ctrl was pressed during this interaction, don't trigger normal click
       // Let the click event handler deal with it
       if (!hasMoved && !isCtrlPressed) {
@@ -325,13 +325,13 @@
 
     const movePress = (e) => {
       if (!startX || !startY) return;
-      
+
       const currentX = e.type === 'mousemove' ? e.clientX : e.touches[0].clientX;
       const currentY = e.type === 'mousemove' ? e.clientY : e.touches[0].clientY;
-      
+
       const deltaX = Math.abs(currentX - startX);
       const deltaY = Math.abs(currentY - startY);
-      
+
       if (deltaX > 10 || deltaY > 10) {
         hasMoved = true;
         if (pressTimer) {
@@ -346,7 +346,7 @@
     const cancelPress = () => {
       // Remove visual feedback
       element.classList.remove('long-pressing');
-      
+
       // Clear all timers
       if (pressTimer) {
         clearTimeout(pressTimer);
@@ -356,7 +356,7 @@
         clearTimeout(visualTimer);
         visualTimer = null;
       }
-      
+
       // Reset state
       hasMoved = false;
       startX = startY = null;
@@ -368,14 +368,15 @@
     element.addEventListener('mouseup', endPress);
     element.addEventListener('mouseleave', cancelPress);
     element.addEventListener('mousemove', movePress);
-    
-    // Special handling for Ctrl+click to prevent conflicts
-    element.addEventListener('click', (e) => {
+
+    // Special handling for Ctrl/Cmd+click to prevent conflicts
+    const ctrlClickHandler = (e) => {
       if (e.ctrlKey || e.metaKey) {
-        // If this was a Ctrl+click, cancel any ongoing long press
+        // If this was a Ctrl/Cmd+click, cancel any ongoing long press
         cancelPress();
       }
-    });
+    };
+    element.addEventListener('click', ctrlClickHandler);
 
     // Touch events
     element.addEventListener('touchstart', startPress, { passive: false });
@@ -384,25 +385,22 @@
     element.addEventListener('touchmove', movePress, { passive: false });
 
     // Prevent context menu on long press
-    element.addEventListener('contextmenu', (e) => e.preventDefault());
-    
+    const contextMenuHandler = (e) => e.preventDefault();
+    element.addEventListener('contextmenu', contextMenuHandler);
+
     // Return cleanup function for proper memory management
     return () => {
       element.removeEventListener('mousedown', startPress);
       element.removeEventListener('mouseup', endPress);
       element.removeEventListener('mouseleave', cancelPress);
       element.removeEventListener('mousemove', movePress);
-      element.removeEventListener('click', (e) => {
-        if (e.ctrlKey || e.metaKey) {
-          cancelPress();
-        }
-      });
+      element.removeEventListener('click', ctrlClickHandler);
       element.removeEventListener('touchstart', startPress);
       element.removeEventListener('touchend', endPress);
       element.removeEventListener('touchcancel', cancelPress);
       element.removeEventListener('touchmove', movePress);
-      element.removeEventListener('contextmenu', (e) => e.preventDefault());
-      
+      element.removeEventListener('contextmenu', contextMenuHandler);
+
       // Clear any remaining timers
       cancelPress();
     };
@@ -629,15 +627,33 @@
   let cachedHeaderRow = null;
   let lastHeaderCheck = 0;
   const HEADER_CACHE_TTL = 2000; // 2 seconds cache
-  
+
+  function findSidepanelActions(panel) {
+    if (!panel) return null;
+    const row =
+      panel.querySelector(".lw-sidepanel-header") ||
+      panel.querySelector(".d-flex.justify-content-between.align-items-center.flex-wrap.position-relative.pr-8");
+    if (!row) return null;
+
+    let actions =
+      row.querySelector(".lw-sidepanel-actions") ||
+      row.querySelector(":scope > .d-flex.align-items-center.flex-wrap") ||
+      row.querySelector(".d-flex.align-items-center.flex-wrap");
+
+    if (actions === row) {
+      actions = row.children?.[1] || null;
+    }
+    return actions || null;
+  }
+
   function findHeaderRow() {
     const now = Date.now();
-    
+
     // Return cached header if still valid
     if (cachedHeaderRow && document.contains(cachedHeaderRow) && (now - lastHeaderCheck) < HEADER_CACHE_TTL) {
       return cachedHeaderRow;
     }
-    
+
     // 1) Offcanvas / Sidepanel
     // Lionwheel has used multiple ids over time:
     // - #task_offcanvas (older)
@@ -652,20 +668,28 @@
         lastHeaderCheck = now;
         return offcanvasHeader;
       }
+
+      // Fallback: if the status container is lazy-rendered, still return actions row
+      const actionsFallback = findSidepanelActions(panel);
+      if (actionsFallback) {
+        cachedHeaderRow = actionsFallback;
+        lastHeaderCheck = now;
+        return actionsFallback;
+      }
     }
-    
+
     // 2) Fullscreen order header: look globally for a row that contains the ajax-status-container
     //    The fullscreen page renders the controls inside the subheader toolbar area.
     const fullscreenHeader =
       qsa(".container-fluid.d-flex.align-items-center.justify-content-between.flex-wrap.flex-sm-nowrap, .row.justify-content-start.ml-0, .d-flex.align-items-center.flex-wrap")
         .find((el) => el.querySelector(".position-relative.ajax-status-container"));
-    
+
     if (fullscreenHeader) {
       cachedHeaderRow = fullscreenHeader;
       lastHeaderCheck = now;
       return fullscreenHeader;
     }
-    
+
     // Clear cache if nothing found
     cachedHeaderRow = null;
     return null;
@@ -684,15 +708,21 @@
     // 1) Prefer DOM data-task-id (exists in side-panel/offcanvas)
     const fromDom = getTaskId(headerRow);
     if (fromDom) return fromDom;
-    
-    // 2) Fallback: parse /tasks/:id from URL (fullscreen)
+
+    // 2) Sidepanel fallback: any element with data-task-id inside the header
+    const fromAny =
+      headerRow?.querySelector?.("[data-task-id]")?.getAttribute("data-task-id") ||
+      headerRow?.closest?.(".lw-sidepanel-header")?.querySelector?.("[data-task-id]")?.getAttribute("data-task-id");
+    if (fromAny) return fromAny;
+
+    // 3) Fallback: parse /tasks/:id from URL (fullscreen)
     const m = location.pathname.match(/^\/tasks\/(\d+)/);
     if (m && m[1]) return m[1];
-    
-    // 3) Last resort: hidden input if present
+
+    // 4) Last resort: hidden input if present
     const hidden = document.querySelector("input[name='order[id]'], input[name='task[id]']");
     if (hidden && hidden.value) return hidden.value;
-    
+
     return null;
   }
 
@@ -719,7 +749,7 @@
 
     // Find the ajax-status-container (the first status dropdown)
     const statusContainer = qs(".position-relative.ajax-status-container", headerRow);
-    
+
     if (statusContainer && statusContainer.parentNode) {
       // Place our wrapper BEFORE the status container (to the right of it in RTL)
       statusContainer.parentNode.insertBefore(wrapper, statusContainer);
@@ -855,9 +885,9 @@
           e.stopPropagation();
         };
         element.addEventListener("click", preventDefault, { capture: true, once: true });
-        
-        const event = new MouseEvent("click", { 
-          bubbles: true, 
+
+        const event = new MouseEvent("click", {
+          bubbles: true,
           cancelable: true
         });
         element.dispatchEvent(event);
@@ -1255,16 +1285,16 @@
 
   // Performance monitoring (only in development)
   const DEBUG_PERFORMANCE = false;
-  
+
   function logPerformance(label, startTime) {
     if (DEBUG_PERFORMANCE) {
       console.log(`[LW Performance] ${label}: ${Date.now() - startTime}ms`);
     }
   }
-  
+
   function buildButtons(wrapper) {
     if (!wrapper || wrapper.childElementCount) return;
-    
+
     const startTime = DEBUG_PERFORMANCE ? Date.now() : 0;
 
     // סדר RTL: וי, חצי־וי, איקס, עיגול 1, עיגול 2 (כל הכפתורים בשורה אחת)
@@ -1386,7 +1416,7 @@
         // 3) נהג — LAST (so any Lionwheel reloads happen after statuses are done)
         const visitId = getVisitId(headerRow);
         const def = getEffectiveDefaultDriver();
-        
+
         if (headerIsOffcanvas(headerRow)) {
           // Side-panel: use visits endpoint and update UI
           await postSetDriver(visitId, def.id);
@@ -1452,10 +1482,10 @@
       await sleep(150);
 
       await openOrderItemsModal(headerRow, taskId);  // 3) חלונית ליקוט
-      
+
       // 4) הסרת נהג — LAST (fullscreen or side-panel)
       await clearDriverForContext(headerRow);
-      
+
       // Also update UI in side panel if present
       if (headerIsOffcanvas(headerRow)) {
         const sidePanelRoot = headerRow.closest(".offcanvas, .modal, [id*='offcanvas']") || document;
@@ -1466,13 +1496,15 @@
     // Handle Ctrl+click for desktop
     btnHalf.addEventListener("click", async (event) => {
       // Only handle Ctrl+click here, normal clicks are handled by long press handler
-      if (event.ctrlKey) {
-        handleOrangeButtonClick(true);
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        await handleOrangeButtonClick(true);
       }
     });
 
     // Use long press handler for touch-friendly interaction and normal clicks
-    createLongPressHandler(btnHalf, 
+    createLongPressHandler(btnHalf,
       () => handleOrangeButtonClick(true),  // Long press: alternative action
       () => handleOrangeButtonClick(false)  // Normal press: default action
     );
@@ -1495,10 +1527,10 @@
       }
 
       clickPickStatus(headerRow, "pick-status-pending"); // 2) המתנה
-      
+
       // 3) הסרת נהג — LAST (fullscreen או side-panel)
       await clearDriverForContext(headerRow);
-      
+
       // Also update UI in side panel if present
       if (headerIsOffcanvas(headerRow)) {
         const sidePanelRoot = headerRow.closest(".offcanvas, .modal, [id*='offcanvas']") || document;
@@ -1509,13 +1541,15 @@
     // Handle Ctrl+click for desktop
     btnX.addEventListener("click", async (event) => {
       // Only handle Ctrl+click here, normal clicks are handled by long press handler
-      if (event.ctrlKey) {
-        handleRedButtonClick(true);
+      if (event.ctrlKey || event.metaKey) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        await handleRedButtonClick(true);
       }
     });
 
     // Use long press handler for touch-friendly interaction and normal clicks
-    createLongPressHandler(btnX, 
+    createLongPressHandler(btnX,
       () => handleRedButtonClick(true),  // Long press: alternative action
       () => handleRedButtonClick(false)  // Normal press: default action
     );
@@ -1602,7 +1636,7 @@
       await openSplitModal(headerRow);
     };
     btnSplit.addEventListener("click", handleSplitButtonClick);
-    
+
     if (DEBUG_PERFORMANCE) {
       logPerformance('Button creation', startTime);
     }
@@ -1616,7 +1650,7 @@
     buildButtons(wrapper);
     // Fix layout issues specifically in the sidepanel header (tight space)
     tightenSidepanelHeader(headerRow, wrapper);
-    
+
     // Apply the new tight layout fix for sidepanel headers
     if (headerIsOffcanvas(headerRow)) {
       const sidepanel =
@@ -1630,8 +1664,10 @@
   // Layout helpers (compacting & CSS)
   // ------------------------------------------------------------
   function headerIsOffcanvas(headerRow){
-    // Support both old and current sidepanel roots
-    return !!headerRow.closest("#task_offcanvas, #offcanvas-modals");
+    // Support both old and current sidepanel roots (Lionwheel uses several variations)
+    return !!headerRow.closest(
+      "#task_offcanvas, #offcanvas-modals, .offcanvas, .drawer, [data-offcanvas], [id*='offcanvas']"
+    );
   }
 
   // Reduce spacing ONLY in the offcanvas header when we detect overflow.
@@ -1682,18 +1718,18 @@
   // Optimized debounced resize handler with RAF for better performance
   let resizeTimeout;
   let resizeRAF;
-  
+
   function debouncedResize() {
     clearTimeout(resizeTimeout);
     if (resizeRAF) {
       cancelAnimationFrame(resizeRAF);
     }
-    
+
     resizeTimeout = setTimeout(() => {
       resizeRAF = requestAnimationFrame(handleResize);
     }, 100);
   }
-  
+
   window.addEventListener("resize", debouncedResize, { passive: true });
 
   // Tighten sidepanel header layout - prevents wrapping and removes phantom gaps
@@ -1741,13 +1777,13 @@
   function scheduleInit(reason = "unknown") {
     // Debounce bursts (mutations / offcanvas rendering)
     clearTimeout(initTimeout);
-    
+
     // For offcanvas events, clear cache immediately to force fresh search
     if (reason.includes("offcanvas")) {
       cachedHeaderRow = null;
       lastHeaderCheck = 0;
     }
-    
+
     initTimeout = setTimeout(() => {
       // Extended timeout for offcanvas, especially for "new" status orders
       const timeoutMs = reason.includes("offcanvas") ? 3500 : 2500;
@@ -1791,7 +1827,7 @@
         retryTimer = window.setTimeout(tick, nextTick);
         return;
       }
-      
+
       // Success: if we found a headerRow, verify wrapper was created (defensive check)
       if (headerRow) {
         const wrapper = qs('[data-lw-quick-wrapper="1"]', headerRow);
@@ -1818,9 +1854,10 @@
   const mo = new MutationObserver(() => scheduleInit("mutation"));
   mo.observe(document.documentElement, { childList: true, subtree: true });
 
-  // Offcanvas deterministic hooks (your container: #offcanvas-modals)
+  // Offcanvas deterministic hooks (supports both #task_offcanvas and #offcanvas-modals)
   function wireOffcanvasHooks() {
-    const oc = document.getElementById("offcanvas-modals");
+    // Prefer current HTML id (#task_offcanvas), fallback to older (#offcanvas-modals)
+    const oc = document.getElementById("task_offcanvas") || document.getElementById("offcanvas-modals");
     if (!oc || oc.dataset.lwQuickHooks) return;
     oc.dataset.lwQuickHooks = "1";
 
@@ -1831,7 +1868,7 @@
       lastHeaderCheck = 0;
       scheduleInit("offcanvas:shown");
     }, { passive: true });
-    
+
     oc.addEventListener("hidden.bs.offcanvas", () => scheduleInit("offcanvas:hidden"), { passive: true });
 
     // Mutation observer specifically for #offcanvas-modals content changes
@@ -1848,7 +1885,7 @@
         scheduleInit("offcanvas:content-change");
       }
     });
-    
+
     // Observe only direct children and subtree of #offcanvas-modals
     offcanvasMo.observe(oc, { childList: true, subtree: true });
 
@@ -1877,14 +1914,14 @@
       setStoredDefaultDriver(ANIPET_DRIVER_ID, ANIPET_DRIVER_NAME);
       alert(`נהג ברירת מחדל אופס ל: ${ANIPET_DRIVER_NAME} (id=${ANIPET_DRIVER_ID})`);
     });
-    
+
     // Performance monitoring toggle
     GM_registerMenuCommand("הפעל/כבה ניטור ביצועים", () => {
       DEBUG_PERFORMANCE = !DEBUG_PERFORMANCE;
       alert(`ניטור ביצועים ${DEBUG_PERFORMANCE ? 'מופעל' : 'כבוי'}`);
     });
   } catch {}
-  
+
   // Cleanup function for better memory management
   function cleanup() {
     // Clear timers
@@ -1892,25 +1929,25 @@
     if (resizeRAF) cancelAnimationFrame(resizeRAF);
     if (initTimeout) clearTimeout(initTimeout);
     if (retryTimer) clearTimeout(retryTimer);
-    
+
     // Disconnect mutation observers
     if (mo) mo.disconnect();
     if (offcanvasMo) {
       offcanvasMo.disconnect();
       offcanvasMo = null;
     }
-    
+
     // Clear DOM cache
     clearDomCache();
-    
+
     // Clear header cache
     cachedHeaderRow = null;
     lastHeaderCheck = 0;
-    
+
     // Remove event listeners
     window.removeEventListener("resize", debouncedResize);
   }
-  
+
   // Cleanup on page unload
   window.addEventListener("beforeunload", cleanup);
 })();
