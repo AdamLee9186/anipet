@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.09
+// @version      13.9.10
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -3616,7 +3616,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.9.09"; // Match @version
+    const SCRIPT_VERSION = "13.9.10"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
