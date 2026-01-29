@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.08
+// @version      13.9.09
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -676,9 +676,6 @@ function __tmcEnsurePhoneCSS(){
       }
       tr.tmc-phone-blink { animation: tmcPhonePulse 1.2s ease-in-out infinite; }
       tr.tmc-phone-blink > td { animation: inherit; }
-      tr[id^="visit-row-"]:has(td[data-label="טלפון"]:empty) {
-        animation: tmcPhonePulse 1.2s ease-in-out infinite;
-      }
     `;
     let st = document.getElementById('tmc-phone-css');
     if (!st){
@@ -1024,12 +1021,13 @@ function __tmcIsILInternational(digits){
     const KEEP = new Set(['tmc-preview-css','tm-map-aware-preview-css','tm-preview-cv-style','tm-ps-touchaction-style']);
     // Common legacy ids/markers we used in older builds
     const LEGACY_ID_RX = /^(tmc-legacy-preview-css|tm-preview-style|tmc-old-preview-css)$/i;
-    const LEGACY_TEXT_RX = /(one[- ]line preview|inline[- ]flex preview|tmc-legacy-preview|tmc-preview-inline|preview-inline|white-space:\s*nowrap|tr\[id\^="preview-for-"])/i;
-    document.querySelectorAll('style,link[rel="stylesheet"]').forEach(node=>{
+    // Avoid overly-broad matches that could remove other userscripts' styles
+    const LEGACY_TEXT_RX = /(one[- ]line preview|inline[- ]flex preview|tmc-legacy-preview|tmc-preview-inline|preview-inline|tr\[id\^="preview-for-"])/i;
+    document.querySelectorAll('style').forEach(node=>{
       const id = (node.id||'').toLowerCase();
       if (KEEP.has(node.id)) return;
       const looksLegacyById = LEGACY_ID_RX.test(id);
-      const looksLegacyByText = node.tagName==='STYLE' && LEGACY_TEXT_RX.test(node.textContent||'');
+      const looksLegacyByText = LEGACY_TEXT_RX.test(node.textContent||'');
       if (looksLegacyById || looksLegacyByText) {
         try{ node.remove(); }catch(_){}
       }
@@ -3618,7 +3616,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.9.08"; // Match @version
+    const SCRIPT_VERSION = "13.9.09"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -7621,10 +7619,12 @@ function showGalleryOverlay(galleryItems, startIndex) {
                     const html = await TM_PREVIEW.fetchPanelView(taskId);
                     const doc = new DOMParser().parseFromString(html, 'text/html'); const allItems = [];
 
-                    // Extract notes from the fetched task page
+                    // Extract notes from the fetched task page (only from shipment notes)
                     let notesText = '';
                     let isReady = false;
-                    const notesEl = doc.querySelector('.bg-yellow .hover-copy'); // Assuming this is the selector for notes
+                    const notesEl =
+                        doc.querySelector('.row[data-name="notes"] .hover-copy') ||
+                        doc.querySelector('.row[data-name="notes"]');
                     if (notesEl) {
                         notesText = notesEl.textContent.trim();
                         // Check if notes contain "מוכן" for highlighting
@@ -10281,16 +10281,18 @@ function prepareCopyElements() {
             const panelViewHtml = await response.text();
             const doc = new DOMParser().parseFromString(panelViewHtml, 'text/html');
 
-            // Look for "מוכן" / coordination / branch across the whole doc
-            const notesElements = doc.querySelectorAll('.notes, [class*="note"], [class*="comment"], .hover-copy, [data-tm-notes], .panel_view, .offcanvas, .card, [data-name]');
-            let foundReady = false, foundCoord = false, foundBranch = false;
+            // Look for "מוכן" ONLY inside shipment notes; coord/branch can use broader text
+            const notesNode =
+                doc.querySelector('.row[data-name="notes"] .hover-copy') ||
+                doc.querySelector('.row[data-name="notes"]');
+            const notesText = (notesNode ? notesNode.textContent : '').trim();
+            const foundReady = notesText.includes('מוכן');
+
+            let foundCoord = false, foundBranch = false;
             const coordPatterns = ['לתאם','לקבוע','תיאום','תאום','תיאם','קבע','קבענו','קבעתי','נקבע','נקבעה','נקבעו','תואם','מתואם','מתואמת','מתואמים','נתאם','לתיאום הגעה','תיאום הגעה','תאום הגעה','נסגור שעה','סגירת שעה'];
-            for (const el of notesElements) {
-                const t = el && el.textContent || '';
-                if (t.includes('מוכן')) foundReady = true;
-                if (coordPatterns.some(p => t.includes(p))) foundCoord = true;
-                if (!foundBranch && __tmcContainsBranch(t)) foundBranch = true;
-            }
+            const fullText = (doc.body ? doc.body.textContent : doc.textContent) || '';
+            if (coordPatterns.some(p => fullText.includes(p))) foundCoord = true;
+            if (__tmcContainsBranch(fullText)) foundBranch = true;
 
             // Update cache and highlight
             if (foundReady && foundCoord) {
@@ -10436,17 +10438,27 @@ function prepareCopyElements() {
                     }
                 }
 
-                // First, check for any tooltip/title in the row that includes "מוכן" (ready) or coordination (DOM source)
+                // First, check tooltips in the row (ready ONLY from shipment notes)
                 let foundInTooltip = false;
                 let seenReady = false, seenCoord = false;
                 let foundBranchInRow = false;
                 const tooltipCells = row.querySelectorAll('[title], [data-original-title]');
                 const coordPatterns = ['לתאם','לקבוע','תיאום','תאום','תיאם','קבע','קבענו','קבעתי','נקבע','נקבעה','נקבעו','תואם','מתואם','מתואמת','מתואמים','נתאם','לתיאום הגעה','תיאום הגעה','תאום הגעה','נסגור שעה','סגירת שעה'];
 
+                // Ready: only from shipment notes tooltip (notes column)
+                const notesTooltipHost =
+                    row.querySelector('[data-label="הערות"] [title], [data-label="הערות"] [data-original-title]');
+                const notesTooltip = notesTooltipHost
+                    ? (notesTooltipHost.getAttribute('title') || notesTooltipHost.getAttribute('data-original-title') || '')
+                    : '';
+                if (notesTooltip && notesTooltip.includes('מוכן')) {
+                    seenReady = true;
+                }
+
+                // Coord/branch: still allowed from any tooltip in the row
                 for (const cell of tooltipCells) {
                     const title = cell.getAttribute('title') || cell.getAttribute('data-original-title') || '';
                     if (!title) continue;
-                    if (title.includes('מוכן')) seenReady = true;
                     if (coordPatterns.some(p => title.includes(p))) seenCoord = true;
                     if (!foundBranchInRow && __tmcContainsBranch(title)) foundBranchInRow = true;
                 }
@@ -10542,12 +10554,11 @@ function prepareCopyElements() {
         const nameText = (nameNode ? nameNode.textContent : '').replace(/\s+/g, ' ');
         const missionFound = /משימ(ה|ת)/.test(nameText);
 
-        // במסך מלא: מזהים אך ורק מתוך ההערות כדי למנוע False Positive (למשל "נקבע" בשדות אחרים)
+        // Ready: ONLY from shipment notes to avoid false positives elsewhere
         const isFullPageCard = panelView.classList.contains('card');
-        const sourceForReady  = isFullPageCard ? notesText : (notesText + ' ' + panelText);
         const sourceForCoord  = isFullPageCard ? notesText : (notesText + ' ' + panelText);
 
-        const readyFound = sourceForReady.includes('מוכן');
+        const readyFound = notesText.includes('מוכן');
         const COORD_TERMS = [
           'לתאם','תיאום','תיאם','תואם','מתואם','מתואמת','מתואמים',
           'קבע','קביעת', /* זה יזוהה רק אם מופיע בהערות במסך מלא */
@@ -12201,6 +12212,43 @@ function addClickableLinksToAllTables(force = false, root = document) {
 // - להתעלם ממקפים באמצע (לא נספרים כספרות)
 // - חדש: פורמט בינ"ל ישראלי (972/00972 + מספר ללא ה-0) באורך כולל 11–12 ספרות => תקין, לא להבהב
 // - חדש: כל מספר חייב להתחיל ב-0, למעט חריג מפורש – אם הוא בן 9 ספרות והספרה הראשונה אינה 0: לא מהבהב
+function __tmcExtractPhoneSignature(td){
+  const textRaw = String(td.textContent || '').replace(/\u00A0/g, ' ').trim();
+  const textDigits = textRaw.replace(/[^\d]/g, '');
+
+  const telHref = td.querySelector('a[href^="tel:"]')?.getAttribute('href') || '';
+  const telDigits = telHref.replace(/[^\d]/g, '');
+
+  const waHref = td.querySelector('a[href*="wa.me"], a[href*="whatsapp"]')?.getAttribute('href') || '';
+  const waDigits = waHref.replace(/[^\d]/g, '');
+
+  const tooltipEl = td.querySelector('[data-original-title],[title]');
+  const tooltipText = tooltipEl
+    ? (tooltipEl.getAttribute('data-original-title') || tooltipEl.getAttribute('title') || '')
+    : '';
+  const tooltipDigits = tooltipText.replace(/[^\d]/g, '');
+
+  const hasLinks = !!(telDigits || waDigits);
+  const hasAnyText = textRaw.length > 0;
+
+  const effectiveDigits =
+    (textDigits.length >= 7 ? textDigits : '') ||
+    telDigits ||
+    waDigits ||
+    tooltipDigits ||
+    textDigits;
+
+  const signature = [
+    hasAnyText ? 't1' : 't0',
+    hasLinks ? 'l1' : 'l0',
+    textDigits,
+    telDigits,
+    waDigits,
+    tooltipDigits
+  ].join('|');
+
+  return { signature, effectiveDigits, hasAnyText, hasLinks };
+}
 function validatePhonesEverywhere(root = document){
   try{
     __tmcEnsurePhoneCSS();
@@ -12220,12 +12268,12 @@ const cells = scope.querySelectorAll('td[data-label="טלפון"]');
       if (td.classList.contains('loading') || td.classList.contains('skeleton')) return;
       if (tr.classList.contains('loading') || tr.classList.contains('skeleton')) return;
 
-      const raw = String(td.textContent || '').replace(/\u00A0/g, ' ').trim();
-      const digits = raw.replace(/[^\d]/g, '');
-      const isEmptyCell = !td.firstElementChild && raw.length === 0;
+      const { signature, effectiveDigits, hasAnyText, hasLinks } = __tmcExtractPhoneSignature(td);
+      const digits = effectiveDigits;
+      const isEmptyCell = !hasAnyText && !hasLinks && !digits;
 
       // Cache key: the blink decision depends only on the content of the phone cell
-      const cacheKey = (isEmptyCell ? 'E' : 'N') + '|' + digits;
+      const cacheKey = (isEmptyCell ? 'E' : 'N') + '|' + signature + '|' + digits;
       if (td.dataset && td.dataset.tmcPhoneKey === cacheKey) return;
       if (td.dataset) td.dataset.tmcPhoneKey = cacheKey;
 
