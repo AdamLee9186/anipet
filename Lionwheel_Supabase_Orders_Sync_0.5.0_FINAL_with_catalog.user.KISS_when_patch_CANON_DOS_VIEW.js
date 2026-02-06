@@ -350,7 +350,8 @@
    *  - Fetch only SKUs that appear on-screen (chunked)
    *  - Local cache keyed by catalog version (from anipet_catalog_meta)
    ************************************************************/
-  const ANIPET_CATALOG_TABLE = 'anipet_products_catalog';
+  // Use the normalized keymap view (2.1)
+  const ANIPET_CATALOG_TABLE = 'v_anipet_products_keymap';
   const ANIPET_CATALOG_META_TABLE = 'anipet_catalog_meta';
 
   // skuDigits -> { sku, barcode, supplier }; barcodeDigits -> same entry (אותו מוצר: מק"ט וברקוד)
@@ -488,26 +489,41 @@
       const totalChunks = Math.ceil(missing.length / chunkSize);
       console.log(`[Forecast] Catalog fetch: missing=${missing.length} chunks=${totalChunks}`);
 
-      // 2) Fetch in chunks using or=(sku.eq...)
+      // 2) Fetch in chunks using normalized keys (sku_norm / barcode_norm)
       const limiter = lwPLimit(CATALOG_FETCH_CONCURRENCY);
       const tasks = [];
       for (let i = 0; i < missing.length; i += chunkSize) {
         const chunk = missing.slice(i, i + chunkSize);
         tasks.push(limiter(async () => {
-          const orParts = chunk.flatMap(s => [`sku.eq.${encodeURIComponent(String(s))}`, `barcode.eq.${encodeURIComponent(String(s))}`]);
-          const path = `/rest/v1/${ANIPET_CATALOG_TABLE}?select=sku,barcode,supplier&or=(${orParts.join(',')})`;
+          // Use in.(...) instead of multiple eq to avoid long URLs and improve performance
+          const encodedValues = chunk.map(s => encodeURIComponent(String(s))).join(',');
+          const path =
+            `/rest/v1/${ANIPET_CATALOG_TABLE}` +
+            `?select=sku,barcode,supplier,sku_norm,barcode_norm` +
+            `&or=(sku_norm.in.(${encodedValues}),barcode_norm.in.(${encodedValues}))`;
 
           const data = await supaRestFetch(path, { method: 'GET' });
           if (!Array.isArray(data) || !data.length) return;
 
           for (const r of data) {
             const skuDigits = normalizeDigits(r?.sku);
-            if (!skuDigits) continue;
-            const barcode = normalizeDigits(r?.barcode || '');
+            const barcodeDigits = normalizeDigits(r?.barcode || '');
+            const skuKey = normalizeDigits(r?.sku_norm || r?.sku);
+            const barKey = normalizeDigits(r?.barcode_norm || r?.barcode);
             const supplier = String(r?.supplier || '').trim();
-            const entry = { sku: skuDigits, barcode, supplier };
-            CATALOG_BY_SKU.set(String(skuDigits), entry);
-            if (barcode) CATALOG_BY_BARCODE.set(String(barcode), entry);
+
+            const entry = {
+              sku: skuDigits || skuKey || null,
+              barcode: barcodeDigits || barKey || null,
+              supplier
+            };
+
+            // Index by BOTH canonical + normalized keys
+            if (skuKey) CATALOG_BY_SKU.set(String(skuKey), entry);
+            if (skuDigits) CATALOG_BY_SKU.set(String(skuDigits), entry);
+            if (barKey) CATALOG_BY_BARCODE.set(String(barKey), entry);
+            if (barcodeDigits) CATALOG_BY_BARCODE.set(String(barcodeDigits), entry);
+
             if (supplier) SUPPLIERS_IN_CACHE.add(supplier);
           }
         }));
@@ -7053,6 +7069,34 @@
         '[Supabase Sync] failed to expose functions on unsafeWindow:',
         e
       );
+    }
+
+    // ===== DEBUG EXPORT (optional) =====
+    const LW_EXPOSE_DEBUG_API = true; // שנה ל-false אחרי הבדיקות
+
+    if (LW_EXPOSE_DEBUG_API) {
+      try {
+        const w = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+        w.__LW_DEBUG = {
+          supaRestFetch,
+          supaRestFetchPaged,
+          // helpers:
+          clearCatalogCache: () => {
+            try { localStorage.removeItem(CATALOG_CACHE_KEY); } catch {}
+            try { localStorage.removeItem(CATALOG_VERSION_KEY); } catch {}
+            try { if (typeof GM_deleteValue !== 'undefined') GM_deleteValue(CATALOG_CACHE_KEY_GM); } catch {}
+            try { if (typeof GM_deleteValue !== 'undefined') GM_deleteValue(CATALOG_VERSION_KEY); } catch {}
+            console.log("[LW_DEBUG] catalog cache cleared");
+          },
+          // state:
+          CATALOG_BY_SKU,
+          CATALOG_BY_BARCODE,
+          SUPPLIERS_IN_CACHE,
+        };
+        console.log("[LW_DEBUG] __LW_DEBUG exported");
+      } catch (e) {
+        console.warn("[LW_DEBUG] export failed", e);
+      }
     }
 
     // תאימות לשם ישן אם קיים
