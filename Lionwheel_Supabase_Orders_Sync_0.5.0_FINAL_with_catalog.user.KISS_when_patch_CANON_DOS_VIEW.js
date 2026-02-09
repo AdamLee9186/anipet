@@ -99,14 +99,33 @@
       console.log(...args);
     }
 
-    const lwYieldToMain = () => new Promise(resolve => setTimeout(resolve, 0));
-
-    // Yield to browser (idle or next frame) to reduce "setTimeout handler took Nms" Violations
-    function yieldToBrowser(timeoutMs = 16) {
-      if (typeof requestIdleCallback === 'function') {
-        return new Promise(resolve => requestIdleCallback(() => resolve(), { timeout: timeoutMs }));
+    // Yield using MessageChannel to avoid "setTimeout handler took Nms" Violations (Chrome flags setTimeout, not MessagePort)
+    const lwYieldToMain = () => {
+      if (typeof MessageChannel === 'function') {
+        return new Promise(resolve => {
+          const ch = new MessageChannel();
+          ch.port1.onmessage = () => { ch.port1.onmessage = null; resolve(); };
+          ch.port2.postMessage(0);
+        });
       }
-      return new Promise(resolve => requestAnimationFrame(() => resolve()));
+      if (typeof requestAnimationFrame === 'function') {
+        return new Promise(resolve => requestAnimationFrame(() => resolve()));
+      }
+      return new Promise(resolve => setTimeout(resolve, 0));
+    };
+
+    function yieldToBrowser(timeoutMs = 16) {
+      if (typeof MessageChannel === 'function') {
+        return new Promise(resolve => {
+          const ch = new MessageChannel();
+          ch.port1.onmessage = () => { ch.port1.onmessage = null; resolve(); };
+          ch.port2.postMessage(0);
+        });
+      }
+      if (typeof requestAnimationFrame === 'function') {
+        return new Promise(resolve => requestAnimationFrame(() => resolve()));
+      }
+      return new Promise(resolve => setTimeout(resolve, 0));
     }
 
     async function lwMaybeYield(i, every = LW_ORDERS_CONFIG.YIELD_EVERY) {
@@ -148,7 +167,7 @@
      ************************************************************/
     const ORDERS_SYNC_CONFIG = {
       UPSERT_CONCURRENCY: 4,
-      YIELD_EVERY_ROWS: 200,
+      YIELD_EVERY_ROWS: 400,
       TASK_CACHE_TTL_MS: 15 * 60 * 1000,
       LOG_PREFIX: '[LW OrdersSync]',
       DEBUG: true,
@@ -161,7 +180,17 @@
     }
 
     function yieldToMain() {
-      return new Promise((resolve) => setTimeout(resolve, 0));
+      if (typeof MessageChannel === 'function') {
+        return new Promise(resolve => {
+          const ch = new MessageChannel();
+          ch.port1.onmessage = () => { ch.port1.onmessage = null; resolve(); };
+          ch.port2.postMessage(0);
+        });
+      }
+      if (typeof requestAnimationFrame === 'function') {
+        return new Promise(resolve => requestAnimationFrame(() => resolve()));
+      }
+      return new Promise(resolve => setTimeout(resolve, 0));
     }
 
     function createLimiter(limit) {
@@ -1308,6 +1337,14 @@
         }
       }
   
+      // נהג: בדף משימה בודדת – .drivers-dropdown-current-driver (רק הנהג הנבחר)
+      const driverEl = taskDoc.querySelector('.drivers-dropdown-current-driver');
+      const driver_name = driverEl ? textFrom(driverEl) : null;
+
+      // סטטוס: מ־.ajax-status-current-text או מ־canceled-task/completed-task וכו'
+      const statusEl = taskDoc.querySelector('.ajax-status-current-text');
+      const status_text = statusEl ? textFrom(statusEl).trim() : null;
+
       return {
         order_meta: {
           task_id,
@@ -1320,6 +1357,8 @@
           customer_number,
           is_self_pickup_str,
           total_value_raw,
+          driver_name: driver_name || null,
+          status_text: status_text || null,
         },
         destination,
         contact,
@@ -1400,6 +1439,7 @@
       let batches = 0;
       let totalRows = 0;
       for (let i = 0; i < rows.length; i += batchSize) {
+        if (batches > 0) await lwYieldToMain();
         const batch = rows.slice(i, i + batchSize);
         batches++;
         totalRows += batch.length;
@@ -1556,10 +1596,11 @@
         created_date: final_order_date, // כמו Excel – תאריך ל־order_history בתחזית (תמיד מולא אם יש order_datetime)
         order_time: order_datetime ? order_datetime.slice(11, 16) : null, // 'HH:mm' מתוך order_datetime
   
-        // מקור / סטטוס / איסוף
+        // מקור / סטטוס / איסוף (status_text מועבר מ־store_visits או מחולץ מדף המשימה)
         source: data.order_meta.source || null, // "משוגר" / "Online" וכו'
+        source_page: 'userscript_sync', // הזמנות מהסקריפט (בניגוד ל-excel_export)
         is_self_pickup: is_self_pickup, // true / false / null
-        status: null, // אפשר להוסיף בהמשך אם נחלץ סטטוס
+        status_text: data.order_meta.status_text || null, // בוטל / בוצע / אושר וכו' — להחלפה מ־store_visits
   
         // כתובת
         region: data.destination.region || null,
@@ -1579,7 +1620,8 @@
         customer_number: data.order_meta.customer_number || null,
   
         // משלוח / שליח / חברה / קוד מעקב
-        courier_name: null, // אין לנו ב־HTML כרגע
+        courier_name: data.order_meta.driver_name || null,
+        driver_name: data.order_meta.driver_name || null,
         delivery_company: null, // אפשר לחלץ מהלוגו אם נרצה
         tracking_code: data.comments.tracking_code || null,
   
@@ -1675,7 +1717,8 @@
         const tdOrder = getCellByPriority(tr, headerMap, { headerText: 'הזמנה', fallbackIndex: 3 });
         const tdCity  = getCellByPriority(tr, headerMap, { headerText: 'עיר',   fallbackIndex: 5 });
         const tdAddr  = getCellByPriority(tr, headerMap, { headerText: 'כתובת', fallbackIndex: 6 });
-        const tdName  = getCellByPriority(tr, headerMap, { headerText: 'שם',    fallbackIndex: 8 });
+        // שם: העדפה ל־data-label (מנעה קריאת תא סטטוס עם כל האפשרויות)
+        const tdName  = tr.querySelector('td[data-label="שם"]') || getCellByPriority(tr, headerMap, { headerText: 'שם', fallbackIndex: 8 });
         const tdRegion= getCellByPriority(tr, headerMap, { headerText: 'איזור',  fallbackIndex: 16 });
   
         // סטטוס/ליקוט: יש שם badge עם טקסט פנימי
@@ -1689,20 +1732,27 @@
         const tdDate = getCellByPriority(tr, headerMap, { headerText: 'תאריך', fallbackIndex: 12 });
         const pickup_date_raw = tdDate?.querySelector('input.visit-pickup-date')?.value || textFrom(tdDate);
   
-        // נהג: בתא יש select2, לפעמים נוח לקחת title/טקסט מוצג
+        // נהג: קודם .drivers-dropdown-current-driver (רק הנהג הנבחר), אחרת title של select2 (לא כל הרשימה)
         const tdDriver = getCellByPriority(tr, headerMap, { headerText: 'נהג', fallbackIndex: 14 });
+        const driverSpan = tdDriver?.querySelector('.drivers-dropdown-current-driver');
+        const driverSelect2 = tdDriver?.querySelector('.select2-selection__rendered');
         const driver_name =
-          textFrom(tdDriver?.querySelector('.select2-selection__rendered')) ||
+          (driverSpan ? textFrom(driverSpan) : null) ||
+          (driverSelect2?.getAttribute('title') ? String(driverSelect2.getAttribute('title')).trim() : null) ||
+          textFrom(driverSelect2) ||
           textFrom(tdDriver);
   
         const wp_order_id = textFrom(tdOrder);
+        // שם לקוח: תא עם data-label="שם" מכיל span עם השם בלבד (לא dropdown סטטוס)
+        const nameSpan = tdName?.querySelector('span');
+        const customer_name = (nameSpan ? textFrom(nameSpan).trim() : null) || textFrom(tdName) || null;
   
         return {
           task_id,
           wp_order_id: wp_order_id || null,
           city: textFrom(tdCity) || null,
           address: textFrom(tdAddr) || null,
-          customer_name: textFrom(tdName) || null,
+          customer_name: customer_name || null,
           region: textFrom(tdRegion) || null,
           status_text: status_text || null,
           pick_status_text: pick_status_text || null,
@@ -2039,6 +2089,7 @@
         }
         all.push(row);
       }
+      await lwYieldToMain();
     }
 
     // חזרה לעמוד המקורי בדיוק
@@ -2077,6 +2128,7 @@
     let pageNum = originalPage1;
 
     while (true) {
+      await lwYieldToMain();
       const rows = extractStoreVisitsFromIndexTable();
       for (const row of rows) {
         const id = String(row?.task_id || '').trim();
@@ -2197,13 +2249,21 @@
       let fail = 0;
       let skippedByCache = 0;
       try {
+      await lwYieldToMain();
       lwResetSyncStats();
+      const urlType = new URLSearchParams(window.location.search).get('type') || 'default';
+      if (urlType === 'canceled') {
+        showToast('מסנכרן הזמנות מבוטלות (type=canceled) — status_text=בוטל', 'info', 2000);
+      } else if (urlType === 'completed') {
+        showToast('מסנכרן הזמנות שבוצעו (type=completed) — status_text=בוצע', 'info', 2000);
+      }
       showToast('מאתחל סריקת כל העמודים…', 'info', 1500);
       const rows = await buildStoreVisitsRawRecords(true);
         if (!rows.length) {
           showToast('לא נמצאו רשומות ב־store_visits לסנכרון', 'info');
           return;
         }
+      await lwYieldToMain();
       showToast(`נאספו ${rows.length} ביקורים. מתחיל שליחה…`, 'info', 1500);
 
       const taskIdsAll = Array.from(new Set(rows.map((r) => String(r.task_id || '').trim()).filter(Boolean)));
@@ -2231,6 +2291,7 @@
         upsertFn: (batch) => supabaseUpsert(SUPABASE_VISITS_TABLE, batch, 'task_id')
       });
       didWork = true;
+      await lwYieldToMain();
 
         let newTasks = 0;
         let updatedTasks = 0;
@@ -2275,12 +2336,24 @@
           existingItemKeys.add(`${r.order_id}|${r.line_no}`);
         }
 
+        const statusByTaskId = new Map(rows.map((r) => [String(r.task_id || '').trim(), r.status_text]));
         const limit = createLimiter(ORDERS_SYNC_CONFIG.UPSERT_CONCURRENCY);
-        const results = await Promise.allSettled(
-          taskIds.map((taskId) =>
-            limit(() => lwSupabaseSendTaskById(taskId, { silent: true, existingItemKeys }))
-          )
-        );
+        const TASK_BATCH_SIZE = 15;
+        const results = [];
+        for (let i = 0; i < taskIds.length; i += TASK_BATCH_SIZE) {
+          const chunk = taskIds.slice(i, i + TASK_BATCH_SIZE);
+          const chunkResults = await Promise.allSettled(
+            chunk.map((taskId) =>
+              limit(() => lwSupabaseSendTaskById(taskId, {
+                silent: true,
+                existingItemKeys,
+                statusFromVisit: statusByTaskId.get(String(taskId)) ?? null,
+              }))
+            )
+          );
+          results.push(...chunkResults);
+          if (i + TASK_BATCH_SIZE < taskIds.length) await lwYieldToMain();
+        }
 
         results.forEach((r, i) => {
           const tid = taskIds[i];
@@ -2334,6 +2407,18 @@
         console.error('[Supabase Sync] error syncing store_visits:', err);
         showToast('שגיאה בסנכרון store_visits – ראה console', 'error');
       } finally {
+        // match_forecast_predictions: שידוך תחזיות עם הזמנות (לעדכון fulfilled/missed)
+        if (didWork) {
+          try {
+            const mfp = await supaRestFetch('/rest/v1/rpc/match_forecast_predictions', { method: 'POST', body: {} });
+            const row = Array.isArray(mfp) && mfp[0] ? mfp[0] : null;
+            if (row && (row.matched || row.fulfilled || row.missed)) {
+              logDebug('[Supabase Sync] match_forecast_predictions:', row);
+            }
+          } catch (e) {
+            if (LW_ORDERS_CONFIG.DEBUG) console.warn('[Supabase Sync] match_forecast_predictions failed:', e);
+          }
+        }
         // Legacy MV refresh (refresh_mv_forecast_active_enriched): gated by LW_ORDERS_CONFIG.ENABLE_LEGACY_MV_REFRESH
         if (LW_ORDERS_CONFIG.ENABLE_LEGACY_MV_REFRESH && (didWork || mvRefreshForce)) {
           try {
@@ -2405,7 +2490,7 @@
       return { doc, path: `/tasks/${taskId}` };
     }
 
-    async function lwSupabaseSendTaskById(taskId, { silent = false, existingItemKeys = null } = {}) {
+    async function lwSupabaseSendTaskById(taskId, { silent = false, existingItemKeys = null, statusFromVisit = null } = {}) {
       let data = loadTaskCache(taskId);
       if (!data) {
         const { doc, path } = await fetchTaskDocument(taskId);
@@ -2413,6 +2498,9 @@
         saveTaskCache(taskId, data);
       }
       const orderRow = buildOrdersRawRecordFromTask(data);
+      if (statusFromVisit != null && statusFromVisit !== '') {
+        orderRow.status_text = statusFromVisit;
+      }
       const itemRows = await buildOrderItemsRawRecordsFromTask(data);
       let newItems = 0;
       let updatedItems = 0;
@@ -2479,7 +2567,7 @@
         syncBtn.type = 'button';
         syncBtn.className = 'btn lw-forecast-split-sync';
         syncBtn.innerHTML = `<svg class="lw-forecast-sync-svg" xmlns="http://www.w3.org/2000/svg" viewBox="-0.135 0 122.88 122.88" aria-hidden="true" focusable="false"><path fill="currentColor" d="M111.9,61.57a5.36,5.36,0,0,1,10.71,0A61.3,61.3,0,0,1,17.54,104.48v12.35a5.36,5.36,0,0,1-10.72,0V89.31A5.36,5.36,0,0,1,12.18,84H40a5.36,5.36,0,1,1,0,10.71H23a50.6,50.6,0,0,0,88.87-33.1ZM106.6,5.36a5.36,5.36,0,1,1,10.71,0V33.14A5.36,5.36,0,0,1,112,38.49H84.44a5.36,5.36,0,1,1,0-10.71H99A50.6,50.6,0,0,0,10.71,61.57,5.36,5.36,0,1,1,0,61.57,61.31,61.31,0,0,1,91.07,8,61.83,61.83,0,0,1,106.6,20.27V5.36Z"/></svg>`;
-        syncBtn.title = 'סנכרן ביקורים ל-Supabase';
+        syncBtn.title = 'סנכרן ביקורים ל-Supabase. לבוטלות: ?type=canceled | לבוצע: ?type=completed';
   
         mainBtn.addEventListener('click', async () => {
           try {
@@ -2499,7 +2587,7 @@
             console.log('[Supabase Sync] FORCE TASK SYNC: Shift+Click detected');
             showToast('Force Sync: מסנכרן משימות גם אם סונכרנו בשעה האחרונה', 'warning', 2500);
           }
-          setTimeout(async () => {
+          const doSync = async () => {
             try {
               await syncStoreVisitsIndexToSupabase({ alsoSyncTasks: true, forceTasks, mvRefreshForce: true });
             } catch (err) {
@@ -2510,7 +2598,14 @@
               syncBtn.classList.remove('lw-syncing');
               syncBtn.disabled = false;
             }
-          }, 0);
+          };
+          if (typeof queueMicrotask === 'function') {
+            queueMicrotask(() => doSync().catch(() => {}));
+          } else if (typeof requestIdleCallback === 'function') {
+            requestIdleCallback(() => doSync().catch(() => {}), { timeout: 0 });
+          } else {
+            setTimeout(doSync, 0);
+          }
         });
   
         wrap.appendChild(syncBtn);
@@ -2576,28 +2671,39 @@
 
     /**
      * ממתין עד שטבלת הביקורים תיטען ותכיל נתונים.
-     * בודק כל שנייה למשך עד 30 שניות.
+     * משתמש ב-MutationObserver במקום polling – מפחית Violations מ-setTimeout/requestIdleCallback.
      */
-    function waitForStoreVisitsRows(maxRetries = 30, interval = 1000) {
+    function waitForStoreVisitsRows(maxWaitMs = 30000) {
       return new Promise((resolve) => {
-        let attempts = 0;
+        const table = document.querySelector('#operator-store-visits-table');
+        if (!table) return resolve(false);
 
         const check = () => {
-          attempts++;
-          const rows = document.querySelectorAll('#operator-store-visits-table tbody tr[data-task-id]');
-
+          const rows = table.querySelectorAll('tbody tr[data-task-id]');
           if (rows.length > 0) {
-            console.log(`[Supabase Sync] ✅ הטבלה נטענה עם ${rows.length} שורות לאחר ${attempts} ניסיונות.`);
+            console.log(`[Supabase Sync] ✅ הטבלה נטענה עם ${rows.length} שורות.`);
             resolve(true);
-          } else if (attempts >= maxRetries) {
-            console.warn('[Supabase Sync] ⚠️ פסק זמן (Timeout) בהמתנה לטעינת הטבלה.');
-            resolve(false);
-          } else {
-            setTimeout(check, interval);
+            return true;
           }
+          return false;
         };
 
-        check();
+        if (check()) return;
+
+        let timeoutId, resolved = false;
+        const done = (ok) => {
+          if (resolved) return;
+          resolved = true;
+          if (timeoutId) clearTimeout(timeoutId);
+          obs?.disconnect();
+          if (!ok) console.warn('[Supabase Sync] ⚠️ פסק זמן (Timeout) בהמתנה לטעינת הטבלה.');
+          resolve(ok);
+        };
+
+        const obs = new MutationObserver(() => { if (check()) done(true); });
+        obs.observe(table, { childList: true, subtree: true });
+
+        timeoutId = setTimeout(() => done(check()), maxWaitMs);
       });
     }
 
@@ -2649,8 +2755,7 @@
 
     async function warmCatalogCacheInBackground() {
       try {
-        // wait for idle to avoid blocking initial UI
-        setTimeout(async () => {
+        const doWarm = async () => {
           try {
             const now = Date.now();
             if (CATALOG_WARM_IN_PROGRESS) return;
@@ -2683,7 +2788,12 @@
             CATALOG_WARM_IN_PROGRESS = false;
             console.warn('[Forecast] warmCatalogCacheInBackground failed:', e);
           }
-        }, 1500);
+        };
+        if (typeof requestIdleCallback === 'function') {
+          requestIdleCallback(doWarm, { timeout: 1500 });
+        } else {
+          setTimeout(doWarm, 1500);
+        }
       } catch (e) {
         console.warn('[Forecast] warmCatalogCacheInBackground outer failed:', e);
       }
@@ -2712,8 +2822,12 @@
         run();
       }
   
-      // גם לנסות אחרי טעינה מאוחרת (אם הטבלה נטענת דרך AJAX)
-      setTimeout(run, 2000);
+      // גם לנסות אחרי טעינה מאוחרת (אם הטבלה נטענת דרך AJAX) – requestIdleCallback מונע "setTimeout handler" Violations
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(run, { timeout: 2000 });
+      } else {
+        setTimeout(run, 2000);
+      }
     }
   
     /************************************************************
@@ -3363,11 +3477,18 @@
       if (__lwForecastRefetchScheduled) return;
       if (now - __lwForecastRefetchLastAt < LW_FORECAST_REFETCH_COOLDOWN_MS) return;
       __lwForecastRefetchScheduled = true;
-      setTimeout(() => {
+      const doRefetch = () => {
         __lwForecastRefetchScheduled = false;
         __lwForecastRefetchLastAt = Date.now();
         forceRefetchAndRenderForecast(reason).catch((e) => { if (LW_ORDERS_CONFIG.DEBUG) console.warn('[Forecast] scheduled refetch failed:', e); });
-      }, 0);
+      };
+      if (typeof queueMicrotask === 'function') {
+        queueMicrotask(doRefetch);
+      } else if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(doRefetch, { timeout: 50 });
+      } else {
+        setTimeout(doRefetch, 0);
+      }
     }
 
     async function maybeRefreshMV({ reason = 'unspecified', force = false, toast = true } = {}) {
@@ -4555,6 +4676,36 @@
       return new Date(date.getTime() - offset).toISOString().slice(0, 10);
     }
 
+    // Parse date as LOCAL date (avoid UTC shift)
+    function tmcParseISODateLocal(input) {
+      if (!input) return null;
+      const s = String(input).trim();
+      const mIso = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+      if (mIso) {
+        const y = Number(mIso[1]);
+        const mo = Number(mIso[2]) - 1;
+        const d = Number(mIso[3]);
+        return new Date(y, mo, d, 0, 0, 0, 0);
+      }
+      const mDmy = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})/);
+      if (mDmy) {
+        const d = Number(mDmy[1]);
+        const mo = Number(mDmy[2]) - 1;
+        const y = Number(mDmy[3]);
+        return new Date(y, mo, d, 0, 0, 0, 0);
+      }
+      const dt = new Date(s);
+      if (Number.isNaN(dt.getTime())) return null;
+      return new Date(dt.getFullYear(), dt.getMonth(), dt.getDate(), 0, 0, 0, 0);
+    }
+
+    function tmcEndOfLocalDay(d) {
+      if (!d) return null;
+      const x = new Date(d.getTime());
+      x.setHours(23, 59, 59, 999);
+      return x;
+    }
+
     // פונקציית עזר לחישוב טווח בודד
     function getSingleRange(key) {
       const today = new Date();
@@ -4639,9 +4790,12 @@
       const range = getDateRange(key);
       if (!range) return null;
       // המרה חזרה לאובייקטי Date לתאימות
+      const from = tmcParseISODateLocal(range.from);
+      const to = tmcEndOfLocalDay(tmcParseISODateLocal(range.to));
+      if (!from || !to) return null;
       return {
-        from: new Date(range.from),
-        to: new Date(range.to)
+        from,
+        to
       };
     }
 
@@ -4652,14 +4806,10 @@
         (Array.isArray(state.dateRangeKeys) && state.dateRangeKeys.includes('טווח מותאם אישית'));
 
       if (hasCustom) {
-        const from = state.dateFrom ? new Date(state.dateFrom) : null;
-        const to = state.dateTo ? new Date(state.dateTo) : null;
-        if (from && to) {
-          from.setHours(0, 0, 0, 0);
-          to.setHours(0, 0, 0, 0);
-          return { from, to };
-        }
-        return null;
+        const from = tmcParseISODateLocal(state?.dateFrom);
+        const to = tmcEndOfLocalDay(tmcParseISODateLocal(state?.dateTo));
+        if (!from || !to) return null;
+        return { from, to };
       }
 
       // "כל הפתוחים" = באמת ALL OPEN => אין טווח (null). כך RPC/fallback לא מגבילים תאריכים.
@@ -4672,7 +4822,12 @@
         Array.isArray(state.dateRangeKeys) && state.dateRangeKeys.length
           ? state.dateRangeKeys
           : state.dateRangeKey;
-      return getDateRangeForKey(keyInput);
+      const r = getDateRange(keyInput);
+      if (!r?.from || !r?.to) return null;
+      const from = tmcParseISODateLocal(r.from);
+      const to = tmcEndOfLocalDay(tmcParseISODateLocal(r.to));
+      if (!from || !to) return null;
+      return { from, to };
     }
 
     // Predicate אחד לכל מקום: דרילדאון, "מתי צפוי", "כמה להזמין"
@@ -4706,17 +4861,34 @@
       const allOpen = isAllOpenMode(opts, range);
       if (allOpen) return true;
 
-      // חשוב: "באיחור / היום" תמיד רלוונטי, גם אם מחוץ לטווח שנבחר
-      // אחרת נקבל מצב ש"מתי צפוי"/"כמה להזמין" מציגים באיחור,
-      // אבל Drilldown מסתיר אותו.
-      const s = String(r?.status || '').trim();
-      if (s === 'due_or_late') return true;
+      // Guard: if range is invalid, do not show anything
+      if (!range || !range.from || !range.to) return false;
 
-      if (!r?.next_expected_date) return false;
-      const d = new Date(r.next_expected_date);
-      if (Number.isNaN(d.getTime())) return false;
-      d.setHours(0, 0, 0, 0);
+      const iso =
+        r?.due_date ||
+        r?.next_expected_date ||
+        r?.next_expected_date_iso ||
+        r?.expected_date ||
+        r?.first_expected_date ||
+        r?.last_expected_date;
+      const d = tmcParseISODateLocal(iso);
+      if (!d) return false;
       return d >= range.from && d <= range.to;
+    }
+
+    function tmcFilterRowsToPlanningRange(rows, opts, range, label) {
+      if (!Array.isArray(rows) || !rows.length || !range) return rows || [];
+      const filtered = rows.filter(r => rowPassesPlanningFilter(r, opts, range));
+      const dropped = rows.length - filtered.length;
+      if (dropped > 0) {
+        console.warn('[RangeGuard] filtered out-of-range rows:', label, {
+          dropped,
+          kept: filtered.length,
+          from: toISODate(range.from),
+          to: toISODate(range.to)
+        });
+      }
+      return filtered;
     }
 
     const FORECAST_MIN_ORDERS = 3;
@@ -5098,9 +5270,12 @@
       const range = getPlanningRange(state);
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const filtered = (rows || [])
-        .map(r => ({ ...r, status: normalizeForecastStatus(r) }))
-        .filter(r => rowPassesPlanningFilter(r, state, range));
+      const filtered = tmcFilterRowsToPlanningRange(
+        (rows || []).map(r => ({ ...r, status: normalizeForecastStatus(r) })),
+        state,
+        range,
+        'when-summary'
+      );
 
       // רק שורות שתורמות כמות (last_quantity מספרי וחיובי) – בסיס משותף ל"מתי צפוי" ו"כמה להזמין"
       const contributing = (filtered || []).filter(r => {
@@ -5176,6 +5351,31 @@
 
       const SUMMARY_RPC_BATCH = 120;
       const MAX_SKUS_FOR_SUMMARY = 500;
+
+      /** טוען ציון אמינות (תחזית שהתגשמה/פוספסה) לפי SKU – ל-badge בטבלה */
+      async function tmcFetchSkuReliabilityMap(skus) {
+        if (!Array.isArray(skus) || skus.length === 0) return new Map();
+        try {
+          const rows = await supaRestFetch(
+            `/rest/v1/v_sku_reliability?select=sku,fulfilled_cnt,missed_cnt&limit=5000`,
+            { method: 'GET' }
+          );
+          if (!Array.isArray(rows)) return new Map();
+          const map = new Map();
+          for (const r of rows) {
+            const sku = tmcNormalizeDigits(r?.sku);
+            if (!sku) continue;
+            map.set(sku, {
+              fulfilled_cnt: Number(r?.fulfilled_cnt) || 0,
+              missed_cnt: Number(r?.missed_cnt) || 0
+            });
+          }
+          return map;
+        } catch (e) {
+          if (LW_ORDERS_CONFIG.DEBUG) console.warn('[Forecast] v_sku_reliability not available:', e?.message || e);
+          return new Map();
+        }
+      }
 
       async function tmcFetchSummaryMapFromRpc(state, skus) {
       const range = getPlanningRange(state);
@@ -5338,6 +5538,15 @@
             const entry = serverMap.get(sku) || { summary: '', qty: null, priorityScore: 0, earliestDate: null, overdueDates: [], upcomingDates: [], nOrdersSum: 0, nForecasts: 0, customerNames: [] };
             resultMap.set(sku, entry);
           });
+          try {
+            const relMap = await tmcFetchSkuReliabilityMap([...resultMap.keys()]);
+            const RELIABILITY_FULFILLED_BONUS = 10;
+            const RELIABILITY_MISSED_PENALTY = 10;
+            for (const [sku, entry] of resultMap) {
+              const rel = relMap.get(sku) || { fulfilled_cnt: 0, missed_cnt: 0 };
+              entry.priorityScore = (entry.priorityScore || 0) + (rel.fulfilled_cnt * RELIABILITY_FULFILLED_BONUS) - (rel.missed_cnt * RELIABILITY_MISSED_PENALTY);
+            }
+          } catch (e) { if (LW_ORDERS_CONFIG.DEBUG) console.warn('[Forecast] reliability enrichment failed:', e); }
           console.log(`[Forecast] Server-side summary: ${serverMap.size} SKUs in ${Math.round(performance.now() - t0)}ms`);
 
           // DEBUG: כפיית חישוב קליינט־סייד ל־SKU ספציפי כדי להשוות ל־RPC (לראות אם השרת "משקר").
@@ -5373,6 +5582,7 @@
       const fallbackSkus = skus.slice(0, MAX_FALLBACK_SKUS);
       let idx = 0;
       const worker = async () => {
+        let processed = 0;
         while (idx < fallbackSkus.length) {
           const sku = fallbackSkus[idx++];
           try {
@@ -5385,12 +5595,22 @@
           } catch (e) {
             resultMap.set(sku, { summary: '', qty: null });
           }
-          try { await lwYieldToMain(); } catch {}
+          processed++;
+          if (processed % 8 === 0) { try { await lwYieldToMain(); } catch {} }
         }
       };
       const workers = [];
       for (let i = 0; i < CONCURRENCY; i++) workers.push(worker());
       await Promise.all(workers);
+      try {
+        const relMap = await tmcFetchSkuReliabilityMap([...resultMap.keys()]);
+        const RELIABILITY_FULFILLED_BONUS = 10;
+        const RELIABILITY_MISSED_PENALTY = 10;
+        for (const [sku, entry] of resultMap) {
+          const rel = relMap.get(sku) || { fulfilled_cnt: 0, missed_cnt: 0 };
+          entry.priorityScore = (entry.priorityScore || 0) + (rel.fulfilled_cnt * RELIABILITY_FULFILLED_BONUS) - (rel.missed_cnt * RELIABILITY_MISSED_PENALTY);
+        }
+      } catch (e) { if (LW_ORDERS_CONFIG.DEBUG) console.warn('[Forecast] reliability enrichment failed:', e); }
       return resultMap;
     }
 
@@ -5686,18 +5906,34 @@
         }
       }
 
-      // Enrich for sort (use displayed qty, earliest date, priority from summary)
+      // טען ציון אמינות (תחזית שהתגשמה/פוספסה) לפי SKU
+      const skusForReliability = Array.from(new Set(rows.map(r => tmcNormalizeDigits(r?.sku)).filter(Boolean)));
+      let reliabilityMap = new Map();
+      try {
+        reliabilityMap = await tmcFetchSkuReliabilityMap(skusForReliability);
+      } catch (_) {}
+
+      // Enrich for sort: עדיפות משולבת = דחיפות (תאריך) + אמינות (התגשמה/פוספסה)
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      const PRIORITY_THRESHOLD_HIGH = 70;
+      const PRIORITY_THRESHOLD_MID = 40;
+      const RELIABILITY_FLOOR_FOR_HIGH = -10;
       rows.forEach(r => {
         const sku = tmcNormalizeDigits(r?.sku);
         const res = summaryMap?.get(sku) || {};
         r._sortQty = res?.qty ?? r?.qty_within_cycle ?? 0;
         r._sortWhen = res?.earliestDate ? new Date(res.earliestDate).getTime() : 0;
-        r._sortPriority = res?.priorityScore ?? 0;
         r._earliestDateIso = res?.earliestDate || null;
         r._overdueDates = res?.overdueDates || [];
         r._upcomingDates = res?.upcomingDates || [];
+        const rel = reliabilityMap?.get(sku) || reliabilityMap?.get(tmcNormalizeDigits(r?.barcode));
+        r._fulfilledCnt = rel?.fulfilled_cnt ?? 0;
+        r._missedCnt = rel?.missed_cnt ?? 0;
+        const totalPred = r._fulfilledCnt + r._missedCnt;
+        const rate = totalPred > 0 ? r._fulfilledCnt / totalPred : 0.5;
+        const clampAbs = totalPred >= 4 && rate >= 0.5 ? 30 : totalPred >= 2 || (totalPred >= 1 && rate >= 0.3) ? 20 : 10;
+        r._reliabilityClampAbs = clampAbs;
         let urgencyTier = 0;
         let diffDays = 999;
         if (res?.earliestDate) {
@@ -5709,9 +5945,16 @@
           else urgencyTier = 1;
         }
         r._urgencyTier = urgencyTier;
-        if (urgencyTier === 3) r._priorityLabel = 'גבוה';
-        else if (urgencyTier === 2 && diffDays <= 2) r._priorityLabel = 'גבוה';
-        else if (urgencyTier === 2) r._priorityLabel = 'בינוני';
+        const urgencyScore = urgencyTier === 3 ? 90 : urgencyTier === 2 ? (diffDays <= 2 ? 75 : 60) : urgencyTier === 1 ? 40 : 20;
+        r._urgencyScore = urgencyScore;
+        const rawRel = (r._fulfilledCnt * 10) - (r._missedCnt * 10);
+        const reliabilityScore = Math.max(-clampAbs, Math.min(clampAbs, rawRel));
+        r._reliabilityScore = reliabilityScore;
+        const totalScore = urgencyScore + reliabilityScore;
+        r._sortPriority = totalScore;
+        const canBeHigh = totalScore >= PRIORITY_THRESHOLD_HIGH && reliabilityScore >= RELIABILITY_FLOOR_FOR_HIGH;
+        if (canBeHigh) r._priorityLabel = 'גבוה';
+        else if (totalScore >= PRIORITY_THRESHOLD_MID) r._priorityLabel = 'בינוני';
         else r._priorityLabel = 'נמוך';
         r._sortPriorityOrder = r._priorityLabel === 'גבוה' ? 3 : (r._priorityLabel === 'בינוני' ? 2 : 1);
         const allDates = [...(res?.overdueDates || []), ...(res?.upcomingDates || [])];
@@ -5777,7 +6020,7 @@
         { key: '_num', label: '#', width: '36px', noSort: true },
         { key: null, label: '', width: '70px' },
         { key: 'sku', label: 'מה', title: 'שם המוצר והמק"ט', icon: 'fa-cube' },
-        { key: 'priority', label: 'עדיפות', width: '90px', title: 'דחיפות (איחור/בקרוב) + כמות – גבוה = צריך תשומת לב ראשונה', icon: 'fa-flag' },
+        { key: 'priority', label: 'עדיפות', width: '90px', title: 'עדיפות משולבת: דחיפות לפי תאריך + אמינות (✅התגשמה / ❌פוספס, ±14 ימים). מוצר עם הרבה פספוסים יכול לרדת בעדיפות גם אם קרוב בזמן.', icon: 'fa-flag' },
         { key: 'qty_within_cycle', label: 'כמה להזמין', width: '140px', title: 'כמה יחידות מומלץ להזמין במחזור ההזמנה של הספק', icon: 'fa-cubes' },
         { key: 'first_due_date', label: 'מתי צפוי', width: '220px', title: 'באילו ימים צפויות הזמנות (היום/מחר/שני הבא...) לפי התקופה שנבחרה' },
       ];
@@ -5885,6 +6128,18 @@
 
         const priorityLabel = row._priorityLabel || '—';
         const priorityClass = priorityLabel === 'גבוה' ? 'tmc-prio-high' : (priorityLabel === 'בינוני' ? 'tmc-prio-mid' : 'tmc-prio-low');
+        const f = row._fulfilledCnt ?? 0;
+        const m = row._missedCnt ?? 0;
+        const accuracyParts = [];
+        if (f > 0) accuracyParts.push(`✅${f}`);
+        if (m > 0) accuracyParts.push(`❌${m}`);
+        const accuracyBadge = accuracyParts.length
+          ? ` <span class="tmc-accuracy-badge" style="font-size:11px;opacity:0.9;" title="דיוק (היסטוריה מלאה): ${f} התגשמו, ${m} חרגו (±14 ימים מצפי הזמנה). דחיפות = תאריך נפרד. לפריסה — לחץ.">${accuracyParts.join(' ')} (היסטוריה מלאה)</span>`
+          : '';
+        const uSc = row._urgencyScore ?? 0;
+        const rSc = row._reliabilityScore ?? 0;
+        const tot = (row._sortPriority != null ? row._sortPriority : uSc + rSc);
+        const priorityTitle = `ציון משולב: ${Math.round(tot)} (דחיפות ${uSc} + אמינות ${rSc >= 0 ? '+' : ''}${rSc}) — ✅${f} התגשמו, ❌${m} חרגו. Qty: ${row._sortQty ?? '?'}. לחץ לפריסה.`.trim();
         tr.innerHTML = `
           <td style="color:#667085;font-size:12px;font-weight:500;">${idx + 1}</td>
           <td>${imgHtml}</td>
@@ -5896,7 +6151,10 @@
               ${metaLineHtml}
             </div>
           </td>
-          <td class="${priorityClass}" style="font-weight:500;">${escapeHtml(priorityLabel)}</td>
+          <td class="${priorityClass}" style="font-weight:500;" title="${escapeHtml(priorityTitle)}">
+            <div style="line-height:1.3;">${escapeHtml(priorityLabel)}</div>
+            <div style="font-size:11px;color:#667085;">${accuracyParts.length ? accuracyParts.join(' ') + ' (היסטוריה מלאה)' : '—'}</div>
+          </td>
           <td>${tmcRenderQtyWithinCycleCell(qtySummary)}</td>
           <td>${tmcRenderWhenCell(whenSummary, row._overdueDates, row._upcomingDates, row._earliestDateIso)}</td>
         `;
@@ -6001,8 +6259,8 @@
         dateLabelEl,
         dateRangesList,
         dateCustom,
-        dateFromInput,
-        dateToInput,
+        dateFrom: dateFromInput,
+        dateTo: dateToInput,
         dateApplyBtn,
         wrap
       } = refs;
@@ -6032,41 +6290,28 @@
         dateTrigger.setAttribute('aria-expanded', 'false');
       }
 
-      function toggleDateMenu() {
-        if (!dateMenu) return;
-        const willOpen = dateMenu.hidden;
-        if (willOpen) {
-          openDateMenu();
-        } else {
-          closeDateMenu();
-        }
-      }
-
       if (dateTrigger && dateMenu) {
-        // ביטול כל מאזין קודם אם קיים (למקרה של הרצה כפולה)
+        // ביטול כל מאזין קודם אם קיים
         const newTrigger = dateTrigger.cloneNode(true);
         dateTrigger.parentNode.replaceChild(newTrigger, dateTrigger);
         const actualTrigger = newTrigger;
-        dateTrigger = actualTrigger;
-        dateLabelEl = actualTrigger.querySelector('.tmc-date-label') || dateLabelEl;
         refs.dateTrigger = actualTrigger;
-        refs.dateLabel = dateLabelEl;
+        
+        // עדכון רפרנס לתווית במקרה שהיא בפנים
+        const newLabel = actualTrigger.querySelector('.tmc-date-label');
+        if (newLabel) refs.dateLabel = newLabel;
+        dateLabelEl = refs.dateLabel;
 
-        // דלת נעולה - מונע סגירה באותו קליק
         let isProcessing = false;
-
-        // פונקציה מרכזית אחת לשינוי מצב
         let outsideClickHandler = null;
+
         const setMenuState = (open) => {
           if (!dateMenu || !actualTrigger) return;
-          
           dateMenu.hidden = !open;
           dateMenu.classList.toggle('is-open', open);
           actualTrigger.setAttribute('aria-expanded', open.toString());
           
           if (open) {
-            // מוסיפים מאזין לסגירה רק כשהתפריט פתוח
-            // שימוש ב-setTimeout כדי לוודא שהאירוע הנוכחי מסתיים קודם
             setTimeout(() => {
               outsideClickHandler = (e) => {
                 if (!dateMenu.contains(e.target) && !actualTrigger.contains(e.target)) {
@@ -6074,9 +6319,8 @@
                 }
               };
               document.addEventListener('click', outsideClickHandler, true);
-            }, 100); // הגדלנו ל-100ms כדי לתת זמן לקליק לעבור
+            }, 100);
           } else {
-            // מסירים מאזין כשסוגרים
             if (outsideClickHandler) {
               document.removeEventListener('click', outsideClickHandler, true);
               outsideClickHandler = null;
@@ -6084,43 +6328,32 @@
           }
         };
 
-        // קליק על הטריגר - עם stopImmediatePropagation ו-isProcessing flag
         actualTrigger.onclick = (ev) => {
           ev.preventDefault();
           ev.stopPropagation();
-          ev.stopImmediatePropagation(); // חשוב מאוד - מונע ממאזינים אחרים על אותו אלמנט לרוץ
-          
+          ev.stopImmediatePropagation();
           if (isProcessing) return;
-          
           isProcessing = true;
           const willOpen = dateMenu.hidden;
           setMenuState(willOpen);
-          
-          // משחררים את הנעילה אחרי שהקליק סיים לעבור ב-DOM
-          setTimeout(() => { 
-            isProcessing = false; 
-          }, 100);
+          setTimeout(() => { isProcessing = false; }, 100);
         };
 
-        // בחירת טווחים מוכנים מראש - Multi-select עם checkboxים
+        // בחירת טווחים מוכנים מראש - Multi-select
         if (dateRangesList) {
-          // משתנה מקומי לשמירת הבחירות המרובות
           let selectedKeys = Array.isArray(state.dateRangeKeys) && state.dateRangeKeys.length
             ? [...state.dateRangeKeys]
             : (state.dateRangeKey
                 ? (state.dateRangeKey === 'טווח מותאם אישית'
                     ? ['טווח מותאם אישית']
                     : (state.dateRangeKey.includes(',') ? state.dateRangeKey.split(',').map(k => k.trim()) : [state.dateRangeKey]))
-                : ['השבוע', 'השבוע הבא']); // ברירת מחדל
+                : ['השבוע', 'השבוע הבא']);
 
-          // הסרת מאזינים קודמים אם קיימים (למניעת כפילות)
           const newRangesList = dateRangesList.cloneNode(true);
           dateRangesList.parentNode.replaceChild(newRangesList, dateRangesList);
           const actualRangesList = newRangesList;
-          dateRangesList = actualRangesList;
           refs.dateRangesList = actualRangesList;
 
-          // פונקציה לעדכון ה-UI (עדכון ה-checkboxים)
           const updateMenuUi = () => {
             const checkboxes = actualRangesList.querySelectorAll('input[type="checkbox"][data-range-key]');
             checkboxes.forEach(checkbox => {
@@ -6128,18 +6361,15 @@
               checkbox.checked = selectedKeys.includes(k);
             });
           };
-          // הפעלה ראשונית
           updateMenuUi();
 
-          // עדכון טקסט התחלתי בכפתור לפי מצב קיים
           const syncTriggerLabel = () => {
             let label = '';
-            if (state.dateRangeKey === 'טווח מותאם אישית') {
-              if (state.dateFrom && state.dateTo) label = `${state.dateFrom} עד ${state.dateTo}`;
-              else if (state.dateFrom) label = `מ־${state.dateFrom}`;
-              else if (state.dateTo) label = `עד ${state.dateTo}`;
-              else label = 'טווח מותאם אישית';
-              if (dateCustom) dateCustom.hidden = false;
+            // בדיקה אם המצב הנוכחי הוא מותאם אישית
+            if (selectedKeys.includes('טווח מותאם אישית')) {
+               if (state.dateFrom && state.dateTo) label = `${state.dateFrom} עד ${state.dateTo}`;
+               else label = 'טווח מותאם אישית';
+               if (dateCustom) dateCustom.hidden = false;
             } else {
               label = selectedKeys.join(', ');
               if (selectedKeys.length > 2) label = `${selectedKeys.length} תקופות נבחרו`;
@@ -6149,7 +6379,6 @@
           };
           syncTriggerLabel();
           
-          // מאזין על ה-checkboxים
           actualRangesList.addEventListener('change', (ev) => {
             const checkbox = ev.target;
             if (checkbox.type !== 'checkbox' || !checkbox.hasAttribute('data-range-key')) return;
@@ -6159,28 +6388,26 @@
 
             ev.stopPropagation();
 
-            // לוגיקה לבחירות מיוחדות (מאפסות את השאר)
+            // לוגיקה ייחודית לטווח מותאם אישית / כל הפתוחים
             if (key === 'טווח מותאם אישית' || key === 'כל הפתוחים') {
               if (checkbox.checked) {
-                // ביטול כל הבחירות האחרות
                 selectedKeys = [key];
+                // uncheck all others visually
                 const allCheckboxes = actualRangesList.querySelectorAll('input[type="checkbox"][data-range-key]');
                 allCheckboxes.forEach(cb => {
-                  const k = cb.getAttribute('data-range-key');
-                  if (k !== key) cb.checked = false;
+                  if (cb.getAttribute('data-range-key') !== key) cb.checked = false;
                 });
               } else {
                 selectedKeys = [];
               }
             } else {
-              // אם הייתה בחירה מיוחדת קודם - נקה אותה
+              // נקה בחירות "אקסקלוסיביות" אם בוחרים טווח רגיל
               if (selectedKeys.includes('טווח מותאם אישית') || selectedKeys.includes('כל הפתוחים')) {
                 selectedKeys = [];
                 const specialCheckboxes = actualRangesList.querySelectorAll('input[type="checkbox"][data-range-key="טווח מותאם אישית"], input[type="checkbox"][data-range-key="כל הפתוחים"]');
                 specialCheckboxes.forEach(cb => cb.checked = false);
               }
               
-              // הוספה או הסרה לפי מצב ה-checkbox
               if (checkbox.checked) {
                 if (!selectedKeys.includes(key)) selectedKeys.push(key);
               } else {
@@ -6188,43 +6415,56 @@
               }
             }
 
-            // אם לא נשאר כלום, בחר ברירת מחדל
             if (selectedKeys.length === 0) {
+              // fallback default
               selectedKeys = ['החודש'];
               const defaultCheckbox = actualRangesList.querySelector('input[type="checkbox"][data-range-key="החודש"]');
               if (defaultCheckbox) defaultCheckbox.checked = true;
             }
 
-            updateMenuUi();
+            // עדכון state לוגי
+            state.dateRangeKeys = [...selectedKeys];
+            state.dateRangeKey = selectedKeys.join(', '); // fallback string
 
-            // עדכון הכפתור הראשי
-            let label = selectedKeys.join(', ');
-            if (selectedKeys.length > 2) label = `${selectedKeys.length} תקופות נבחרו`;
-            if (dateLabelEl) dateLabelEl.textContent = label;
-            state.dateRangeKey = label; // תצוגה
-            state.dateRangeKeys = [...selectedKeys]; // לוגיקה
-
-            // טיפול בטווח מותאם אישית
+            // עדכון UI במקום (הצגת/הסתרת Custom Box)
             if (key === 'טווח מותאם אישית') {
               if (dateCustom) dateCustom.hidden = !checkbox.checked;
-              if (!checkbox.checked) return; // לא מרעננים נתונים אם ביטלנו
+              
+              // ★★★ תיקון קריטי: אם סימנו מותאם אישית, עוצרים כאן! ★★★
+              // לא מרעננים נתונים עד שהמשתמש לוחץ "החל"
+              if (checkbox.checked) {
+                  if (dateLabelEl) dateLabelEl.textContent = 'טווח מותאם אישית';
+                  // מילוי ברירת מחדל (השבוע) כדי ש"החל" יעבוד גם בלי בחירה ידנית
+                  const defRange = getDateRange('השבוע');
+                  if (dateFromInput && dateToInput && defRange?.from && defRange?.to) {
+                    dateFromInput.value = defRange.from;
+                    dateToInput.value = defRange.to;
+                  }
+                  return; 
+              }
             } else {
               if (dateCustom) dateCustom.hidden = true;
             }
 
-            // חישוב התאריכים המאוחדים ושליחה לשרת
-            if (key === 'כל הפתוחים') {
+            // חישוב תאריכים לטווחים רגילים
+            if (selectedKeys.includes('כל הפתוחים')) {
               state.dateFrom = null;
               state.dateTo = null;
             } else {
-              const range = getDateRange(selectedKeys); // שימוש בפונקציה החדשה
+              // אם ביטלנו מותאם אישית, מחשבים טווח רגיל
+              const range = getDateRange(selectedKeys);
               state.dateFrom = range ? range.from : null;
               state.dateTo = range ? range.to : null;
             }
+            
+            // עדכון התווית למעלה
+            let label = selectedKeys.join(', ');
+            if (selectedKeys.length > 2) label = `${selectedKeys.length} תקופות נבחרו`;
+            if (dateLabelEl) dateLabelEl.textContent = label;
 
-            console.log(`[Forecast] Multi-select: ${selectedKeys.join('+')} -> ${state.dateFrom} to ${state.dateTo}`);
+            console.log(`[Forecast] Range change: ${selectedKeys.join('+')} -> Fetching...`);
 
-            // רענון הנתונים
+            // ביצוע הרענון בפועל (רק אם זה לא מותאם אישית שסומן כרגע)
             if (typeof fetchDataAndRender === 'function') {
               fetchDataAndRender(state);
             } else if (typeof reloadData === 'function') {
@@ -6232,45 +6472,53 @@
             } else {
               render(state, refs);
             }
-          }, true); // capture phase
+          }, true);
         }
 
-        // גם על התפריט עצמו - למנוע סגירה כשקליקים בתוכו
         dateMenu.addEventListener('click', (ev) => {
           ev.stopPropagation();
         });
 
-        // כפתור "החל" בטווח מותאם אישית
+        // כפתור "החל" (לטווח מותאם אישית)
         if (dateApplyBtn) {
           dateApplyBtn.addEventListener('click', (ev) => {
             ev.stopPropagation();
             ev.stopImmediatePropagation();
             
-            const from = dateFromInput && dateFromInput.value ? dateFromInput.value : null;
-            const to   = dateToInput && dateToInput.value   ? dateToInput.value   : null;
+            const from = dateFromInput && dateFromInput.value ? dateFromInput.value.trim() : null;
+            const to   = dateToInput && dateToInput.value   ? dateToInput.value.trim()   : null;
 
-            state.dateRangeKey = 'טווח מותאם אישית';
+            // עדכון ה-state
             state.dateRangeKeys = ['טווח מותאם אישית'];
-            state.dateFrom = from;
-            state.dateTo = to;
+            state.dateRangeKey = 'טווח מותאם אישית';
+            state.dateFrom = from || null;
+            state.dateTo = to || null;
 
             if (from && to) {
-              dateLabelEl.textContent = `${from} עד ${to}`;
+              if (dateLabelEl) dateLabelEl.textContent = `${from} עד ${to}`;
             } else {
-              dateLabelEl.textContent = 'טווח מותאם אישית';
+              if (dateLabelEl) dateLabelEl.textContent = 'טווח מותאם אישית';
             }
 
-            setMenuState(false);
+            setMenuState(false); // סגור תפריט
 
+            // ★ אין טעינה בלי תאריכים – מונע מאותיות Drilldown "From: null, To: null" ★
+            if (!from || !to) {
+              console.warn('[Forecast] טווח מותאם אישית: יש לבחור תאריך התחלה וסיום ולחץ החל');
+              return;
+            }
+
+            // ★ כאן מבצעים את הטעינה האמיתית ★
             if (typeof reloadData === 'function') {
               reloadData(state).then(() => render(state, refs));
+            } else if (typeof fetchDataAndRender === 'function') {
+              fetchDataAndRender(state);
             } else {
               render(state, refs);
             }
           });
         }
 
-        // Escape → סגירה
         const escapeHandler = (ev) => {
           if (ev.key === 'Escape' && dateMenu && !dateMenu.hidden) {
             setMenuState(false);
@@ -6280,7 +6528,6 @@
       } else {
         console.warn('[Forecast] dateTrigger or dateMenu not found, skipping date range controls initialization');
       }
-
     }
   
     function escapeHtml(s) {
@@ -6690,26 +6937,40 @@
     async function tmcFetchCustomerForecastBySku(sku, opts = {}) {
       const normalizedSku = tmcNormalizeDigits(sku);
       if (!normalizedSku) return [];
-      const candidates = Array.from(new Set(
-        [
-          normalizedSku,
-          String(sku || '').trim(),
-          ...(Array.isArray(opts.skuAliases) ? opts.skuAliases : [])
-        ].map(v => String(v || '').trim()).filter(Boolean)
-      ));
 
       if (typeof supaRestFetch !== 'function') {
         console.error('supaRestFetch not found');
         return [];
       }
 
-      // מקור אמת: DOS Drilldown (Canon) – ללא fallback ישן
-      const range = (typeof getPlanningRange === 'function') ? getPlanningRange(opts) : null;
+      // נסה לחלץ תאריכים ישירות מה-opts (אם הגיעו מ-drilldown) או דרך חישוב הטווח
+      let dateFrom = opts.dateFrom || null;
+      let dateTo = opts.dateTo || null;
 
-      let dateFrom = (range && range.from) ? toISODate(range.from) : null;
-      let dateTo   = (range && range.to)   ? toISODate(range.to)   : null;
-
+      // אם לא הגיעו ישירות, נסה לחשב דרך getPlanningRange
       if (!dateFrom || !dateTo) {
+          const range = (typeof getPlanningRange === 'function') ? getPlanningRange(opts) : null;
+          if (range) {
+              dateFrom = toISODate(range.from);
+              dateTo = toISODate(range.to);
+          }
+      }
+
+      // ★ לוג דיבאג קריטי: מה אנחנו שולחים לשרת? ★
+      console.log(`[Drilldown Debug] SKU: ${normalizedSku}, Range Key: ${opts.dateRangeKey}`);
+      console.log(`[Drilldown Debug] Sending Dates -> From: ${dateFrom}, To: ${dateTo}`);
+
+      // הגנה: אם זה טווח מותאם אישית ואין תאריכים, אל תעשה fallback! זה רק יביא זבל.
+      const isCustom = opts.dateRangeKey === 'טווח מותאם אישית' || (Array.isArray(opts.dateRangeKeys) && opts.dateRangeKeys.includes('טווח מותאם אישית'));
+
+      if ((!dateFrom || !dateTo) && isCustom) {
+          console.warn('[Drilldown] Custom range selected but dates are missing. Aborting fetch to prevent fallback to defaults.');
+          return [];
+      }
+
+      // Fallback (ברירת מחדל) - פעיל רק אם זה *לא* טווח מותאם אישית
+      if (!dateFrom || !dateTo) {
+        console.log('[Drilldown] No specific range found, using DEFAULT wide range (-365 to +180)');
         const today0 = new Date(); today0.setHours(0,0,0,0);
         const from = new Date(today0); from.setDate(from.getDate() - 365);
         const to = new Date(today0);   to.setDate(to.getDate() + 180);
@@ -6831,6 +7092,7 @@
             <i class="fa fa-spinner fa-spin" style="font-size:24px; margin-bottom:10px; display:block;"></i>
             טוען נתונים...
           </div>
+          <div class="tmc-outcomes-wrap" style="display:none; margin-bottom:16px;"></div>
           <div class="tmc-table-wrap" style="display:none;"></div>
         </div>
       `;
@@ -6857,9 +7119,12 @@
       // predicate אחד: אותו לוגיקה כמו "מתי צפוי" ו"כמה להזמין"
       const range = getPlanningRange(opts);
       const rowsBeforeFilter = (rows || []).length;
-      rows = (rows || [])
-        .map(r => ({ ...r, status: normalizeForecastStatus(r) }))
-        .filter(r => rowPassesPlanningFilter(r, opts, range));
+      rows = tmcFilterRowsToPlanningRange(
+        (rows || []).map(r => ({ ...r, status: normalizeForecastStatus(r) })),
+        opts,
+        range,
+        'drilldown'
+      );
 
       if (typeof console !== 'undefined' && console.log && /^\s*(1|true|yes)\s*$/i.test(String(tmcGetFlag('TMC_DRILLDOWN_DEBUG') || ''))) {
         const allDates = (rows || []).map(r => r.next_expected_date).filter(Boolean).sort();
@@ -6932,6 +7197,114 @@
           return nB - nA;
         });
       }
+
+      // טען תוצאות תחזית (התגשמה/פוספסה) – פילטר סימטרי: גם fulfilled וגם missed לפי טווח
+      let allOutcomes = [];
+      let filteredByRange = [];
+      let outcomesMeta = { total: 0, inRange: 0, shown: 0, historyFulfilled: 0, historyMissed: 0, rangeFulfilled: 0, rangeMissed: 0 };
+      try {
+        let outDateFrom = opts.dateFrom || null;
+        let outDateTo = opts.dateTo || null;
+        if (!outDateFrom || !outDateTo) {
+          const outRange = (typeof getPlanningRange === 'function') ? getPlanningRange(opts) : null;
+          if (outRange) { outDateFrom = toISODate(outRange.from); outDateTo = toISODate(outRange.to); }
+        }
+        const predUrl = `/rest/v1/forecast_predictions?status=in.(fulfilled,missed)&sku=eq.${encodeURIComponent(normalizedSku)}&select=id,customer_name,due_date,expected_order_date,matched_order_date,diff_days,status,created_at&order=matched_order_date.desc&limit=50`;
+        const predData = await supaRestFetch(predUrl, { method: 'GET' });
+        allOutcomes = Array.isArray(predData) ? predData : [];
+        const outFrom = outDateFrom ? new Date(outDateFrom) : null;
+        const outTo = outDateTo ? new Date(outDateTo) : null;
+        outFrom && outFrom.setHours(0, 0, 0, 0);
+        outTo && outTo.setHours(23, 59, 59, 999);
+        const inRange = (d) => {
+          if (!d || !outFrom || !outTo) return true;
+          const x = new Date(d); x.setHours(0, 0, 0, 0);
+          return x >= outFrom && x <= outTo;
+        };
+        const inRangeEither = (o) => inRange(o.due_date) || inRange(o.matched_order_date);
+        filteredByRange = outFrom && outTo
+          ? allOutcomes.filter(inRangeEither)
+          : allOutcomes;
+        const historyFulfilled = allOutcomes.filter(o => o.status === 'fulfilled').length;
+        const historyMissed = allOutcomes.filter(o => o.status === 'missed').length;
+        const rangeFulfilled = filteredByRange.filter(o => o.status === 'fulfilled').length;
+        const rangeMissed = filteredByRange.filter(o => o.status === 'missed').length;
+        outcomesMeta = {
+          total: allOutcomes.length,
+          inRange: filteredByRange.length,
+          shown: 0,
+          historyFulfilled,
+          historyMissed,
+          rangeFulfilled,
+          rangeMissed
+        };
+      } catch (_) {}
+
+      let tmcShowAllOutcomes = true;
+      function renderOutcomesSection(showAll) {
+        const wrap = panel.querySelector('.tmc-outcomes-wrap');
+        if (!wrap) return;
+        const outcomes = showAll ? allOutcomes : filteredByRange;
+        const toShow = outcomes.slice(0, 20);
+        outcomesMeta.shown = toShow.length;
+        if (allOutcomes.length === 0) {
+          wrap.style.display = 'none';
+          return;
+        }
+        wrap.style.display = 'block';
+        const fmt = (d) => {
+          if (!d) return '—';
+          const x = new Date(d);
+          return `${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}/${x.getFullYear()}`;
+        };
+        const m = outcomesMeta;
+        const scopeText = m.total > 0
+          ? (m.inRange !== m.total
+            ? `סה״כ היסטוריה מלאה: ✅${m.historyFulfilled} ❌${m.historyMissed}. בטווח הנבחר: ✅${m.rangeFulfilled} ❌${m.rangeMissed}. כרגע מוצגות: ${toShow.length} רשומות${showAll ? ' (כולל מחוץ לטווח)' : ' (בטווח בלבד)'}.`
+            : `סה״כ היסטוריה מלאה: ✅${m.historyFulfilled} ❌${m.historyMissed}. כרגע מוצגות: ${toShow.length}.`)
+          : 'מוצגות רשומות בטווח הנבחר.';
+        const rowsHtml = toShow.map(o => {
+          const isFulfilled = o.status === 'fulfilled';
+          const color = isFulfilled ? '#12b76a' : '#f04438';
+          const icon = isFulfilled ? '✅' : '❌';
+          let statusTxt;
+          if (isFulfilled) {
+            statusTxt = 'התגשמה';
+          } else if (o.diff_days != null) {
+            const abs = Math.abs(o.diff_days);
+            statusTxt = o.diff_days < 0
+              ? `חרג מוקדם (${abs} ימים)`
+              : `חרג מאוחר (${abs} ימים)`;
+          } else {
+            statusTxt = 'חרג מהחלון';
+          }
+          const createdTip = o.created_at
+            ? `תחזית נוצרה: ${fmt(o.created_at)}. אם נוצרה אחרי "התקבל" — שידוך שגוי.`
+            : 'כל הערכים מהטבלה forecast_predictions (snapshot).';
+          const expectDate = o.expected_order_date || o.due_date;
+          return `<tr><td>${icon}</td><td>${escapeHtml(o.customer_name || '—')}</td><td dir="ltr" title="${createdTip}">${fmt(expectDate)}</td><td dir="ltr">${fmt(o.matched_order_date)}</td><td style="color:${color};font-weight:600;" title="השוואה ל־expected_order_date; חלון ±14 ימים">${statusTxt}</td></tr>`;
+        }).join('');
+        const toggleId = 'tmc-show-all-preds-' + normalizedSku.replace(/\D/g, '');
+        wrap.innerHTML = `
+          <div style="background:#f9fafb; border:1px solid #eaecf0; border-radius:8px; padding:12px 16px;">
+            <div style="font-weight:600; color:#475467; margin-bottom:8px;">דיוק תחזית (התגשמה = ±14 ימים מצפי הזמנה)</div>
+            <div style="font-size:11px; color:#98a2b3; margin-bottom:8px;">צפי/התקבל/סטטוס מהטבלה forecast_predictions. ${scopeText}</div>
+            <label style="font-size:11px; color:#667085; display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; cursor:pointer;">
+              <input type="checkbox" id="${toggleId}" ${showAll ? 'checked' : ''}>
+              הצג גם תחזיות מחוץ לטווח
+            </label>
+            <table style="width:100%; font-size:12px;"><thead><tr><th></th><th>לקוח</th><th>צפי הזמנה</th><th>התקבל</th><th>סטטוס</th></tr></thead><tbody>${rowsHtml}</tbody></table>
+          </div>`;
+        const cb = wrap.querySelector('#' + toggleId);
+        if (cb) {
+          cb.addEventListener('change', () => {
+            tmcShowAllOutcomes = cb.checked;
+            renderOutcomesSection(tmcShowAllOutcomes);
+          });
+        }
+      }
+
+      renderOutcomesSection(tmcShowAllOutcomes);
 
       function renderDrilldownTable(list, state) {
         const sorted = sortDrilldownRows(list, state);
