@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.12
+// @version      13.9.11
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -116,21 +116,6 @@
     };
   }catch(_){}
 })();
-
-// === User interaction gate for panel_view ===
-// panel_view must ONLY be sent after explicit user action (click, etc.)
-let __tmcLastUserInteractionTs = 0;
-const TMC_INTERACTION_WINDOW_MS = 1500;
-
-['click', 'pointerdown', 'keydown', 'touchstart'].forEach(evt => {
-  window.addEventListener(evt, () => {
-    __tmcLastUserInteractionTs = Date.now();
-  }, { capture: true, passive: true });
-});
-
-function __tmcHadRecentUserInteraction() {
-  return (Date.now() - __tmcLastUserInteractionTs) <= TMC_INTERACTION_WINDOW_MS;
-}
 
 // --- Merlog chip filter (rows marked in red / "מרלוג") ---
 (function merlogChipFilter() {
@@ -1540,23 +1525,16 @@ function installPanelViewRateLimiter(){
       const { url, init, resolve, reject, key } = queue.shift();
       try{
         const res = await sendWithBackoff(url, init, 0);
-        let body = null;
-        try {
-          body = await res.text();
-        } catch (_) {}
-        // Server may return 200 with 404 HTML; surface as 404 so app doesn't hang
-        const is404Body = body && (body.includes('page was not found') || body.includes('"404"') || /<title[^>]*>\s*Lionwheel\s*\|\s*404\s*<\/title>/i.test(body));
-        const status = is404Body ? 404 : res.status;
-        const outRes = body != null ? new Response(body, { status, statusText: is404Body ? 'Not Found' : res.statusText, headers: res.headers }) : res.clone();
-        if (!is404Body) {
-          try{
-            if (isPanelView(url) && isCacheablePanelView(init) && res.ok) panelCacheSet(key, body, res);
-          }catch(_){}
-        }
-        if (DEBUG_LOADING) console.log('[Toolbox] panel_view resolved:', key, is404Body ? '(404 body)' : '');
-        resolve(outRes);
+        // populate cache asynchronously (do not block the caller)
+        try{
+          if (isPanelView(url) && isCacheablePanelView(init) && res.ok){
+            const clone = res.clone();
+            clone.text().then(body => panelCacheSet(key, body, clone)).catch(()=>{});
+          }
+        }catch(_){}
+        // give each waiter its own clone to avoid "body stream already read"
+        resolve(res.clone());
       }catch(err){
-        if (DEBUG_LOADING) console.warn('[Toolbox] panel_view rejected:', key, err?.message || err);
         reject(err);
       }finally{
         active--;
@@ -1575,11 +1553,7 @@ function installPanelViewRateLimiter(){
         }
       }
       // coalesce duplicates — but hand out a clone per waiter
-      if (pendingByUrl.has(key)) {
-        if (DEBUG_LOADING) console.log('[Toolbox] panel_view coalesced:', key);
-        return pendingByUrl.get(key).then(r => r.clone());
-      }
-      if (DEBUG_LOADING) console.log('[Toolbox] panel_view scheduled:', key, 'queueLen=', queue.length);
+      if (pendingByUrl.has(key)) return pendingByUrl.get(key).then(r => r.clone());
       const p = new Promise((resolve, reject) => {
         queue.push({ url, init, resolve, reject, key });
         runNext();
@@ -1902,9 +1876,6 @@ const ENABLE_CSP_INJECTION = false;
 // DEBUG flag for production logging control
 const DEBUG = window.DEBUG_TOOLBOX || false;
 window.DEBUG_TOOLBOX = DEBUG;
-// Trace panel_view fetch + reopenPreviews to track infinite-loading.
-// Persists across refresh: sessionStorage.setItem('DEBUG_LOADING','1'); reload. Clear: sessionStorage.removeItem('DEBUG_LOADING');
-const DEBUG_LOADING = !!(window.DEBUG_LOADING || (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('DEBUG_LOADING') === '1') || (window.DEBUG_TOOLBOX && window.DEBUG_LOADING !== false));
 
 // ---- DOM batching shim (define once, EARLY) ----
 // Provides BOTH call style: domBatch(readOps, writeOps)
@@ -3645,7 +3616,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.9.12"; // Match @version
+    const SCRIPT_VERSION = "13.9.11"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -3946,10 +3917,6 @@ setupBlockedScriptObserver();
 
           // Read once; all callers will get the same string
           const html = await resp.text();
-          // Server may return 200 with 404 HTML body; treat as error so UI doesn't hang
-          if (html && (html.includes('page was not found') || html.includes('"404"') || /<title[^>]*>\s*Lionwheel\s*\|\s*404\s*<\/title>/i.test(html))) {
-            throw new Error('panel_view 404');
-          }
           // Only cache if HTML is not empty
           if (html && html.trim().length > 0) {
             setCached(id, html);
@@ -4075,42 +4042,24 @@ setupBlockedScriptObserver();
         });
       }
 
-      // --- New Prefetch Logic (throttled to avoid burst when moving mouse across table) ---
-      let _lastPrefetchAt = 0;
-      let _pendingPrefetchId = null;
-      let _pendingPrefetchTimer = null;
-      const PREFETCH_THROTTLE_MS = 600;
-
+      // --- New Prefetch Logic ---
       function prefetch(taskId) {
-          if (!taskId || getCached(taskId)) return;
-          if (prefetchQueue.has(taskId)) return;
-          const now = Date.now();
-          if (now - _lastPrefetchAt >= PREFETCH_THROTTLE_MS) {
-              _lastPrefetchAt = now;
-              if (_pendingPrefetchTimer) { clearTimeout(_pendingPrefetchTimer); _pendingPrefetchTimer = null; _pendingPrefetchId = null; }
-              prefetchQueue.add(taskId);
-              fetchPanelView(taskId, { isPrefetch: true }).catch(() => {});
-              return;
-          }
-          _pendingPrefetchId = taskId;
-          if (!_pendingPrefetchTimer) {
-              _pendingPrefetchTimer = setTimeout(() => {
-                  _pendingPrefetchTimer = null;
-                  const id = _pendingPrefetchId;
-                  _pendingPrefetchId = null;
-                  if (id && !getCached(id) && !prefetchQueue.has(id)) {
-                      _lastPrefetchAt = Date.now();
-                      prefetchQueue.add(id);
-                      fetchPanelView(id, { isPrefetch: true }).catch(() => {});
-                  }
-              }, PREFETCH_THROTTLE_MS - (now - _lastPrefetchAt));
-          }
+          if (!taskId || prefetchQueue.has(taskId) || getCached(taskId)) return;
+          prefetchQueue.add(taskId);
+          // Low priority fetch
+          fetchPanelView(taskId, { isPrefetch: true }).catch(() => {});
       }
 
-      // Prefetch on hover/touch disabled: was causing panel_view requests without user click and could stall Lionwheel.
-      // Panel is loaded only on actual click to open.
+      // חיבור אוטומטי ל-mouseenter
       function wireHoverPrefetch(row) {
-          (void row);
+          if (!row) return;
+          const taskId = row.getAttribute('data-task-id');
+          if (!taskId) return;
+          
+          const handler = () => prefetch(taskId);
+          row.addEventListener('mouseenter', handler, { once: true, passive: true });
+          // Also fetch on touch start for mobile
+          row.addEventListener('touchstart', handler, { once: true, passive: true });
       }
 
       return {
@@ -10293,11 +10242,6 @@ function prepareCopyElements() {
     }
 
     async function fetchPanelAndMarkReady(taskId, row, signal) {
-        // HARD GATE: never fetch panel_view without explicit user interaction
-        if (typeof __tmcHadRecentUserInteraction === 'function' && !__tmcHadRecentUserInteraction()) {
-            cacheSet(taskId, null, 'no-interaction');
-            return false;
-        }
         // Fast exits
         if (!taskId || !row || signal?.aborted) return false;
         try {
@@ -10437,11 +10381,8 @@ function prepareCopyElements() {
             const rows = table.querySelectorAll('tbody tr');
             const rowArray = Array.from(rows);
 
-            // Phase A: DOM-only instant detection with cache preference.
-            // Undecided rows get cacheSet(taskId, null, 'dom') — no panel_view fetch from here.
-            // panel_view is sent ONLY on explicit user click (see fetchPanelAndMarkReady gate).
+            // Phase A: DOM-only instant detection with cache preference
             const toFetch = [];
-
             for (const row of rowArray) {
                 totalRows++;
 
@@ -10559,15 +10500,14 @@ function prepareCopyElements() {
                     continue; // Skip fetching again for a short time
                 }
 
-                // panel_view is allowed ONLY via explicit user click — do not queue for fetch
-                cacheSet(taskId, null, 'dom');
+                // Phase B: Queue for background fetch (parallel)
+                toFetch.push({ taskId, row });
             }
 
-            // Phase B: queue the visible/limited undecided rows for panel fetches (rate-limited)
+            // Prioritize visible/top rows first
+            // (simple heuristic by DOM order; avoids forcing layout reads)
             readyFetchAbort = new AbortController();
-            if (toFetch.length) {
-                readyFetchQueue = toFetch.concat(readyFetchQueue || []);
-            }
+            readyFetchQueue = toFetch;
             drainReadyQueue();
 
                             // Removed excessive logging to reduce console noise
@@ -12123,6 +12063,10 @@ function addClickableLinksToAllTables(force = false, root = document) {
         const allTables = __tmcScope.querySelectorAll('table:not([data-tm-static-links])');
 
         allTables.forEach(table => {
+            // ✅ Never touch tables inside the Orders Forecast / TMC drilldowns
+            if (table.closest && table.closest('#tmc-drilldown-modal, #tmc-forecast-modal, .tmc-panel, .tmc-table-wrap')) {
+                return;
+            }
             // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
             if (table.classList && table.classList.contains('pick-order-item-table')) return;
             if (table.closest && table.closest('#missing-table-container')) return;
@@ -12332,27 +12276,12 @@ const cells = scope.querySelectorAll('td[data-label="טלפון"]');
       const digits = effectiveDigits;
       const isEmptyCell = !hasAnyText && !hasLinks && !digits;
 
-      // Soft-pending cell: text/links exist but digits not ready yet — don't decide, don't lock cache
-      if (!digits && (hasAnyText || hasLinks)) return;
-
-      if (!digits && td.dataset) delete td.dataset.tmcPhoneKey;
-
       // Cache key: the blink decision depends only on the content of the phone cell
       const cacheKey = (isEmptyCell ? 'E' : 'N') + '|' + signature + '|' + digits;
       if (td.dataset && td.dataset.tmcPhoneKey === cacheKey) return;
-      if (digits && td.dataset) td.dataset.tmcPhoneKey = cacheKey;
+      if (td.dataset) td.dataset.tmcPhoneKey = cacheKey;
 
       if (isEmptyCell) {
-        // Guard against race: allow late-rendered phone content before blinking.
-        const now = Date.now();
-        const firstSeen = tr.dataset ? Number(tr.dataset.tmcPhoneEmptySince || 0) : 0;
-        if (!firstSeen) {
-          if (tr.dataset) tr.dataset.tmcPhoneEmptySince = String(now);
-          return;
-        }
-        if (now - firstSeen < 1200) {
-          return;
-        }
         __tmcSetRowBlink(tr, true);
         return;
       }
@@ -12377,7 +12306,6 @@ const cells = scope.querySelectorAll('td[data-label="טלפון"]');
         }
       }
 
-      if (tr.dataset) delete tr.dataset.tmcPhoneEmptySince;
       __tmcSetRowBlink(tr, shouldBlink);
     });
   }catch(e){
@@ -13450,38 +13378,29 @@ function clickPreviewToggleFor(taskId) {
   return true;
 }
 
-const MAX_REOPEN_PANELS = 8; // cap so one run never triggers more than N panel_view requests
 let __reopenInFlight = false;
 function reopenPreviews({delay=350} = {}) {
-  if (__reopenInFlight) {
-    if (DEBUG_LOADING) console.log('[Toolbox] reopenPreviews skipped (in flight)');
-    return;
-  }
+  if (__reopenInFlight) return;
   __reopenInFlight = true;
-  if (DEBUG_LOADING) console.log('[Toolbox] reopenPreviews start delay=', delay);
 
   setTimeout(() => {
     const ids = getOpenPreviewIds();
     if (!ids.length) { __reopenInFlight = false; return; }
-    const toOpen = ids.slice(0, MAX_REOPEN_PANELS);
 
     let openedCount = 0;
-    for (const id of toOpen) {
+    for (const id of ids) {
       const ok = clickPreviewToggleFor(id);
       if (ok) openedCount++;
     }
 
     // נסה עוד פעם קצרה אם עוד לא נפתחו וה-DOM יתייצב בעוד רגע
     if (openedCount === 0) {
-      if (DEBUG_LOADING) console.log('[Toolbox] reopenPreviews retry in 300ms, ids=', toOpen.length);
       setTimeout(() => {
-        for (const id of toOpen) clickPreviewToggleFor(id);
+        for (const id of ids) clickPreviewToggleFor(id);
         __reopenInFlight = false;
-        if (DEBUG_LOADING) console.log('[Toolbox] reopenPreviews done (retry path)');
       }, 300);
     } else {
       __reopenInFlight = false;
-      if (DEBUG_LOADING) console.log('[Toolbox] reopenPreviews done opened=', openedCount);
     }
   }, delay);
 }
@@ -13510,23 +13429,6 @@ function reopenPreviews({delay=350} = {}) {
     } catch(_){}
   }
 
-  // Single scheduled restore: debounce + cooldown so we don't flood reopenPreviews
-  let __tmcReopenTimer = null;
-  let __tmcReopenLastRun = 0;
-  const REOPEN_COOLDOWN_MS = 2000;
-  function scheduleReopenPreviews() {
-    if (!shouldRestore()) return;
-    if (__tmcReopenTimer) clearTimeout(__tmcReopenTimer);
-    __tmcReopenTimer = setTimeout(() => {
-      __tmcReopenTimer = null;
-      if (Date.now() - __tmcReopenLastRun < REOPEN_COOLDOWN_MS) return;
-      __tmcReopenLastRun = Date.now();
-      reopenPreviews({delay:150});
-      consumeRestoreIntent();
-    }, 300);
-  }
-  window.__tmcScheduleReopenPreviews = scheduleReopenPreviews;
-
   // FETCH
   // Ensure we only wrap ONCE and keep a reference to the TRULY original fetch
   if (!window.__tmcOrigFetch) window.__tmcOrigFetch = window.fetch;
@@ -13535,30 +13437,20 @@ function reopenPreviews({delay=350} = {}) {
     const url = (typeof input === 'string') ? input : (input && input.url) || '';
     const method = ((init && init.method) || 'GET').toUpperCase();
 
-    // Mark intent ONLY for task-mutating calls (non-GET to /tasks/…) BUT
-    // exclude panel_view requests themselves so that passive panel_view
-    // fetches do NOT create a "restore intent" which would loop into reopenPreviews.
-    // This prevents panel_view (and other passive reads that POST panel_view) from
-    // triggering automatic reopen flows.
-    try {
-      const PANEL_VIEW_EXCLUDE_RE = /\/tasks\/\d+\/panel_view(\b|$)/;
-      if (url && url.includes('/tasks/') && method !== 'GET' && !PANEL_VIEW_EXCLUDE_RE.test(url)) {
-        markRestoreIntent();
-        markStickyOpenPreviews();
-      }
-    } catch (_) {
-      // fail-safe: if regex throws for some reason, fallback to old behavior
-      if (url && url.includes('/tasks/') && method !== 'GET') {
-        markRestoreIntent();
-        markStickyOpenPreviews();
-      }
+    // Mark intent ONLY for task-mutating calls (non-GET to /tasks/…)
+    if (url && url.includes('/tasks/') && method !== 'GET') {
+      markRestoreIntent();
+      markStickyOpenPreviews();
     }
 
     let res;
     try {
       res = await _origFetch.apply(this, arguments);
       const ok = res && (res.ok || (res.status >= 200 && res.status < 300));
-      if (ok && url.includes('/tasks/')) scheduleReopenPreviews();
+      if (ok && url.includes('/tasks/') && shouldRestore()) {
+        // Give DOM time to settle, then restore once
+        setTimeout(() => { reopenPreviews({delay:150}); consumeRestoreIntent(); }, 300);
+      }
     } catch (e) {
       throw e;
     }
@@ -13575,18 +13467,10 @@ function reopenPreviews({delay=350} = {}) {
     xhr.open = function(method, url) {
       _method = (method || 'GET').toUpperCase();
       _url = url || '';
-      // Mark intent for task-mutating XHRs, but exclude panel_view POSTs
-      try {
-        const PANEL_VIEW_EXCLUDE_RE = /\/tasks\/\d+\/panel_view(\b|$)/;
-        if (_url && _url.includes('/tasks/') && _method !== 'GET' && !PANEL_VIEW_EXCLUDE_RE.test(_url)) {
-          markRestoreIntent();
-          markStickyOpenPreviews();
-        }
-      } catch (_) {
-        if (_url && _url.includes('/tasks/') && _method !== 'GET') {
-          markRestoreIntent();
-          markStickyOpenPreviews();
-        }
+      // Mark intent for task-mutating XHRs
+      if (_url && _url.includes('/tasks/') && _method !== 'GET') {
+        markRestoreIntent();
+        markStickyOpenPreviews();
       }
       return _open.apply(this, arguments);
     };
@@ -13594,9 +13478,8 @@ function reopenPreviews({delay=350} = {}) {
     xhr.addEventListener('load', function() {
       try {
         const ok = (xhr.status >= 200 && xhr.status < 300);
-        if (ok && _url.includes('/tasks/')) {
-          if (DEBUG_LOADING) console.log('[Toolbox] XHR load -> scheduleReopenPreviews', _url);
-          scheduleReopenPreviews();
+        if (ok && _url.includes('/tasks/') && shouldRestore()) {
+          setTimeout(() => { reopenPreviews({delay:150}); consumeRestoreIntent(); }, 300);
         }
       } catch (_) {}
     });
@@ -13653,8 +13536,8 @@ function reopenPreviews({delay=350} = {}) {
     const now = Date.now();
     if (needReopen && now - lastKick > 300) {
       lastKick = now;
-      if (sessionStorage.getItem('tmcRestoreIntent') === '1' && window.__tmcScheduleReopenPreviews) {
-        window.__tmcScheduleReopenPreviews();
+      if (sessionStorage.getItem('tmcRestoreIntent') === '1') {
+        setTimeout(() => { reopenPreviews({delay:150}); sessionStorage.removeItem('tmcRestoreIntent'); }, 250);
       }
     }
     // Clear sticky flag when cache drained
@@ -13665,7 +13548,7 @@ function reopenPreviews({delay=350} = {}) {
   obs.observe(document.documentElement, { childList: true, subtree: true });
 })();
 
-// ---- Observe orders table changes (throttled: avoid burst of panel_view from every tbody mutation) ----
+// ---- Observe orders table changes ----
 (function observeOrdersTable() {
   const table = document.querySelector('#operator-store-visits-table, #operator-orders-table, .dataTables_wrapper table');
   if (!table) return;
@@ -13674,22 +13557,19 @@ function reopenPreviews({delay=350} = {}) {
   if (!tbody) return;
 
   let scheduled = false;
-  let lastScheduleAt = 0;
-  const TABLE_REOPEN_THROTTLE_MS = 2000;
-
   const obs = new MutationObserver(() => {
     if (scheduled) return;
     scheduled = true;
+    // חכה שה-DataTables יסיימו לצייר
     requestAnimationFrame(() => {
       scheduled = false;
-      const now = Date.now();
-      if (now - lastScheduleAt < TABLE_REOPEN_THROTTLE_MS) return;
-      lastScheduleAt = now;
-      const sticky = sessionStorage.getItem('tmcStickyPreviews') === '1';
-      const intent = sessionStorage.getItem('tmcRestoreIntent') === '1';
-      if ((sticky || intent) && window.__tmcScheduleReopenPreviews) {
-        window.__tmcScheduleReopenPreviews();
-      }
+      (function(){
+        const sticky = sessionStorage.getItem('tmcStickyPreviews') === '1';
+        const intent = sessionStorage.getItem('tmcRestoreIntent') === '1';
+        if (sticky || intent) {
+          reopenPreviews({delay: 80});
+        }
+      })();
     });
   });
   obs.observe(tbody, { childList: true, subtree: false });
