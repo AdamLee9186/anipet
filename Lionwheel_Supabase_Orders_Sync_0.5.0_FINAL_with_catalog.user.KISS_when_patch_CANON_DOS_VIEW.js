@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.3
+// @version      0.8.4
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -102,12 +102,20 @@
       return null;
     }
 
-    function tmcFmtDDMM(v) {
-      const d = tmcAsDate(v);
-      if (!d) return '—';
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      return `${dd}/${mm}`;
+    function tmcFmtDDMM(dateLike) {
+      if (!dateLike) return '';
+      try {
+        const d =
+          dateLike instanceof Date
+            ? dateLike
+            : new Date(String(dateLike).slice(0, 10) + 'T00:00:00');
+        if (Number.isNaN(d.getTime())) return '';
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        return `${dd}/${mm}`;
+      } catch {
+        return '';
+      }
     }
 
     function ensureTmcConsumptionCss() {
@@ -5387,12 +5395,20 @@
       return wD === (wNow + 7 * 24 * 60 * 60 * 1000);
     }
 
-    function tmcFmtDDMM(v) {
-      const d = tmcAsDate(v);
-      if (!d) return '—';
-      const dd = String(d.getDate()).padStart(2, '0');
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      return `${dd}/${mm}`;
+    function tmcFmtDDMM(dateLike) {
+      if (!dateLike) return '';
+      try {
+        const d =
+          dateLike instanceof Date
+            ? dateLike
+            : new Date(String(dateLike).slice(0, 10) + 'T00:00:00');
+        if (Number.isNaN(d.getTime())) return '';
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        return `${dd}/${mm}`;
+      } catch {
+        return '';
+      }
     }
 
     function tmcHumanizeWhenToken(dateStr) {
@@ -7465,43 +7481,44 @@
 
     const tmcBuildConsumptionLine = (r) => {
       if (!r) return '';
-      const catLabel = tmcCatLabel(r.consumption_category);
-      if (!catLabel) return '';
+      const label = tmcCatLabel ? tmcCatLabel(r.consumption_category) : '';
+      if (!label) return '';
 
-      const du = Number(r.daily_usage || 0);
-      // אם באמת אין קצב צריכה — לא מציגים בכלל שורת קטגוריה (נשאיר רק "למוצר הזה")
+      const du = Number(r.daily_usage);
+      // אין daily_usage => מבחינת UI זה "אין מספיק מידע" => לא מציגים שורת קטגוריה בכלל
       if (!Number.isFinite(du) || du <= 0) return '';
 
-      const u = tmcUnitShort(r.unit);
-      const isLearning = String(r.regime_state || '') === 'insufficient';
-      const learningBadge = isLearning
-        ? ` <span class="tmc-cons-badge" title="יש נתונים לצריכה, אבל אין מספיק היסטוריה לזיהוי שינוי קבוע/סטוק-אפ">לומד</span>`
-        : '';
+      const unit = tmcUnitShort ? tmcUnitShort(r.unit) : (r.unit || '');
+      const amt = Number(r.expected_next_total_amount ?? r.last_total_amount ?? 0);
+      const amtTxt = (Number.isFinite(amt) && amt > 0) ? `~${tmcFmtAmount ? tmcFmtAmount(amt) : amt}` : '';
 
-      // כמות צפויה להצגה (נעדיף expected_next_total_amount, אחרת last_total_amount)
-      const amt = tmcFmtAmount(Number(r.expected_next_total_amount ?? r.last_total_amount ?? 0));
-
-      // טקסט זמנים: בתוך ±14 → "עד DD/MM", מחוץ → "מחזיק ≈X ימים" / "נגמר לפני X ימים"
-      const within14 = (typeof r.within_14 === 'boolean') ? r.within_14 : isWithinPlusMinusDays(r.next_expected_date, 14);
-      const dosDays = calcDosDays(r);
-      const dDiff = tmcDaysDiffFromToday ? tmcDaysDiffFromToday(r.next_expected_date) : null;
+      const daysUntil = Number.isFinite(Number(r.days_until_expected)) ? Number(r.days_until_expected) : null;
+      const within14 = (r.within_14 === true) || (daysUntil !== null && Math.abs(daysUntil) <= 14);
 
       let tail = '';
-      if (within14 && r.next_expected_date) {
-        tail = ` · עד ${tmcFmtDDMM(r.next_expected_date)}`;
-      } else if (Number.isFinite(dDiff) && dDiff < 0) {
-        tail = ` · נגמר לפני ${Math.abs(dDiff)} ימים`;
-      } else if (Number.isFinite(dosDays)) {
-        tail = ` · מחזיק ≈${Math.round(dosDays)} ימים`;
+      const ddmm = tmcFmtDDMM(r.next_expected_date);
+      if (within14 && ddmm) {
+        tail = `עד ${ddmm}`;
+      } else if (daysUntil !== null && daysUntil < 0) {
+        tail = `נגמר לפני ${Math.abs(daysUntil)} ימים`;
+      } else {
+        const dos = Number(r.dos_days);
+        const dosDays = Number.isFinite(dos) && dos > 0 ? Math.round(dos) : null;
+        tail = dosDays ? `מחזיק ≈${dosDays} ימים` : 'מחזיק';
       }
 
-      const titleParts = [];
-      if (Number.isFinite(du)) titleParts.push(`daily_usage=${du}`);
-      if (r.next_expected_date) titleParts.push(`next_expected_date=${r.next_expected_date}`);
-      if (isLearning) titleParts.push(`regime_state=insufficient`);
-      const title = titleParts.join(' | ');
+      const learnBadge =
+        (r.regime_state === 'insufficient')
+          ? `<span class="tmc-cons-badge" title="יש קצב צריכה, אבל עדיין אין מספיק הזמנות כדי לזהות שינוי קבוע/סטוק-אפ בוודאות">לומד</span> `
+          : '';
 
-      return `<div class="tmc-cons-line" title="${escapeHtml(title)}"><b>${catLabel}</b>: ~${amt} ${u}${learningBadge}${tail}</div>`;
+      const title = `daily_usage=${du}` + (r.next_expected_date ? ` | next_expected_date=${r.next_expected_date}` : '') + (r.regime_state ? ` | regime_state=${r.regime_state}` : '');
+
+      return `
+    <div class="tmc-cons-line" title="${escapeHtml ? escapeHtml(title) : title}">
+      ${learnBadge}<b>${label}</b>: ${amtTxt} ${unit}${tail ? ` · ${tail}` : ''}
+    </div>
+  `;
     };
 
     function tmcPickCategoryRowForSku(consRowsForPhone, skuRow, state) {
