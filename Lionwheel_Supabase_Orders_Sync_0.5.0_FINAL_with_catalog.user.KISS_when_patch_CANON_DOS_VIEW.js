@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.8
+// @version      0.8.9
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -8176,7 +8176,12 @@
           const outRange = (typeof getPlanningRange === 'function') ? getPlanningRange(opts) : null;
           if (outRange) { outDateFrom = toISODate(outRange.from); outDateTo = toISODate(outRange.to); }
         }
-        const predUrl = `/rest/v1/forecast_predictions?status=in.(fulfilled,missed)&sku=eq.${encodeURIComponent(normalizedSku)}&select=id,sku,status,expected_order_date,window_start,window_end,created_at,matched_order_date,matched_order_id,diff_days,customer_name,customer_key,due_date&order=matched_order_date.desc.nullslast&limit=50`;
+        const predUrl =
+          `/rest/v1/v_forecast_predictions_outcomes_canon` +
+          `?sku_canon=eq.${encodeURIComponent(normalizedSku)}` +
+          `&select=id,sku,sku_canon,status,expected_order_date,window_start,window_end,created_at,matched_order_date,matched_order_id,diff_days,customer_name,customer_key,customer_key_norm,due_date` +
+          `&order=matched_order_date.desc.nullslast` +
+          `&limit=200`;
         supaRestFetch(predUrl, { method: 'GET' }).then((predData) => {
           allOutcomes = Array.isArray(predData) ? predData : [];
           const outFrom = outDateFrom ? new Date(outDateFrom) : null;
@@ -8307,16 +8312,12 @@
 
         const outcomeByCustomerSku = new Map();
         allOutcomes.forEach((o) => {
-          const k =
-            __normPhoneFromKey(o.customer_key) ||
-            (o.customer_name || '').trim().toLowerCase();
+          const k = (o.customer_key_norm || __normPhoneFromKey(o.customer_key) || (o.customer_name || '').trim().toLowerCase());
           if (k && !outcomeByCustomerSku.has(k)) outcomeByCustomerSku.set(k, o);
         });
 
         for (const r of sorted) {
-          const key =
-            __normPhoneFromKey(r.customer_key) ||
-            (r.customer_name || '').trim().toLowerCase();
+          const key = (__normPhoneFromKey(r.customer_key || r.customer_phone) || (r.customer_name || '').trim().toLowerCase());
           const fPred = outcomeByCustomerSku.get(key);
           const forecastStatus = fPred ? (String(fPred.status || '').toLowerCase()) : null;
           const diffDays = (fPred && fPred.diff_days != null) ? Number(fPred.diff_days) : null;
