@@ -7464,34 +7464,44 @@
     };
 
     const tmcBuildConsumptionLine = (r) => {
-      const cat = tmcCatLabel(r.consumption_category);
-      const unit = tmcUnitShort(r.unit);
-      const amt = tmcFmtAmount(r.last_total_amount);
-      const expectedAmt = tmcFmtAmount(r.expected_next_total_amount);
-      const stockBadge = r.stock_up ? ' <span class="tmc-cons-badge" title="נראה שבפעם האחרונה הייתה הזמנה גדולה מהרגיל">📦</span>' : '';
+      if (!r) return '';
+      const catLabel = tmcCatLabel(r.consumption_category);
+      if (!catLabel) return '';
 
-      if (!r.daily_usage || String(r.regime_state) === 'insufficient') {
-        return `<div class="tmc-cons-line"><b>${cat}</b>: <span class="tmc-cons-muted">חסר היסטוריה</span>${stockBadge}</div>`;
-      }
+      const du = Number(r.daily_usage || 0);
+      // אם באמת אין קצב צריכה — לא מציגים בכלל שורת קטגוריה (נשאיר רק "למוצר הזה")
+      if (!Number.isFinite(du) || du <= 0) return '';
 
-      const daysUntil = (typeof r.days_until_expected === 'number') ? r.days_until_expected : tmcDaysDiffFromToday(r.next_expected_date);
-      let tail = '';
-      if (typeof daysUntil === 'number') {
-        if (daysUntil >= 0) {
-          if (daysUntil <= 14) tail = `· עד ${tmcFmtDDMM(r.next_expected_date)}`;
-          else tail = `· מחזיק ≈${daysUntil} ימים`;
-        } else {
-          const od = Math.abs(daysUntil);
-          if (od <= 14) tail = `· נגמר לפני ${od} ימים`;
-          else tail = `· באיחור ≈${od} ימים`;
-        }
-      }
-
-      const sub = (expectedAmt && unit)
-        ? `<div class="tmc-cons-sub">צפי להזמנה: ~${expectedAmt} ${unit}</div>`
+      const u = tmcUnitShort(r.unit);
+      const isLearning = String(r.regime_state || '') === 'insufficient';
+      const learningBadge = isLearning
+        ? ` <span class="tmc-cons-badge" title="יש נתונים לצריכה, אבל אין מספיק היסטוריה לזיהוי שינוי קבוע/סטוק-אפ">לומד</span>`
         : '';
 
-      return `<div class="tmc-cons-line" title="daily_usage=${r.daily_usage}${r.next_expected_date ? ` | next_expected_date=${r.next_expected_date}` : ''}"><b>${cat}</b>: ~${amt} ${unit} ${tail}${stockBadge}</div>${sub}`;
+      // כמות צפויה להצגה (נעדיף expected_next_total_amount, אחרת last_total_amount)
+      const amt = tmcFmtAmount(Number(r.expected_next_total_amount ?? r.last_total_amount ?? 0));
+
+      // טקסט זמנים: בתוך ±14 → "עד DD/MM", מחוץ → "מחזיק ≈X ימים" / "נגמר לפני X ימים"
+      const within14 = (typeof r.within_14 === 'boolean') ? r.within_14 : isWithinPlusMinusDays(r.next_expected_date, 14);
+      const dosDays = calcDosDays(r);
+      const dDiff = tmcDaysDiffFromToday ? tmcDaysDiffFromToday(r.next_expected_date) : null;
+
+      let tail = '';
+      if (within14 && r.next_expected_date) {
+        tail = ` · עד ${tmcFmtDDMM(r.next_expected_date)}`;
+      } else if (Number.isFinite(dDiff) && dDiff < 0) {
+        tail = ` · נגמר לפני ${Math.abs(dDiff)} ימים`;
+      } else if (Number.isFinite(dosDays)) {
+        tail = ` · מחזיק ≈${Math.round(dosDays)} ימים`;
+      }
+
+      const titleParts = [];
+      if (Number.isFinite(du)) titleParts.push(`daily_usage=${du}`);
+      if (r.next_expected_date) titleParts.push(`next_expected_date=${r.next_expected_date}`);
+      if (isLearning) titleParts.push(`regime_state=insufficient`);
+      const title = titleParts.join(' | ');
+
+      return `<div class="tmc-cons-line" title="${escapeHtml(title)}"><b>${catLabel}</b>: ~${amt} ${u}${learningBadge}${tail}</div>`;
     };
 
     function tmcPickCategoryRowForSku(consRowsForPhone, skuRow, state) {
@@ -7576,18 +7586,21 @@
       wrap.querySelectorAll('td.tmc-td-consumption').forEach(td => {
         const p = tmcNormalizeILPhone(td.getAttribute('data-customer-phone'));
         const skuRow = rowByPhone.get(p);
-        const consRows = (byPhone.get(p) ?? []).slice().sort((a,b) => String(a.consumption_category || '').localeCompare(String(b.consumption_category || '')));
-        const orderedCats = ['dog_food', 'cat_food', 'cat_litter'];
-        const lines = [];
-        for (const c of orderedCats) {
-          const rr = consRows.find(x => x.consumption_category === c);
-          if (!rr) continue;
-          lines.push(tmcBuildConsumptionLine(rr));
-        }
-        const productLine = tmcBuildProductForecastLine(skuRow || {}, consRows, state);
-        const content = lines.length
-          ? lines.join('') + `<div class="tmc-cons-divider"></div>` + productLine
-          : `<div class="tmc-cons-cell"><div class="tmc-cons-muted">אין נתוני צריכה</div><div class="tmc-cons-divider"></div>${productLine}</div>`;
+        const consRowsForPhone = (byPhone.get(p) ?? []).slice().sort((a,b) => String(a.consumption_category || '').localeCompare(String(b.consumption_category || '')));
+        const dog = (consRowsForPhone || []).find(r => r.consumption_category === 'dog_food');
+        const cat = (consRowsForPhone || []).find(r => r.consumption_category === 'cat_food');
+        const lit = (consRowsForPhone || []).find(r => r.consumption_category === 'cat_litter');
+
+        const catLines = [
+          tmcBuildConsumptionLine(dog),
+          tmcBuildConsumptionLine(cat),
+          tmcBuildConsumptionLine(lit),
+        ].filter(Boolean);
+
+        const prodLine = tmcBuildProductForecastLine(skuRow || {}, consRowsForPhone, state);
+        const divider = catLines.length ? `<div class="tmc-cons-divider"></div>` : '';
+
+        const content = catLines.join('') + divider + prodLine;
         td.innerHTML = `<div class="tmc-cons-cell">${content}</div>`;
       });
     };
