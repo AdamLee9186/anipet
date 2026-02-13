@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.6
+// @version      0.8.7
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -7456,6 +7456,7 @@
         .tmc-row-due     { background: #fff5f5 !important; }
         .tmc-row-bg-yellow { background: #fff9db !important; }
         .tmc-row-bg-green  { background: #e6fffa !important; }
+        .tmc-row-bg-red    { background: #fff5f5 !important; }
       `;
       document.head.appendChild(style);
     }
@@ -8198,6 +8199,7 @@
             rangeMissed: filteredByRange.filter(o => o.status === 'missed').length
           };
           renderOutcomesSection(tmcShowAllOutcomes);
+          renderDrilldownTable(rows, sortState);
         }).catch(() => {});
       }
 
@@ -8303,8 +8305,32 @@
             <tbody>
         `);
 
+        const outcomeByCustomerSku = new Map();
+        allOutcomes.forEach((o) => {
+          const k = (o.customer_name || '').trim().toLowerCase();
+          if (k && !outcomeByCustomerSku.has(k)) outcomeByCustomerSku.set(k, o);
+        });
+
         for (const r of sorted) {
-          const ui = tmcStatusUi(r.status);
+          const key = (r.customer_name || '').trim().toLowerCase();
+          const fPred = outcomeByCustomerSku.get(key);
+          const forecastStatus = fPred ? (String(fPred.status || '').toLowerCase()) : null;
+          const diffDays = (fPred && fPred.diff_days != null) ? Number(fPred.diff_days) : null;
+
+          let ui = tmcStatusUi(r.status);
+          if (forecastStatus === 'fulfilled') {
+            ui = { label: 'התגשמה', dotClass: 'tmc-dot-green', rowClass: 'tmc-row-bg-green', statusSort: -10 };
+          } else if (forecastStatus === 'missed') {
+            const meta = (typeof getForecastStatusMeta === 'function')
+              ? getForecastStatusMeta('missed', diffDays)
+              : null;
+            ui = {
+              label: meta?.label || 'פוספסה',
+              dotClass: 'tmc-dot-red',
+              rowClass: 'tmc-row-bg-red',
+              statusSort: 999
+            };
+          }
 
           const fmtDate = (dStr) => {
             if (!dStr) return '—';
@@ -8358,15 +8384,17 @@
             `;
           }
 
-          const statusHtml = ui.dot 
-            ? `<span class="${ui.dot}"></span> <span style="font-weight:600;">${ui.text}</span>`
-            : `<span style="color:#98a2b3;">${ui.text}</span>`;
+          const statusDotClass = ui.dotClass ? ('tmc-drill-dot ' + ui.dotClass) : (ui.dot || '');
+          const statusLabel = ui.label ?? ui.text;
+          const statusHtml = statusDotClass
+            ? `<span class="${statusDotClass}"></span> <span style="font-weight:600;">${statusLabel}</span>`
+            : `<span style="color:#98a2b3;">${statusLabel}</span>`;
 
           const phoneNorm = __normPhoneFromKey(r.customer_phone || r.customer_key);
           const consumptionPlaceholder = `<div class="tmc-cons-cell"><div class="tmc-cons-muted">טוען...</div></div>`;
 
           html.push(`
-            <tr class="${ui.row}">
+            <tr class="${ui.rowClass ?? ui.row}">
               <td class="tmc-td-name">
                 <div style="font-weight:600; font-size:14px;">${escapeHtml(r.customer_name || '—')}</div>
                 <div style="color:#667085; font-size:12px;">${escapeHtml(r.customer_key || '')}</div>
