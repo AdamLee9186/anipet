@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.5
+// @version      0.8.6
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -1263,7 +1263,14 @@
       if (!el) return '';
       return String(el.textContent || '').replace(/\u00A0/g, ' ').trim();
     }
-  
+
+    function lwFirstLine(v) {
+      if (!v) return '';
+      const s = String(v);
+      const line = s.split(/\r?\n/).map(x => x.trim()).filter(Boolean)[0];
+      return line || '';
+    }
+
     function computeCompletion(picked, ordered) {
       if (!Number.isFinite(picked) || !Number.isFinite(ordered) || ordered <= 0) return null;
       const r = picked / ordered;
@@ -1658,7 +1665,7 @@
           sku: barcodeOrSku,
           name,
           variant: null,
-          quantity,
+          quantity: (Number.isFinite(qtyOrdered) && qtyOrdered > 0) ? qtyOrdered : (qtyPicked ?? quantity),
           unit_price: null,
           weight: null,
           extra_json
@@ -1688,13 +1695,11 @@
         throw new Error('לא נמצא task_id ב-URL');
       }
   
-      const order_date =
-        parseDateOnlyHebrew(data.order_meta.pickup_at) ||
-        parseDateOnlyHebrew(data.order_meta.created_at);
+      const createdAt = data?.order_meta?.created_at;
+      const pickupAt = data?.order_meta?.pickup_at;
       const order_datetime = parseDateTimeHebrew(data.order_meta.created_at);
-      
-      // אם order_date null אבל order_datetime קיים, נחלץ את התאריך מ-order_datetime
-      const final_order_date = order_date || (order_datetime ? order_datetime.slice(0, 10) : null);
+      const final_order_date = parseDateOnlyHebrew(createdAt) || parseDateOnlyHebrew(pickupAt) || (order_datetime ? order_datetime.slice(0, 10) : null);
+      const final_pickup_date = parseDateOnlyHebrew(pickupAt) || null;
 
       const isSelfPickupStr = data.order_meta.is_self_pickup_str ?? '';
       let is_self_pickup = null;
@@ -1719,7 +1724,8 @@
         delivery_id: data.order_meta.shipped_delivery_id || null,
   
         // תאריכים (created_date נדרש ל־v_forecast_with_status / היסטוריית הזמנות בתחזית)
-        order_date: final_order_date, // '2026-01-23' (מ-pickup_at/created_at או מ-order_datetime)
+        order_date: final_order_date, // '2026-01-23' (מ-created_at ואז pickup_at או מ-order_datetime)
+        pickup_date: final_pickup_date, // תאריך איסוף
         order_datetime: order_datetime, // '2026-01-22T17:50:00' או null
         created_date: final_order_date, // כמו Excel – תאריך ל־order_history בתחזית (תמיד מולא אם יש order_datetime)
         order_time: order_datetime ? order_datetime.slice(11, 16) : null, // 'HH:mm' מתוך order_datetime
@@ -1853,8 +1859,20 @@
         const tdStatus    = getCellByPriority(tr, headerMap, { headerText: 'סטטוס', fallbackIndex: 9 });
         const tdPick      = getCellByPriority(tr, headerMap, { headerText: 'ליקוט',  fallbackIndex: 10 });
   
-        const status_text = textFrom(tdStatus?.querySelector('.ajax-status-current-text') || tdStatus);
-        const pick_status_text = textFrom(tdPick?.querySelector('.pick-status-text') || tdPick);
+        const status_text = lwFirstLine(
+          textFrom(
+            tdStatus?.querySelector('button.status-dropdown-btn .ajax-status-current-text')
+            || tdStatus?.querySelector('.ajax-status-current-text')
+            || tdStatus
+          )
+        );
+        const pick_status_text = lwFirstLine(
+          textFrom(
+            tdPick?.querySelector('button.pick-status .pick-status-text')
+            || tdPick?.querySelector('.pick-status-text')
+            || tdPick
+          )
+        );
   
         // תאריך איסוף: input בתוך תא "תאריך"
         const tdDate = getCellByPriority(tr, headerMap, { headerText: 'תאריך', fallbackIndex: 12 });
@@ -2376,6 +2394,7 @@
       let stats = null;
       let fail = 0;
       let skippedByCache = 0;
+      const syncedTaskIds = [];
 
       try {
         await lwYieldToMain();
@@ -2487,7 +2506,10 @@
           }
 
           const statusByTaskId = new Map(
-            rows.map((r) => [String(r.task_id || '').trim(), r.status_text])
+            rows.map((r) => [String(r.task_id || '').trim(), lwFirstLine(r.pick_status_text || r.status_text)])
+          );
+          const pickStatusByTaskId = new Map(
+            rows.map((r) => [String(r.task_id || '').trim(), r.pick_status_text])
           );
           const limit = createLimiter(ORDERS_SYNC_CONFIG.UPSERT_CONCURRENCY);
           // כדי לא להציף את Lionwheel בבקשות, נעבוד בבאצ'ים קטנים יותר ונוסיף השהייה קצרה בין באצ'ים.
@@ -2502,15 +2524,17 @@
             }
 
             const chunkResults = await Promise.allSettled(
-              chunk.map((taskId) =>
-                limit(() =>
+              chunk.map((taskId) => {
+                syncedTaskIds.push(String(taskId));
+                return limit(() =>
                   lwSupabaseSendTaskById(taskId, {
                     silent: true,
                     existingItemKeys,
                     statusFromVisit: statusByTaskId.get(String(taskId)) ?? null,
+                    pickStatusFromVisit: pickStatusByTaskId.get(String(taskId)) ?? null,
                   })
-                )
-              )
+                );
+              })
             );
             results.push(...chunkResults);
             if (i + TASK_BATCH_SIZE < taskIds.length) await lwYieldToMain();
@@ -2623,14 +2647,22 @@
         // match_forecast_predictions: שידוך תחזיות עם הזמנות (לעדכון fulfilled/missed)
         if (didWork) {
           try {
-            const mfp = await supaRestFetch('/rest/v1/rpc/match_forecast_predictions', {
-              method: 'POST',
-              body: {},
-            });
-            const row = Array.isArray(mfp) && mfp[0] ? mfp[0] : null;
-            if (row && (row.matched || row.fulfilled || row.missed)) {
-              logDebug('[Supabase Sync] match_forecast_predictions:', row);
+            if (syncedTaskIds.length > 0) {
+              await supaRestFetch('/rest/v1/rpc/match_forecast_predictions_batch', {
+                method: 'POST',
+                body: { p_task_ids: syncedTaskIds },
+              });
+            } else {
+              const mfp = await supaRestFetch('/rest/v1/rpc/match_forecast_predictions', {
+                method: 'POST',
+                body: {},
+              });
+              const row = Array.isArray(mfp) && mfp[0] ? mfp[0] : null;
+              if (row && (row.matched || row.fulfilled || row.missed)) {
+                logDebug('[Supabase Sync] match_forecast_predictions:', row);
+              }
             }
+            scheduleForecastRefetch('after_sync_match');
           } catch (e) {
             if (LW_ORDERS_CONFIG.DEBUG) {
               console.warn('[Supabase Sync] match_forecast_predictions failed:', e);
@@ -2710,7 +2742,7 @@
       return { doc, path: `/tasks/${taskId}` };
     }
 
-    async function lwSupabaseSendTaskById(taskId, { silent = false, existingItemKeys = null, statusFromVisit = null } = {}) {
+    async function lwSupabaseSendTaskById(taskId, { silent = false, existingItemKeys = null, statusFromVisit = null, pickStatusFromVisit = null } = {}) {
       let data = loadTaskCache(taskId);
       if (!data) {
         const { doc, path } = await fetchTaskDocument(taskId);
