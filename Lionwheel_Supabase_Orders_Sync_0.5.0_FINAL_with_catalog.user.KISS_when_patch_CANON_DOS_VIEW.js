@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.9
+// @version      0.8.10
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -8176,11 +8176,13 @@
           const outRange = (typeof getPlanningRange === 'function') ? getPlanningRange(opts) : null;
           if (outRange) { outDateFrom = toISODate(outRange.from); outDateTo = toISODate(outRange.to); }
         }
+        const key = encodeURIComponent(normalizedSku);
         const predUrl =
-          `/rest/v1/v_forecast_predictions_outcomes_canon` +
-          `?sku_canon=eq.${encodeURIComponent(normalizedSku)}` +
-          `&select=id,sku,sku_canon,status,expected_order_date,window_start,window_end,created_at,matched_order_date,matched_order_id,diff_days,customer_name,customer_key,customer_key_norm,due_date` +
-          `&order=matched_order_date.desc.nullslast` +
+          `/rest/v1/v_forecast_predictions_outcomes_canon_v3` +
+          `?or=(barcode_canon.eq.${key},sku_canon.eq.${key},sku_input_canon.eq.${key})` +
+          `&status=in.(fulfilled,missed)` +
+          `&select=id,sku,sku_input_canon,sku_canon,barcode_canon,status,expected_order_date,window_start,window_end,created_at,matched_order_date,matched_order_id,diff_days,customer_name,customer_key,customer_key_norm,due_date` +
+          `&order=matched_order_date.desc.nullslast,created_at.desc` +
           `&limit=200`;
         supaRestFetch(predUrl, { method: 'GET' }).then((predData) => {
           allOutcomes = Array.isArray(predData) ? predData : [];
@@ -8310,31 +8312,28 @@
             <tbody>
         `);
 
-        const outcomeByCustomerSku = new Map();
+        const outcomeByCustomer = new Map();
         allOutcomes.forEach((o) => {
           const k = (o.customer_key_norm || __normPhoneFromKey(o.customer_key) || (o.customer_name || '').trim().toLowerCase());
-          if (k && !outcomeByCustomerSku.has(k)) outcomeByCustomerSku.set(k, o);
+          if (!k) return;
+
+          // שמור את הכי עדכני (matched_order_date אם יש, אחרת created_at)
+          const prev = outcomeByCustomer.get(k);
+          const curTs = Date.parse(o.matched_order_date || o.created_at || '') || 0;
+          const prevTs = prev ? (Date.parse(prev.matched_order_date || prev.created_at || '') || 0) : -1;
+          if (!prev || curTs >= prevTs) outcomeByCustomer.set(k, o);
         });
 
         for (const r of sorted) {
           const key = (__normPhoneFromKey(r.customer_key || r.customer_phone) || (r.customer_name || '').trim().toLowerCase());
-          const fPred = outcomeByCustomerSku.get(key);
-          const forecastStatus = fPred ? (String(fPred.status || '').toLowerCase()) : null;
-          const diffDays = (fPred && fPred.diff_days != null) ? Number(fPred.diff_days) : null;
+          const fPred = outcomeByCustomer.get(key);
+          const forecastStatus = fPred ? String(fPred.status || '').toLowerCase() : null;
 
           let ui = tmcStatusUi(r.status);
           if (forecastStatus === 'fulfilled') {
-            ui = { label: 'התגשמה', dotClass: 'tmc-dot-green', rowClass: 'tmc-row-bg-green', statusSort: -10 };
+            ui = { label: 'התגשמה', dotClass: 'tmc-dot-green', rowClass: 'tmc-row-bg-green' };
           } else if (forecastStatus === 'missed') {
-            const meta = (typeof getForecastStatusMeta === 'function')
-              ? getForecastStatusMeta('missed', diffDays)
-              : null;
-            ui = {
-              label: meta?.label || 'פוספסה',
-              dotClass: 'tmc-dot-red',
-              rowClass: 'tmc-row-bg-red',
-              statusSort: 999
-            };
+            ui = { label: 'פוספסה', dotClass: 'tmc-dot-red', rowClass: 'tmc-row-bg-red' };
           }
 
           const fmtDate = (dStr) => {
