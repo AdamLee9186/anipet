@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.4
+// @version      0.8.5
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -23,7 +23,7 @@
     // =========================================================
 
     // bump cache version to invalidate older cached shapes/filters
-    const LW_CONSUMPTION_BATCH_CACHE_VERSION = 3;
+    const LW_CONSUMPTION_BATCH_CACHE_VERSION = 4;
 
     // =========================
     // Consumption ↔ Product gap warning (UX step 2)
@@ -7673,19 +7673,8 @@
     }
 
     async function getCustomerConsumptionForecastBatchCached(phones) {
-      // Canonical IL phones: digits only, 972... -> 0..., keep 9/10 digits stable
-      function normalizeILPhoneBatch(input) {
-        const d0 = String(input || '').replace(/\D/g, '');
-        if (!d0) return null;
-        let d = d0;
-        if (d.startsWith('972') && d.length >= 12) d = '0' + d.slice(3);
-        if (d.length === 9 && !d.startsWith('0')) d = '0' + d;
-        if (d.length < 8) return null;
-        return d;
-      }
-
       const list = Array.from(new Set((phones || [])
-        .map(p => normalizeILPhoneBatch(p))
+        .map(p => tmcNormalizeILPhone(p))
         .filter(Boolean)
       ));
       if (!list.length) return { byPhone: {}, error: null, phonesSent: [], rowsCount: 0 };
@@ -7704,9 +7693,10 @@
         // We'll decide in UI whether to show the date (±14) or show "holds ≈X days".
         const byPhone = {};
         rows.forEach(row => {
-          const p = normalizeILPhoneBatch(row.customer_phone);
-          if (!p) return;
-          (byPhone[p] ||= []).push(row);
+          const key = tmcNormalizeILPhone(row.customer_phone);
+          if (!key) return;
+          if (!byPhone[key]) byPhone[key] = [];
+          byPhone[key].push(row);
         });
         const out = { byPhone, error: null, phonesSent: list, rowsCount: rows.length };
         CONSUMPTION_FORECAST_BATCH_CACHE.set(cacheKey, { ts: now, data: out });
@@ -7776,8 +7766,8 @@
         const msg = (error && (error.message || String(error))) || 'RPC error';
         return `<span class="tmc-td-consumption"><div class="tmc-cons-line" title="${escapeHtml(msg)}" style="color:#b42318;">⚠ תקלה</div></span>`;
       }
-      const p = normalizeILPhone(phone);
-      const rows = (byPhone && byPhone[p]) ? byPhone[p] : [];
+      const phoneKey = tmcNormalizeILPhone(phone);
+      const rows = (byPhone && byPhone[phoneKey]) ? byPhone[phoneKey] : [];
 
       // keep only known categories; one row per category (first found)
       const byCat = new Map();
@@ -7836,9 +7826,9 @@
       if (byPhone === undefined || byPhone === null) {
         return '<span class="tmc-td-consumption tmc-consumption-loading" style="color:#98a2b3;">…</span>';
       }
-      const p = normalizeILPhone(phone);
-      if (!p) return '<span class="tmc-td-consumption" style="color:#98a2b3;">—</span>';
-      const forecastRows = (byPhone && p) ? (byPhone[p] || []) : [];
+      const phoneKey = tmcNormalizeILPhone(phone);
+      if (!phoneKey) return '<span class="tmc-td-consumption" style="color:#98a2b3;">—</span>';
+      const forecastRows = (byPhone && phoneKey) ? (byPhone[phoneKey] || []) : [];
       const labels = { dog_food: 'אוכל לכלב', cat_food: 'אוכל לחתול', cat_litter: 'חול' };
       const icons = { dog_food: '🐶', cat_food: '🐱', cat_litter: '🐱🧻' };
       const unitLabels = { kg: 'ק״ג', l: 'ל׳' };
