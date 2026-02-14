@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.11
+// @version      0.8.12
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -5365,7 +5365,7 @@
     function renderEmptyState(container) {
       container.innerHTML = `
         <div class="tmc-empty-state" style="text-align:center; padding:40px; color:#666;">
-          <i class="fa-light fa-box-open" style="font-size: 48px; margin-bottom: 10px; opacity: 0.3; display: block;"></i>
+          <i class="fa-solid fa-box-open" style="font-size: 48px; margin-bottom: 10px; opacity: 0.3; display: block;"></i>
           <p style="margin: 0;">לא נמצאו מוצרים עם תחזיות פעילות בטווח שנבחר.</p>
         </div>
       `;
@@ -6477,12 +6477,12 @@
           if (state.sortCol === col.key) {
             const iconClass = state.sortDir === 'desc' 
               ? 'fa-arrow-down' : 'fa-arrow-up';
-            icon = `<i class="fa-light ${iconClass} tmc-sort-icon"></i>`;
+            icon = `<i class="fa-solid ${iconClass} tmc-sort-icon"></i>`;
           }
           const dateDropdown = (col.key === 'first_due_date' && ui.dateTrigger)
-            ? `<span class="tmc-col-date-trigger" title="בחירת טווח תאריכים" style="margin-left:6px;cursor:pointer;opacity:0.7"><i class="fa-light fa-calendar"></i></span>`
+            ? `<span class="tmc-col-date-trigger" title="בחירת טווח תאריכים" style="margin-left:6px;cursor:pointer;opacity:0.7"><i class="fa-solid fa-calendar"></i></span>`
             : '';
-          const colIcon = col.icon ? `<i class="fa-light ${col.icon}" style="margin-left:6px;opacity:0.7"></i>` : '';
+          const colIcon = col.icon ? `<i class="fa-solid ${col.icon}" style="margin-left:6px;opacity:0.7"></i>` : '';
           th.innerHTML = (col.key === 'first_due_date')
             ? `${dateDropdown}${icon}${col.label}`
             : (col.icon ? `${colIcon}${icon}${col.label}` : `${icon}${col.label}`);
@@ -7586,29 +7586,46 @@
       return null;
     }
 
-    const tmcBuildProductForecastLine = (skuRow, consRowsForPhone, state) => {
-      const qty = (skuRow?.last_quantity ?? skuRow?.forecast_qty ?? skuRow?.expected_qty ?? '') !== '' ? (skuRow.last_quantity ?? skuRow.forecast_qty ?? skuRow.expected_qty) : '—';
-      const prodDate = skuRow?.next_expected_date ?? null;
-      const ddmm = prodDate ? tmcFmtDDMM(prodDate) : '';
-      const d = prodDate ? tmcDaysDiffFromToday(prodDate) : null;
-      let rel = '';
-      if (typeof d === 'number') {
-        if (d === 0) rel = 'היום';
-        else if (d === 1) rel = 'מחר';
-        else if (d === -1) rel = 'אתמול';
-        else if (d > 1) rel = `עוד ${d} ימים`;
-        else rel = `לפני ${Math.abs(d)} ימים`;
-      }
-      const when = ddmm ? `צפי ${ddmm}${rel ? ` · ${rel}` : ''}` : (rel || 'אין תאריך');
-      const qtyText = (qty == null || qty === '') ? '—' : `כמות צפויה ${escapeHtml(String(qty))}`;
-      const dateText = ddmm || '—';
+    // Helper to detect mixed diet (Product Qty << Category Total)
+    function tmcGetDietContext(skuRow, catRow) {
+      if (!skuRow || !catRow) return null;
 
+      const prodQty = Number(skuRow.last_quantity || 0);
+      const catTotal = Number(catRow.expected_next_total_amount || 0);
+      const catUnit = String(catRow.unit || '').toLowerCase();
+
+      if (prodQty > 0 && catTotal > (prodQty * 1.8)) {
+        return {
+          isMixed: true,
+          text: 'תזונה מעורבת',
+          icon: '<i class="fa-solid fa-utensils" style="color:#f59e0b;"></i>',
+          desc: `הלקוח צורך כ-${Math.round(catTotal)} ${catUnit} בסה"כ, אך מוצר זה הוא רק כ-${prodQty} יח'.`
+        };
+      }
+      return null;
+    }
+
+    const tmcBuildProductForecastLine = (skuRow, consRowsForPhone, state) => {
+      // Clean Design: No redundant Qty/Date text. Only Context/Warnings.
       const catRow = tmcPickCategoryRowForSku(consRowsForPhone || [], skuRow, state || {});
+
+      const prodDate = skuRow?.next_expected_date ?? null;
       const catDate = catRow?.next_expected_date ?? null;
       const catLabel = tmcCatLabel(catRow?.consumption_category || skuRow?.consumption_category || '') || 'הקטגוריה';
-      const warn = tmcGapWarnBadge(prodDate, catDate, catLabel);
 
-      return `<div class="tmc-cons-line"><span class="tmc-cons-badge">למוצר הזה</span> <span>${qtyText}</span> · צפי ${escapeHtml(dateText)} ${warn}</div>`;
+      const dietCtx = tmcGetDietContext(skuRow, catRow);
+
+      let badgeHtml = '';
+
+      if (dietCtx && dietCtx.isMixed) {
+        badgeHtml = `<span class="tmc-cons-badge" style="margin:4px 0; display:inline-block;" title="${escapeHtml(dietCtx.desc || '')}">${dietCtx.icon} ${dietCtx.text}</span>`;
+      } else {
+        badgeHtml = tmcGapWarnBadge(prodDate, catDate, catLabel);
+      }
+
+      if (!badgeHtml) return '';
+
+      return `<div class="tmc-cons-line" style="margin-top:2px;">${badgeHtml}</div>`;
     };
 
     const tmcHydrateDrilldownConsumption = async (wrap, sortedRows, state) => {
@@ -7854,7 +7871,7 @@
     function formatConsumptionCell(phone, byPhone, err) {
       if (err) {
         const msg = (err && err.message) ? String(err.message) : 'שגיאה בקבלת תחזית צריכה';
-        return `<span class="tmc-td-consumption" title="${escapeHtml(msg)}" style="color:#f04438;"><i class="fa-light fa-triangle-exclamation"></i> שגיאה</span>`;
+        return `<span class="tmc-td-consumption" title="${escapeHtml(msg)}" style="color:#f04438;"><i class="fa-solid fa-triangle-exclamation"></i> שגיאה</span>`;
       }
       if (byPhone === undefined || byPhone === null) {
         return '<span class="tmc-td-consumption tmc-consumption-loading" style="color:#98a2b3;">…</span>';
@@ -8165,116 +8182,377 @@
         });
       }
 
-      // טען תוצאות תחזית (התגשמה/פוספסה) ברקע – לא חוסם את הצגת הטבלה
+      // טען תוצאות תחזית (התגשמה/פוספסה) ברקע – כולל בדיקת קניבליזציה בקטגוריה
       let allOutcomes = [];
+      let categoryOutcomes = []; // Store category-level fulfillments
       let filteredByRange = [];
       let outcomesMeta = { total: 0, inRange: 0, shown: 0, historyFulfilled: 0, historyMissed: 0, rangeFulfilled: 0, rangeMissed: 0 };
-      function loadOutcomesInBackground() {
+      // State למיון טבלת ההיסטוריה (ברירת מחדל: התגשם - מהגדול לקטן)
+      let historySort = { col: 'fulfilled', dir: 'desc' };
+      // State למיון הטבלאות הפנימיות (לפי לקוח)
+      let innerSortState = {}; // Key: customerName, Value: { col: 'expected', dir: 'desc' }
+      // State לסינון טבלת ההיסטוריה
+      // false = הצג הכל (ברירת מחדל), true = הצג רק מה שבטווח
+      let tmcLimitToRange = false;
+
+      async function loadOutcomesInBackground() {
         let outDateFrom = opts.dateFrom || null;
         let outDateTo = opts.dateTo || null;
         if (!outDateFrom || !outDateTo) {
           const outRange = (typeof getPlanningRange === 'function') ? getPlanningRange(opts) : null;
           if (outRange) { outDateFrom = toISODate(outRange.from); outDateTo = toISODate(outRange.to); }
         }
+
+        // 1. שלב ראשון: שליפת נתוני המוצר הספציפי
         const key = encodeURIComponent(normalizedSku);
         const predUrl =
           `/rest/v1/v_forecast_predictions_outcomes_canon_v3` +
           `?or=(barcode_canon.eq.${key},sku_canon.eq.${key},sku_input_canon.eq.${key})` +
           `&status=in.(fulfilled,missed)` +
-          `&select=id,sku,sku_input_canon,sku_canon,barcode_canon,status,expected_order_date,window_start,window_end,created_at,matched_order_date,matched_order_id,diff_days,customer_name,customer_key,customer_key_norm,due_date` +
+          `&select=id,sku,sku_input_canon,sku_canon,barcode_canon,group_name,category_name,status,expected_order_date,window_start,window_end,created_at,matched_order_date,matched_order_id,diff_days,customer_name,customer_key,customer_key_norm,due_date` +
           `&order=matched_order_date.desc.nullslast,created_at.desc` +
           `&limit=200`;
-        supaRestFetch(predUrl, { method: 'GET' }).then((predData) => {
-          allOutcomes = Array.isArray(predData) ? predData : [];
-          const outFrom = outDateFrom ? new Date(outDateFrom) : null;
-          const outTo = outDateTo ? new Date(outDateTo) : null;
-          if (outFrom) outFrom.setHours(0, 0, 0, 0);
-          if (outTo) outTo.setHours(23, 59, 59, 999);
-          const inRange = (d) => {
-            if (!d || !outFrom || !outTo) return true;
-            const x = new Date(d); x.setHours(0, 0, 0, 0);
-            return x >= outFrom && x <= outTo;
-          };
-          filteredByRange = outFrom && outTo ? allOutcomes.filter((o) => inRange(o.due_date) || inRange(o.matched_order_date)) : allOutcomes;
-          outcomesMeta = {
-            total: allOutcomes.length,
-            inRange: filteredByRange.length,
-            shown: 0,
-            historyFulfilled: allOutcomes.filter(o => o.status === 'fulfilled').length,
-            historyMissed: allOutcomes.filter(o => o.status === 'missed').length,
-            rangeFulfilled: filteredByRange.filter(o => o.status === 'fulfilled').length,
-            rangeMissed: filteredByRange.filter(o => o.status === 'missed').length
-          };
-          renderOutcomesSection(tmcShowAllOutcomes);
-          renderDrilldownTable(rows, sortState);
-        }).catch(() => {});
+
+        try {
+            const predData = await supaRestFetch(predUrl, { method: 'GET' });
+            allOutcomes = Array.isArray(predData) ? predData : [];
+
+            // 2. זיהוי קטגוריה (מהשרת או Fallback)
+            let currentGroup = null;
+            let currentCat = null;
+
+            const validRow = allOutcomes.find(r => r.group_name && r.category_name);
+            if (validRow) {
+                currentGroup = validRow.group_name;
+                currentCat = validRow.category_name;
+            } else {
+                const prodEnriched = (typeof getEnrichedByKey === 'function')
+                  ? (getEnrichedByKey(normalizedSku) || getEnrichedByKey(barcode)) : null;
+                currentGroup = prodEnriched?.group_name;
+                currentCat = prodEnriched?.category_name;
+            }
+
+            console.log('[Drilldown] Category detected:', currentGroup, '/', currentCat);
+
+            // 3. שליפת התגשמויות בקטגוריה – התיקון הגדול! (matched_order_id = הייתה קנייה)
+            categoryOutcomes = [];
+            if (currentGroup && currentCat && rows && rows.length > 0) {
+                const rawPhones = rows.map(r => r.customer_key || r.customer_phone).filter(Boolean);
+                const keysSet = new Set();
+                rawPhones.forEach(p => {
+                    const d = String(p).replace(/\D/g, '');
+                    if (d.length >= 8) {
+                        keysSet.add(d.replace(/^0+/, ''));      // בלי אפס
+                        keysSet.add('0' + d.replace(/^0+/, '')); // עם אפס
+                    }
+                });
+                const keysToCheck = Array.from(keysSet).slice(0, 80).map(k => `"${k}"`).join(',');
+
+                if (keysToCheck.length > 0) {
+                    // שינוי לוגיקה: לא מחפשים status=fulfilled, אלא matched_order_id לא ריק (כלומר הייתה קנייה)
+                    const catUrl = `/rest/v1/v_forecast_predictions_outcomes_canon_v3` +
+                        `?group_name=eq.${encodeURIComponent(currentGroup)}` +
+                        `&category_name=eq.${encodeURIComponent(currentCat)}` +
+                        `&matched_order_id=not.is.null` + // אם יש הזמנה, זה נחשב
+                        `&customer_key_norm=in.(${keysToCheck})` +
+                        `&select=customer_key,customer_key_norm,group_name,category_name,status,matched_order_date,matched_order_id` +
+                        `&limit=200`;
+
+                    try {
+                        const catData = await supaRestFetch(catUrl, { method: 'GET' });
+                        categoryOutcomes = Array.isArray(catData) ? catData : [];
+                        console.log('[Drilldown] Category outcomes fetched:', categoryOutcomes.length);
+                    } catch (e) {
+                        console.warn('[Drilldown] Category fetch failed', e);
+                    }
+                }
+            }
+
+            // 4. חישובים ורינדור
+            const outFrom = outDateFrom ? new Date(outDateFrom) : null;
+            const outTo = outDateTo ? new Date(outDateTo) : null;
+            if (outFrom) outFrom.setHours(0, 0, 0, 0);
+            if (outTo) outTo.setHours(23, 59, 59, 999);
+
+            const inRange = (d) => {
+              if (!d || !outFrom || !outTo) return true;
+              const x = new Date(d); x.setHours(0, 0, 0, 0);
+              return x >= outFrom && x <= outTo;
+            };
+
+            filteredByRange = outFrom && outTo ? allOutcomes.filter((o) => inRange(o.due_date) || inRange(o.matched_order_date)) : allOutcomes;
+
+            outcomesMeta = {
+              total: allOutcomes.length,
+              inRange: filteredByRange.length,
+              shown: 0,
+              historyFulfilled: allOutcomes.filter(o => o.status === 'fulfilled').length,
+              historyMissed: allOutcomes.filter(o => o.status === 'missed').length,
+              rangeFulfilled: filteredByRange.filter(o => o.status === 'fulfilled').length,
+              rangeMissed: filteredByRange.filter(o => o.status === 'missed').length
+            };
+
+            renderOutcomesSection(tmcLimitToRange);
+            renderDrilldownTable(rows, sortState);
+
+        } catch (err) {
+            console.error('[Drilldown] Fetch error:', err);
+        }
       }
 
-      let tmcShowAllOutcomes = true;
-      function renderOutcomesSection(showAll) {
+      function renderOutcomesSection(limitToRange) {
         const wrap = panel.querySelector('.tmc-outcomes-wrap');
         if (!wrap) return;
-        const outcomes = showAll ? allOutcomes : filteredByRange;
-        const toShow = outcomes.slice(0, 20);
-        outcomesMeta.shown = toShow.length;
-        if (allOutcomes.length === 0) {
+
+        const outcomes = limitToRange ? filteredByRange : allOutcomes;
+
+        if (!outcomes || outcomes.length === 0) {
           wrap.style.display = 'none';
           return;
         }
         wrap.style.display = 'block';
+
+        const C_GREEN = '#00CA4E';
+        const C_RED = '#FF605C';
+        const ICON_OK = `<i class="fa-solid fa-square-check" style="color:${C_GREEN};"></i>`;
+        const ICON_BAD = `<i class="fa-solid fa-square-xmark" style="color:${C_RED};"></i>`;
+
+        // 1. Group by Customer + Calculate Stats
+        let groups = [];
+        const map = new Map();
+
+        outcomes.forEach(o => {
+          const key = o.customer_name || o.customer_key || 'Unknown';
+          if (!map.has(key)) {
+            map.set(key, {
+              name: key,
+              items: [],
+              fulfilled: 0,
+              missed: 0,
+              total: 0
+            });
+          }
+          const g = map.get(key);
+          g.items.push(o);
+          if (o.status === 'fulfilled') g.fulfilled++;
+          else g.missed++;
+          g.total++;
+        });
+
+        groups = Array.from(map.values());
+
+        // 2. Sort Groups (Outer Table)
+        groups.sort((a, b) => {
+          let valA = a[historySort.col];
+          let valB = b[historySort.col];
+          if (valA === valB) return a.name.localeCompare(b.name);
+          if (historySort.dir === 'asc') return valA > valB ? 1 : -1;
+          return valA < valB ? 1 : -1;
+        });
+
         const fmt = (d) => {
           if (!d) return '—';
           const x = new Date(d);
-          return `${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}/${x.getFullYear()}`;
+          return `${String(x.getDate()).padStart(2,'0')}/${String(x.getMonth()+1).padStart(2,'0')}/${x.getFullYear().toString().slice(-2)}`;
         };
-        const m = outcomesMeta;
-        const scopeText = m.total > 0
-          ? (m.inRange !== m.total
-            ? `סה״כ היסטוריה מלאה: ✅${m.historyFulfilled} ❌${m.historyMissed}. בטווח הנבחר: ✅${m.rangeFulfilled} ❌${m.rangeMissed}. כרגע מוצגות: ${toShow.length} רשומות${showAll ? ' (כולל מחוץ לטווח)' : ' (בטווח בלבד)'}.`
-            : `סה״כ היסטוריה מלאה: ✅${m.historyFulfilled} ❌${m.historyMissed}. כרגע מוצגות: ${toShow.length}.`)
-          : 'מוצגות רשומות בטווח הנבחר.';
-        const rowsHtml = toShow.map(o => {
-          const isFulfilled = o.status === 'fulfilled';
-          const color = isFulfilled ? '#12b76a' : '#f04438';
-          const icon = isFulfilled ? '✅' : '❌';
-          let statusTxt;
-          if (isFulfilled) {
-            statusTxt = 'התגשמה';
-          } else if (o.diff_days != null) {
-            const abs = Math.abs(o.diff_days);
-            statusTxt = o.diff_days < 0
-              ? `חרג מוקדם (${abs} ימים)`
-              : `חרג מאוחר (${abs} ימים)`;
-          } else {
-            statusTxt = 'חרג מהחלון';
-          }
-          const createdTip = o.created_at
-            ? `תחזית נוצרה: ${fmt(o.created_at)}. אם נוצרה אחרי "התקבל" — שידוך שגוי.`
-            : 'כל הערכים מהטבלה forecast_predictions (snapshot).';
-          const expectDate = o.expected_order_date || o.due_date;
-          return `<tr><td>${icon}</td><td>${escapeHtml(o.customer_name || '—')}</td><td dir="ltr" title="${createdTip}">${fmt(expectDate)}</td><td dir="ltr">${fmt(o.matched_order_date)}</td><td style="color:${color};font-weight:600;" title="השוואה ל־expected_order_date; חלון ±14 ימים">${statusTxt}</td></tr>`;
-        }).join('');
-        const toggleId = 'tmc-show-all-preds-' + normalizedSku.replace(/\D/g, '');
-        wrap.innerHTML = `
-          <div style="background:#f9fafb; border:1px solid #eaecf0; border-radius:8px; padding:12px 16px;">
-            <div style="font-weight:600; color:#475467; margin-bottom:8px;">דיוק תחזית (התגשמה = ±14 ימים מצפי הזמנה)</div>
-            <div style="font-size:11px; color:#98a2b3; margin-bottom:8px;">התחזית מתייחסת להזמנה הבאה; אין עדיין סימון התגשמה = עדיין לא הייתה הזמנה בתוך חלון הצפי. צפי/התקבל/סטטוס מהטבלה forecast_predictions. ${scopeText}</div>
-            <label style="font-size:11px; color:#667085; display:inline-flex; align-items:center; gap:6px; margin-bottom:8px; cursor:pointer;">
-              <input type="checkbox" id="${toggleId}" ${showAll ? 'checked' : ''}>
-              הצג גם תחזיות מחוץ לטווח
-            </label>
-            <table data-tm-static-links="1" style="width:100%; font-size:12px;"><thead><tr><th></th><th>לקוח</th><th>צפי הזמנה</th><th>התקבל</th><th>סטטוס</th></tr></thead><tbody>${rowsHtml}</tbody></table>
-          </div>`;
-        const cb = wrap.querySelector('#' + toggleId);
-        if (cb) {
-          cb.addEventListener('change', () => {
-            tmcShowAllOutcomes = cb.checked;
-            renderOutcomesSection(tmcShowAllOutcomes);
+
+        const thOuter = (key, label, width) => {
+          const isSorted = historySort.col === key;
+          const icon = isSorted ? (historySort.dir === 'asc' ? '▲' : '▼') : '';
+          const style = isSorted ? 'color:#101828; background:#f0f2f5;' : 'color:#667085;';
+          return `<th data-sort-outer="${key}" style="cursor:pointer; padding:10px 12px; font-size:12px; font-weight:600; text-align:right; border-bottom:1px solid #eaecf0; transition:background 0.2s; ${style} width:${width || 'auto'}; user-select:none;">${label} <span style="font-size:10px; opacity:0.7;">${icon}</span></th>`;
+        };
+
+        const thInner = (custName, colKey, label, tooltip) => {
+          const currentSort = innerSortState[custName] || { col: 'expected', dir: 'desc' };
+          const isSorted = currentSort.col === colKey;
+          const icon = isSorted ? (currentSort.dir === 'asc' ? '▲' : '▼') : '';
+          const bg = isSorted ? '#f2f4f7' : 'transparent';
+          const safeCust = (custName || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+          return `<th onclick="window.tmcInnerSort('${safeCust}', '${colKey}')" title="${escapeHtml(tooltip || '')}" style="padding:8px 12px; text-align:right; font-weight:600; color:#475467; font-size:11px; cursor:pointer; background:${bg}; user-select:none; border-bottom:1px solid #eaecf0;">${label} <span style="font-size:9px;">${icon}</span></th>`;
+        };
+
+        let rowsHtml = '';
+
+        // 3. Build Table Rows
+        groups.forEach((g, idx) => {
+          const groupId = `tmc-hist-group-${idx}`;
+          const safeNameForJs = (g.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+
+          const iSort = innerSortState[g.name] || { col: 'expected', dir: 'desc' };
+          g.items.sort((a, b) => {
+            let vA, vB;
+            if (iSort.col === 'expected') {
+              vA = new Date(a.expected_order_date || a.due_date).getTime();
+              vB = new Date(b.expected_order_date || b.due_date).getTime();
+            } else if (iSort.col === 'actual') {
+              vA = new Date(a.matched_order_date || 0).getTime();
+              vB = new Date(b.matched_order_date || 0).getTime();
+            } else if (iSort.col === 'diff') {
+              vA = a.diff_days ?? 0;
+              vB = b.diff_days ?? 0;
+            } else {
+              vA = a.status;
+              vB = b.status;
+            }
+            if (vA === vB) return 0;
+            if (iSort.dir === 'asc') return vA > vB ? 1 : -1;
+            return vA < vB ? 1 : -1;
           });
-        }
+
+          rowsHtml += `
+            <tr class="tmc-hist-summary" onclick="
+                  const el = document.getElementById('${groupId}');
+                  const icon = this.querySelector('.tmc-hist-chevron');
+                  el.hidden = !el.hidden;
+                  icon.style.transform = el.hidden ? 'rotate(0deg)' : 'rotate(180deg)';
+                  this.style.background = el.hidden ? '#fff' : '#f9fafb';
+                " style="background:#fff; cursor:pointer; border-bottom:1px solid #eaecf0; transition:background 0.1s;">
+
+                <td style="padding:10px 12px; font-weight:600; color:#101828; font-size:13px;">
+                  <i class="fa-solid fa-chevron-down tmc-hist-chevron" style="font-size:10px; transition:transform 0.2s; margin-inline-end:8px; opacity:0.5;"></i>
+                  ${escapeHtml(g.name)}
+                </td>
+                <td style="padding:10px 12px; font-weight:600; color:#101828; font-size:13px;">
+                  ${g.total}
+                </td>
+                <td style="padding:10px 12px; font-weight:600; color:${C_GREEN}; font-size:13px;">
+                  ${g.fulfilled > 0 ? `${ICON_OK} ${g.fulfilled}` : '—'}
+                </td>
+                <td style="padding:10px 12px; font-weight:600; color:${C_RED}; font-size:13px;">
+                  ${g.missed > 0 ? `${ICON_BAD} ${g.missed}` : '—'}
+                </td>
+            </tr>
+
+            <tr id="${groupId}" hidden>
+              <td colspan="4" style="padding:0; background:#f9fafb; border-bottom:1px solid #eaecf0;">
+                <div style="padding:0;">
+                   <div style="padding:8px 12px 8px 34px; font-size:11px; color:#667085; background:#fcfcfd; border-bottom:1px solid #eaecf0;">
+                     פירוט היסטוריה עבור <b>${escapeHtml(g.name)}</b>: סה״כ ${g.total} תחזיות: <span style="color:${C_GREEN}">${ICON_OK} ${g.fulfilled} הוגשמו</span> <span style="margin:0 4px;">·</span> <span style="color:${C_RED}">${ICON_BAD} ${g.missed} פוספסו</span>
+                   </div>
+
+                   <table style="width:100%; border-collapse:collapse; font-size:12px; background:transparent;">
+                     <thead>
+                       <tr>
+                         ${thInner(safeNameForJs, 'expected', 'צפי', 'התאריך שבו המערכת צפתה שהלקוח יבצע הזמנה')}
+                         ${thInner(safeNameForJs, 'actual', 'בפועל', 'התאריך שבו בוצעה ההזמנה בפועל')}
+                         ${thInner(safeNameForJs, 'diff', 'הפרש', 'ההפרש בימים: בפועל פחות צפי')}
+                         ${thInner(safeNameForJs, 'status', 'סטטוס', 'האם התחזית התגשמה')}
+                       </tr>
+                     </thead>
+                     <tbody>
+                       ${g.items.map(o => {
+                         const isFulfilled = o.status === 'fulfilled';
+                         const color = isFulfilled ? C_GREEN : C_RED;
+
+                         let diffTxt = '—';
+                         let diffStyle = 'color:#98a2b3;';
+                         if (o.diff_days != null && o.matched_order_date) {
+                           const days = o.diff_days;
+                           const absDays = Math.abs(days);
+                           if (days === 0) {
+                             diffTxt = 'בדיוק בזמן';
+                             diffStyle = `color:${C_GREEN}; font-weight:500;`;
+                           } else if (days < 0) {
+                             diffTxt = `מוקדם ב־${absDays} יום`;
+                             diffStyle = `color:#101828;`;
+                           } else {
+                             diffTxt = `מאוחר ב־${absDays} יום`;
+                             diffStyle = `color:#101828;`;
+                           }
+                         }
+
+                         const statusTxt = isFulfilled ? 'התגשמה' : 'פוספסה';
+                         const expDate = fmt(o.expected_order_date || o.due_date);
+                         const actDate = fmt(o.matched_order_date);
+
+                         return `
+                           <tr style="border-bottom:1px solid #eaecf0;">
+                             <td style="padding:8px 12px; color:#475467;">${expDate}</td>
+                             <td style="padding:8px 12px; color:#101828; font-weight:500;">${actDate}</td>
+                             <td style="padding:8px 12px; ${diffStyle}">${diffTxt}</td>
+                             <td style="padding:8px 12px; font-weight:600; color:${color};">${statusTxt}</td>
+                           </tr>
+                         `;
+                       }).join('')}
+                     </tbody>
+                   </table>
+                </div>
+              </td>
+            </tr>
+          `;
+        });
+
+        // 4. Render Main Container with New Checkbox Logic
+        const m = outcomesMeta;
+        const displayFulfilled = limitToRange ? m.rangeFulfilled : m.historyFulfilled;
+        const displayMissed = limitToRange ? m.rangeMissed : m.historyMissed;
+
+        wrap.innerHTML = `
+          <div style="background:#fff; border:1px solid #eaecf0; border-radius:8px; overflow:hidden; box-shadow:0 1px 2px rgba(16,24,40,0.05);">
+            <div style="padding:10px 14px; background:#fff; border-bottom:1px solid #eaecf0; display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-weight:700; color:#101828; font-size:13px;">
+                היסטוריית דיוק (מוצג: ${ICON_OK} ${displayFulfilled} / ${ICON_BAD} ${displayMissed})
+              </span>
+              <label style="font-size:12px; color:#667085; display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
+                <input type="checkbox" id="tmc-limit-range-toggle" ${limitToRange ? 'checked' : ''}> רק בטווח הנבחר
+              </label>
+            </div>
+
+            <table style="width:100%; border-collapse:collapse; text-align:right;">
+              <thead>
+                <tr style="background:#fcfcfd;">
+                  ${thOuter('name', 'לקוח', '40%')}
+                  ${thOuter('total', 'סה״כ', '15%')}
+                  ${thOuter('fulfilled', ICON_OK + ' התגשם', '20%')}
+                  ${thOuter('missed', ICON_BAD + ' פוספס', '25%')}
+                </tr>
+              </thead>
+              <tbody>
+                ${rowsHtml}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        wrap.querySelector('#tmc-limit-range-toggle').addEventListener('change', (e) => {
+          tmcLimitToRange = e.target.checked;
+          renderOutcomesSection(tmcLimitToRange);
+        });
+
+        wrap.querySelectorAll('th[data-sort-outer]').forEach(el => {
+          el.addEventListener('click', () => {
+            const key = el.getAttribute('data-sort-outer');
+            if (historySort.col === key) {
+              historySort.dir = historySort.dir === 'asc' ? 'desc' : 'asc';
+            } else {
+              historySort.col = key;
+              historySort.dir = 'desc';
+            }
+            renderOutcomesSection(tmcLimitToRange);
+          });
+        });
+
+        window.tmcInnerSort = (custName, colKey) => {
+          const current = innerSortState[custName] || { col: 'expected', dir: 'desc' };
+          if (current.col === colKey) {
+            current.dir = current.dir === 'asc' ? 'desc' : 'asc';
+          } else {
+            current.col = colKey;
+            current.dir = 'desc';
+          }
+          innerSortState[custName] = current;
+          renderOutcomesSection(tmcLimitToRange);
+          setTimeout(() => {
+            const allSummaries = wrap.querySelectorAll('.tmc-hist-summary');
+            allSummaries.forEach(tr => {
+              if (tr.textContent.includes(custName)) tr.click();
+            });
+          }, 0);
+        };
       }
 
-      renderOutcomesSection(tmcShowAllOutcomes);
+      renderOutcomesSection(tmcLimitToRange);
 
       function renderDrilldownTable(list, state) {
         const sorted = sortDrilldownRows(list, state);
@@ -8282,7 +8560,7 @@
         const iconFor = (key) => {
           if (state.sortCol !== key) return '';
           const iconClass = state.sortDir === 'desc' ? 'fa-arrow-down' : 'fa-arrow-up';
-          return `<i class="fa-light ${iconClass} tmc-sort-icon"></i>`;
+          return `<i class="fa-solid ${iconClass} tmc-sort-icon"></i>`;
         };
 
         const __normPhoneFromKey = (key) => {
@@ -8312,8 +8590,11 @@
             <tbody>
         `);
 
-        // Build latest outcome per customer (prefer fulfilled over missed on same matched date)
+        // --- FIX START: Improved Outcome Aggregation ---
+        // Build latest outcome per customer (Priority: Date DESC -> Fulfilled > Missed)
         const outcomeAgg = new Map();
+
+        // Helper to parse dates safely
         const _t = (d) => {
           if (!d) return -Infinity;
           const s = String(d);
@@ -8329,26 +8610,92 @@
           const ct = _t(o.created_at);
           const st = String(o.status || '').toLowerCase();
 
-          let a = outcomeAgg.get(k);
-          if (!a || mt > a.mt) {
-            a = { mt, ful: null, mis: null, cFul: -Infinity, cMis: -Infinity };
-            outcomeAgg.set(k, a);
-          }
-          if (mt !== a.mt) return;
+          let current = outcomeAgg.get(k);
 
-          if (st === 'fulfilled' && ct > a.cFul) { a.ful = o; a.cFul = ct; }
-          if (st === 'missed'    && ct > a.cMis) { a.mis = o; a.cMis = ct; }
+          if (!current) {
+            outcomeAgg.set(k, { mt, ct, outcome: o });
+            return;
+          }
+
+          if (mt > current.mt) {
+            outcomeAgg.set(k, { mt, ct, outcome: o });
+          } else if (mt === current.mt) {
+            const isNewFulfilled = (st === 'fulfilled');
+            const isCurrFulfilled = (String(current.outcome?.status || '').toLowerCase() === 'fulfilled');
+
+            if (isNewFulfilled && !isCurrFulfilled) {
+              outcomeAgg.set(k, { mt, ct, outcome: o });
+            } else if (isNewFulfilled === isCurrFulfilled) {
+              if (ct > current.ct) {
+                outcomeAgg.set(k, { mt, ct, outcome: o });
+              }
+            }
+          }
         });
+        // --- FIX END ---
+
+        // --- Category cannibalization logic (UPDATED) ---
+        const fulfilledCategories = new Set();
+        const _catKey = (gn, cn) => `${(gn || '').trim().toLowerCase()}__${(cn || '').trim().toLowerCase()}`;
+
+        // Use the dedicated category outcomes fetched in background
+        const sourceForCategories = (categoryOutcomes && categoryOutcomes.length > 0) ? categoryOutcomes : allOutcomes;
+
+        (sourceForCategories || []).forEach((o) => {
+          // שינוי: במקום לבדוק סטטוס, בודקים אם הייתה הזמנה
+          if (!o.matched_order_id) return;
+
+          const gn = o.group_name; const cn = o.category_name;
+          if (!gn || !cn) return;
+          const k = __normPhoneFromKey(o.customer_key_norm || o.customer_key) || (o.customer_name || '').trim().toLowerCase();
+          if (!k) return;
+          fulfilledCategories.add(`${k}__${_catKey(gn, cn)}`);
+        });
+
+        const productEnriched = (typeof getEnrichedByKey === 'function')
+          ? (getEnrichedByKey(normalizedSku) || getEnrichedByKey(barcode)) : null;
+        const productGroupName = productEnriched?.group_name || '';
+        const productCategoryName = productEnriched?.category_name || '';
 
         for (const r of sorted) {
           const rowKey = __normPhoneFromKey(r.customer_key || r.customer_phone) || (r.customer_name || '').trim().toLowerCase();
-          const a = outcomeAgg.get(rowKey);
+          const agg = outcomeAgg.get(rowKey);
+          const bestOutcome = agg ? agg.outcome : null;
 
           let ui = tmcStatusUi(r.status);
-          if (a?.ful) {
-            ui = { label: 'התגשמה', dotClass: 'tmc-dot-green', rowClass: 'tmc-row-bg-green', statusSort: -10 };
-          } else if (a?.mis) {
-            ui = { label: 'פוספסה', dotClass: 'tmc-dot-red', rowClass: 'tmc-row-bg-red', statusSort: 999 };
+
+          if (bestOutcome) {
+            if (bestOutcome.status === 'fulfilled') {
+              ui = { label: 'התגשמה', dotClass: 'tmc-dot-green', rowClass: 'tmc-row-bg-green', statusSort: -10 };
+            } else if (bestOutcome.status === 'missed') {
+              ui = { label: 'פוספסה', dotClass: 'tmc-dot-red', rowClass: 'tmc-row-bg-red', statusSort: 999 };
+            }
+          }
+
+          // Category fallback: בדיקה אם יש רכישה כלשהי בקטגוריה באותו חלון זמן
+          if ((!bestOutcome || bestOutcome.status === 'missed') && productGroupName && productCategoryName) {
+            const catKey = `${rowKey}__${_catKey(productGroupName, productCategoryName)}`;
+
+            if (fulfilledCategories.has(catKey)) {
+              const safeCat = escapeHtml(productCategoryName);
+              const gName = (productGroupName || '').trim();
+
+              const labelHtml = `
+                התגשמה
+                <br>
+                <span style="font-size: 11px; font-weight: normal; opacity: 0.8; line-height: 1.2; display: inline-block; margin-top: 1px;">
+                  - ${gName} ${safeCat}
+                </span>
+              `;
+
+              ui = {
+                label: labelHtml,
+                dotClass: 'tmc-dot-green',
+                rowClass: 'tmc-row-bg-green',
+                statusSort: -10,
+                statusTitle: `(Fulfilled by Category Match: ${gName} / ${safeCat})`
+              };
+            }
           }
 
           const fmtDate = (dStr) => {
@@ -8405,9 +8752,10 @@
 
           const statusDotClass = ui.dotClass ? ('tmc-drill-dot ' + ui.dotClass) : (ui.dot || '');
           const statusLabel = ui.label ?? ui.text;
+          const statusTitleAttr = (ui.statusTitle ? ` title="${escapeHtml(ui.statusTitle)}"` : '');
           const statusHtml = statusDotClass
-            ? `<span class="${statusDotClass}"></span> <span style="font-weight:600;">${statusLabel}</span>`
-            : `<span style="color:#98a2b3;">${statusLabel}</span>`;
+            ? `<span class="${statusDotClass}"></span> <span style="font-weight:600;"${statusTitleAttr}>${statusLabel}</span>`
+            : `<span style="color:#98a2b3;"${statusTitleAttr}>${statusLabel}</span>`;
 
           const phoneNorm = __normPhoneFromKey(r.customer_phone || r.customer_key);
           const consumptionPlaceholder = `<div class="tmc-cons-cell"><div class="tmc-cons-muted">טוען...</div></div>`;
