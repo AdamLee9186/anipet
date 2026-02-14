@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.10
+// @version      0.8.11
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -8312,28 +8312,43 @@
             <tbody>
         `);
 
-        const outcomeByCustomer = new Map();
-        allOutcomes.forEach((o) => {
-          const k = (o.customer_key_norm || __normPhoneFromKey(o.customer_key) || (o.customer_name || '').trim().toLowerCase());
+        // Build latest outcome per customer (prefer fulfilled over missed on same matched date)
+        const outcomeAgg = new Map();
+        const _t = (d) => {
+          if (!d) return -Infinity;
+          const s = String(d);
+          const tt = Date.parse(s.includes('T') ? s : s.replace(' ', 'T'));
+          return Number.isFinite(tt) ? tt : -Infinity;
+        };
+
+        (allOutcomes || []).forEach((o) => {
+          const k = __normPhoneFromKey(o.customer_key_norm || o.customer_key) || (o.customer_name || '').trim().toLowerCase();
           if (!k) return;
 
-          // שמור את הכי עדכני (matched_order_date אם יש, אחרת created_at)
-          const prev = outcomeByCustomer.get(k);
-          const curTs = Date.parse(o.matched_order_date || o.created_at || '') || 0;
-          const prevTs = prev ? (Date.parse(prev.matched_order_date || prev.created_at || '') || 0) : -1;
-          if (!prev || curTs >= prevTs) outcomeByCustomer.set(k, o);
+          const mt = _t(o.matched_order_date);
+          const ct = _t(o.created_at);
+          const st = String(o.status || '').toLowerCase();
+
+          let a = outcomeAgg.get(k);
+          if (!a || mt > a.mt) {
+            a = { mt, ful: null, mis: null, cFul: -Infinity, cMis: -Infinity };
+            outcomeAgg.set(k, a);
+          }
+          if (mt !== a.mt) return;
+
+          if (st === 'fulfilled' && ct > a.cFul) { a.ful = o; a.cFul = ct; }
+          if (st === 'missed'    && ct > a.cMis) { a.mis = o; a.cMis = ct; }
         });
 
         for (const r of sorted) {
-          const key = (__normPhoneFromKey(r.customer_key || r.customer_phone) || (r.customer_name || '').trim().toLowerCase());
-          const fPred = outcomeByCustomer.get(key);
-          const forecastStatus = fPred ? String(fPred.status || '').toLowerCase() : null;
+          const rowKey = __normPhoneFromKey(r.customer_key || r.customer_phone) || (r.customer_name || '').trim().toLowerCase();
+          const a = outcomeAgg.get(rowKey);
 
           let ui = tmcStatusUi(r.status);
-          if (forecastStatus === 'fulfilled') {
-            ui = { label: 'התגשמה', dotClass: 'tmc-dot-green', rowClass: 'tmc-row-bg-green' };
-          } else if (forecastStatus === 'missed') {
-            ui = { label: 'פוספסה', dotClass: 'tmc-dot-red', rowClass: 'tmc-row-bg-red' };
+          if (a?.ful) {
+            ui = { label: 'התגשמה', dotClass: 'tmc-dot-green', rowClass: 'tmc-row-bg-green', statusSort: -10 };
+          } else if (a?.mis) {
+            ui = { label: 'פוספסה', dotClass: 'tmc-dot-red', rowClass: 'tmc-row-bg-red', statusSort: 999 };
           }
 
           const fmtDate = (dStr) => {
