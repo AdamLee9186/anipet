@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.14
+// @version      0.8.16
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -6028,6 +6028,18 @@
           if (a._hasDrilldown && !b._hasDrilldown) return -1;
           if (!a._hasDrilldown && b._hasDrilldown) return 1;
         }
+
+        // DOS-first sorting (Home Inventory signals): critical/low counts take precedence
+        if (col === 'priority') {
+          const aCrit = Number(a?._critCount) || 0;
+          const bCrit = Number(b?._critCount) || 0;
+          if (aCrit !== bCrit) return aCrit > bCrit ? 1 * dir : -1 * dir;
+
+          const aLow = Number(a?._lowCount) || 0;
+          const bLow = Number(b?._lowCount) || 0;
+          if (aLow !== bLow) return aLow > bLow ? 1 * dir : -1 * dir;
+        }
+
         if (col === 'priority' && (a._sortPriorityOrder !== undefined || b._sortPriorityOrder !== undefined)) {
           const orderA = Number(a._sortPriorityOrder) || 0;
           const orderB = Number(b._sortPriorityOrder) || 0;
@@ -6428,40 +6440,15 @@
         return;
       }
 
-      // Home Inventory (DOS) signals: batch fetch sku_signals for visible products
-      // 1. Collect all normalized SKUs (and barcodes) so fallback-to-barcode can resolve
-      const skusForDos = Array.from(new Set(
-        rows.flatMap(r => {
-          const sku = tmcNormalizeDigits(r?.sku);
-          const bar = tmcNormalizeDigits(r?.barcode);
-          return [sku, bar].filter(Boolean);
-        })
-      ));
+      // Home Inventory (DOS) signals are pre-fetched in fetchDataAndRender and attached as _critCount/_lowCount.
+      // Build lookup map from rows so badge rendering is unchanged.
       let skuSignalsMap = new Map();
-      if (skusForDos.length > 0) {
-        try {
-          const CHUNK_SIZE = 150;
-          for (let i = 0; i < skusForDos.length; i += CHUNK_SIZE) {
-            const chunk = skusForDos.slice(i, i + CHUNK_SIZE);
-            const inList = chunk.map(s => encodeURIComponent(s)).join(',');
-            const dosPath = `/rest/v1/sku_signals?sku=in.(${inList})&select=sku,crit_count,low_count`;
-            const dosRows = await supaRestFetch(dosPath, { method: 'GET' });
-            if (Array.isArray(dosRows)) {
-              for (const dr of dosRows) {
-                const k = tmcNormalizeDigits(dr?.sku);
-                if (k) {
-                  skuSignalsMap.set(k, {
-                    crit: Number(dr.crit_count) || 0,
-                    low: Number(dr.low_count) || 0
-                  });
-                }
-              }
-            }
-          }
-          console.log('[Forecast] Loaded signals for', skuSignalsMap.size, 'SKUs');
-        } catch (e) {
-          console.warn('[Forecast] Failed to load sku_signals:', e);
-        }
+      for (const r of rows) {
+        const sig = { crit: Number(r?._critCount) || 0, low: Number(r?._lowCount) || 0 };
+        const kSku = tmcNormalizeDigits(r?.sku);
+        if (kSku) skuSignalsMap.set(kSku, sig);
+        const kBar = tmcNormalizeDigits(r?.barcode);
+        if (kBar && !skuSignalsMap.has(kBar)) skuSignalsMap.set(kBar, sig);
       }
 
       // טען תמונות *רק* עבור ה-SKUs שמופיעים כרגע במסך
@@ -7185,6 +7172,40 @@
           const normalizedRows = (data || []).map(normalizeProductRow);
           
           forecastProductRows = normalizedRows;
+
+          // Pre-fetch DOS signals (sku_signals) so sorting and rendering can use _critCount/_lowCount
+          try {
+            const allSkus = Array.from(new Set(
+              normalizedRows
+                .flatMap(r => [tmcNormalizeDigits(r?.sku), tmcNormalizeDigits(r?.barcode)])
+                .filter(Boolean)
+            ));
+            const skuSignalsMap = new Map();
+            if (allSkus.length > 0) {
+              const CHUNK = 200;
+              for (let i = 0; i < allSkus.length; i += CHUNK) {
+                const batch = allSkus.slice(i, i + CHUNK);
+                const inList = batch.map(s => encodeURIComponent(s)).join(',');
+                const path = `/rest/v1/sku_signals?sku=in.(${inList})&select=sku,crit_count,low_count`;
+                const sigs = await supaRestFetch(path, { method: 'GET' });
+                if (Array.isArray(sigs)) {
+                  sigs.forEach(s => {
+                    const k = tmcNormalizeDigits(s?.sku);
+                    if (k) skuSignalsMap.set(k, { crit: Number(s?.crit_count) || 0, low: Number(s?.low_count) || 0 });
+                  });
+                }
+              }
+            }
+            normalizedRows.forEach(r => {
+              const kSku = tmcNormalizeDigits(r?.sku);
+              const kBar = tmcNormalizeDigits(r?.barcode);
+              const sig = (kSku && skuSignalsMap.get(kSku)) || (kBar && skuSignalsMap.get(kBar)) || { crit: 0, low: 0 };
+              r._critCount = Number(sig?.crit) || 0;
+              r._lowCount = Number(sig?.low) || 0;
+            });
+          } catch (e) {
+            console.warn('[Forecast] sku_signals prefetch failed (continuing):', e);
+          }
 
           stateArg.productOverviewRows = normalizedRows;
           stateArg.forecasts = normalizedRows; 
