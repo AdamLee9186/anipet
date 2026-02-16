@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.13
+// @version      0.8.14
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -6431,7 +6431,14 @@
       // Home Inventory (DOS) signals: batch fetch sku_signals for visible SKUs
       let skuSignalsMap = new Map();
       try {
-        const skusForDos = Array.from(new Set(rows.map(r => tmcNormalizeDigits(r?.sku)).filter(Boolean)));
+        // Include both SKU + barcode so fallback-to-barcode can actually resolve signals.
+        const skusForDos = Array.from(new Set(
+          rows.flatMap(r => {
+            const sku = tmcNormalizeDigits(r?.sku);
+            const bar = tmcNormalizeDigits(r?.barcode);
+            return [sku, bar].filter(Boolean);
+          })
+        ));
         if (skusForDos.length > 0) {
           const inList = skusForDos.map(s => encodeURIComponent(s)).join(',');
           const dosPath = `/rest/v1/sku_signals?sku=in.(${inList})&select=sku,crit_count,low_count`;
@@ -7580,8 +7587,9 @@
         tail = `נגמר לפני ${Math.abs(daysUntil)} ימים`;
       } else {
         const dos = Number(r.dos_days);
-        const dosDays = Number.isFinite(dos) && dos > 0 ? Math.round(dos) : null;
-        tail = dosDays ? `מחזיק ≈${dosDays} ימים` : 'מחזיק';
+        // dosDays may legitimately be 0; treat 0 as a real value.
+        const dosDays = (Number.isFinite(dos) && dos >= 0) ? Math.round(dos) : null;
+        tail = (dosDays !== null) ? `מחזיק ≈${dosDays} ימים` : 'מחזיק';
       }
 
       const learnBadge =
@@ -7741,9 +7749,9 @@
     }
 
     function calcDosDays(row) {
-      // prefer server-provided dos_days if exists
+      // prefer server-provided dos_days if exists; 0 is valid (critical/low stock)
       const v = Number(row?.dos_days);
-      if (Number.isFinite(v) && v > 0) return v;
+      if (Number.isFinite(v) && v >= 0) return v;
       const amt = Number(row?.expected_next_total_amount);
       const du = Number(row?.daily_usage);
       if (!Number.isFinite(amt) || !Number.isFinite(du) || du <= 0) return null;
