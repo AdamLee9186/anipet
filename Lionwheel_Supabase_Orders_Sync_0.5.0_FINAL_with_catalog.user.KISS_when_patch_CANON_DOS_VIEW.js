@@ -3558,7 +3558,7 @@
         .lw-toast{ pointer-events: auto; min-width: 240px; background: #111; color: #fff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 12px 24px rgba(0,0,0,0.25); display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; opacity: 0; transform: translateY(-6px); transition: opacity .18s ease, transform .18s ease; direction: rtl; }
 
         /* Home Inventory (DOS) Badges */
-        .tmc-dos-badge { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-inline-start: 6px; white-space: nowrap; line-height: 1; vertical-align: middle; }
+        .tmc-dos-badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: 700; margin-right: 4px; line-height: 1; }
         .tmc-dos-crit { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
         .tmc-dos-low { background: #ffedd5; color: #9a3412; border: 1px solid #fed7aa; }
 
@@ -6428,27 +6428,41 @@
         return;
       }
 
-      // Home Inventory (DOS) signals: batch fetch sku_signals for visible SKUs
+      // Home Inventory (DOS) signals: batch fetch sku_signals for visible products
+      // 1. Collect all normalized SKUs (and barcodes) so fallback-to-barcode can resolve
+      const skusForDos = Array.from(new Set(
+        rows.flatMap(r => {
+          const sku = tmcNormalizeDigits(r?.sku);
+          const bar = tmcNormalizeDigits(r?.barcode);
+          return [sku, bar].filter(Boolean);
+        })
+      ));
       let skuSignalsMap = new Map();
-      try {
-        // Include both SKU + barcode so fallback-to-barcode can actually resolve signals.
-        const skusForDos = Array.from(new Set(
-          rows.flatMap(r => {
-            const sku = tmcNormalizeDigits(r?.sku);
-            const bar = tmcNormalizeDigits(r?.barcode);
-            return [sku, bar].filter(Boolean);
-          })
-        ));
-        if (skusForDos.length > 0) {
-          const inList = skusForDos.map(s => encodeURIComponent(s)).join(',');
-          const dosPath = `/rest/v1/sku_signals?sku=in.(${inList})&select=sku,crit_count,low_count`;
-          const dosRows = await supaRestFetch(dosPath, { method: 'GET' });
-          for (const dr of (Array.isArray(dosRows) ? dosRows : [])) {
-            const k = tmcNormalizeDigits(dr?.sku);
-            if (k) skuSignalsMap.set(k, { crit: Number(dr.crit_count) || 0, low: Number(dr.low_count) || 0 });
+      if (skusForDos.length > 0) {
+        try {
+          const CHUNK_SIZE = 150;
+          for (let i = 0; i < skusForDos.length; i += CHUNK_SIZE) {
+            const chunk = skusForDos.slice(i, i + CHUNK_SIZE);
+            const inList = chunk.map(s => encodeURIComponent(s)).join(',');
+            const dosPath = `/rest/v1/sku_signals?sku=in.(${inList})&select=sku,crit_count,low_count`;
+            const dosRows = await supaRestFetch(dosPath, { method: 'GET' });
+            if (Array.isArray(dosRows)) {
+              for (const dr of dosRows) {
+                const k = tmcNormalizeDigits(dr?.sku);
+                if (k) {
+                  skuSignalsMap.set(k, {
+                    crit: Number(dr.crit_count) || 0,
+                    low: Number(dr.low_count) || 0
+                  });
+                }
+              }
+            }
           }
+          console.log('[Forecast] Loaded signals for', skuSignalsMap.size, 'SKUs');
+        } catch (e) {
+          console.warn('[Forecast] Failed to load sku_signals:', e);
         }
-      } catch (_) {}
+      }
 
       // טען תמונות *רק* עבור ה-SKUs שמופיעים כרגע במסך
       try {
@@ -6611,11 +6625,15 @@
         const rSc = row._reliabilityScore ?? 0;
         const tot = (row._sortPriority != null ? row._sortPriority : uSc + rSc);
         const priorityTitle = `ציון משולב: ${Math.round(tot)} (דחיפות ${uSc} + אמינות ${rSc >= 0 ? '+' : ''}${rSc}) — ✅${f} התגשמו, ❌${m} חרגו. Qty: ${row._sortQty ?? '?'}. לחץ לפריסה.`.trim();
-        const dosSignals = skuSignalsMap.get(skuNorm) || skuSignalsMap.get(tmcNormalizeDigits(row?.barcode)) || { crit: 0, low: 0 };
-        const dosTooltip = 'לקוחות שנסתיים להם המלאי (לפי היסטוריית צריכה). CRIT = נגמר, LOW = ימים בודדים.';
+        const barcodeNorm = tmcNormalizeDigits(row?.barcode);
+        const dosSignals = skuSignalsMap.get(skuNorm) || skuSignalsMap.get(barcodeNorm) || { crit: 0, low: 0 };
         let dosBadgesHtml = '';
-        if (dosSignals.crit > 0) dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-crit" title="${escapeHtml(dosTooltip)}">🏠 ${dosSignals.crit} נגמר!</span>`;
-        if (dosSignals.low > 0) dosBadgesHtml += (dosBadgesHtml ? ' ' : '') + `<span class="tmc-dos-badge tmc-dos-low" title="${escapeHtml(dosTooltip)}">🏠 ${dosSignals.low} בקרוב</span>`;
+        if (dosSignals.crit > 0) {
+          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-crit" title="${dosSignals.crit} לקוחות בלי אוכל (מלאי <= 0)">🏠 ${dosSignals.crit} נגמר!</span> `;
+        }
+        if (dosSignals.low > 0) {
+          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-low" title="${dosSignals.low} לקוחות עם מלאי נמוך (< 5 ימים)">🏠 ${dosSignals.low} בקרוב</span>`;
+        }
         const cons = tmcBuildConsumptionCell(row);
         tr.innerHTML = `
           <td style="color:#667085;font-size:12px;font-weight:500;">${idx + 1}</td>
@@ -6631,7 +6649,7 @@
           <td class="${priorityClass}" style="font-weight:500;" title="${escapeHtml(priorityTitle)}">
             <div style="line-height:1.3;">${escapeHtml(priorityLabel)}</div>
             <div style="font-size:11px;color:#667085;">${accuracyParts.length ? accuracyParts.join(' ') + ' (היסטוריה מלאה)' : '—'}</div>
-            ${dosBadgesHtml ? `<div class="tmc-dos-badges-wrap">${dosBadgesHtml}</div>` : ''}
+            <div style="margin-top:4px;">${dosBadgesHtml}</div>
           </td>
           <td>${tmcRenderQtyWithinCycleCell(qtySummary)}</td>
           <td>${tmcRenderWhenCell(whenSummary, row._overdueDates, row._upcomingDates, row._earliestDateIso)}</td>
