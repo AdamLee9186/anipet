@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.12
+// @version      0.8.13
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -41,16 +41,27 @@
     }
 
     function tmcGapWarnBadge(prodDateStr, catDateStr, catLabel) {
+      if (!prodDateStr || !catDateStr) return '';
+
       const diff = tmcSafeDateDiffDays(prodDateStr, catDateStr);
       if (diff == null) return '';
-      const ad = Math.abs(diff);
-      if (ad < TMC_CONS_GAP_WARN_DAYS) return '';
+      if (Math.abs(diff) < 21) return '';
 
-      const prod = (typeof tmcFmtDDMM === 'function') ? tmcFmtDDMM(prodDateStr) : prodDateStr;
-      const cat = (typeof tmcFmtDDMM === 'function') ? tmcFmtDDMM(catDateStr) : catDateStr;
-      const when = diff > 0 ? 'מאוחר יותר' : 'מוקדם יותר';
-      const title = `פער גדול בין צפי המוצר לצפי ${catLabel}: צפי מוצר ${prod}, צפי קטגוריה ${cat} (פער ${ad} ימים, המוצר ${when}). ייתכן סטוק-אפ / מוצר נוסף באותה קטגוריה / שינוי הרגלים.`;
-      return `<span class="tmc-cons-badge tmc-cons-warn" title="${escapeHtml(title)}">⚠</span>`;
+      const futureLimit = new Date();
+      futureLimit.setDate(futureLimit.getDate() + 500);
+      if (new Date(prodDateStr) > futureLimit) return '';
+
+      const isProductEarlier = diff < 0;
+      const absDiff = Math.abs(diff);
+      const displayDays = absDiff > 365 ? '365+' : absDiff;
+
+      if (isProductEarlier) {
+        const title = `פער: המוצר צפוי להסתיים ב-${prodDateStr}, כ-${absDiff} ימים לפני צפי הקטגוריה.`;
+        return `<span class="tmc-cons-badge tmc-cons-warn" title="${escapeHtml(title)}">⚠ פער: ${displayDays} ימים</span>`;
+      } else {
+        const title = `המוצר מספיק לזמן רב יותר מהצפי הכללי (${absDiff} ימים נוספים).`;
+        return `<span class="tmc-cons-badge tmc-cons-info" title="${escapeHtml(title)}">ℹ ${displayDays} ימים ספייר</span>`;
+      }
     }
 
     // -----------------------------
@@ -130,6 +141,7 @@
         .tmc-cons-muted { color: #98a2b3; }
         .tmc-cons-badge { margin-inline-start: 6px; font-size: 12px; cursor: help; }
         .tmc-cons-warn { border-color:#fed7aa; background:#fff7ed; color:#b45309; }
+        .tmc-cons-info { border-color:#bae6fd; background:#f0f9ff; color:#0369a1; }
         /* modal single scroll container (prevents nested scrollbars + clipping) */
         .tmc-panel { max-height: 85vh; display: flex; flex-direction: column; }
         .tmc-panel .tmc-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
@@ -3544,7 +3556,17 @@
         /* Toasts */
         .lw-toast-wrap{ position: fixed; top: 12px; right: 12px; z-index: 100000; display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
         .lw-toast{ pointer-events: auto; min-width: 240px; background: #111; color: #fff; border-radius: 10px; padding: 10px 12px; box-shadow: 0 12px 24px rgba(0,0,0,0.25); display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; opacity: 0; transform: translateY(-6px); transition: opacity .18s ease, transform .18s ease; direction: rtl; }
-        .lw-toast.show{ opacity: 1; transform: translateY(0); }
+
+        /* Home Inventory (DOS) Badges */
+        .tmc-dos-badge { font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-inline-start: 6px; white-space: nowrap; line-height: 1; vertical-align: middle; }
+        .tmc-dos-crit { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+        .tmc-dos-low { background: #ffedd5; color: #9a3412; border: 1px solid #fed7aa; }
+
+        /* Drilldown Column */
+        .tmc-dos-home-crit { color: #b42318; font-weight: 700; background: #fef2f2; padding: 2px 6px; border-radius: 4px; }
+        .tmc-dos-home-low { color: #b54708; font-weight: 700; background: #fffaeb; padding: 2px 6px; border-radius: 4px; }
+        .tmc-dos-home-ok { color: #027a48; font-weight: 600; background: #ecfdf3; padding: 2px 6px; border-radius: 4px; }
+        .tmc-dos-home-nodata { color: #98a2b3; font-style: italic; font-size: 11px; }
       `;
       const style = document.createElement('style');
       style.textContent = css;
@@ -6406,6 +6428,21 @@
         return;
       }
 
+      // Home Inventory (DOS) signals: batch fetch sku_signals for visible SKUs
+      let skuSignalsMap = new Map();
+      try {
+        const skusForDos = Array.from(new Set(rows.map(r => tmcNormalizeDigits(r?.sku)).filter(Boolean)));
+        if (skusForDos.length > 0) {
+          const inList = skusForDos.map(s => encodeURIComponent(s)).join(',');
+          const dosPath = `/rest/v1/sku_signals?sku=in.(${inList})&select=sku,crit_count,low_count`;
+          const dosRows = await supaRestFetch(dosPath, { method: 'GET' });
+          for (const dr of (Array.isArray(dosRows) ? dosRows : [])) {
+            const k = tmcNormalizeDigits(dr?.sku);
+            if (k) skuSignalsMap.set(k, { crit: Number(dr.crit_count) || 0, low: Number(dr.low_count) || 0 });
+          }
+        }
+      } catch (_) {}
+
       // טען תמונות *רק* עבור ה-SKUs שמופיעים כרגע במסך
       try {
         const skusNeeded = Array.from(new Set(rows.map(r => tmcNormalizeDigits(r?.sku)).filter(Boolean)));
@@ -6567,6 +6604,11 @@
         const rSc = row._reliabilityScore ?? 0;
         const tot = (row._sortPriority != null ? row._sortPriority : uSc + rSc);
         const priorityTitle = `ציון משולב: ${Math.round(tot)} (דחיפות ${uSc} + אמינות ${rSc >= 0 ? '+' : ''}${rSc}) — ✅${f} התגשמו, ❌${m} חרגו. Qty: ${row._sortQty ?? '?'}. לחץ לפריסה.`.trim();
+        const dosSignals = skuSignalsMap.get(skuNorm) || skuSignalsMap.get(tmcNormalizeDigits(row?.barcode)) || { crit: 0, low: 0 };
+        const dosTooltip = 'לקוחות שנסתיים להם המלאי (לפי היסטוריית צריכה). CRIT = נגמר, LOW = ימים בודדים.';
+        let dosBadgesHtml = '';
+        if (dosSignals.crit > 0) dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-crit" title="${escapeHtml(dosTooltip)}">🏠 ${dosSignals.crit} נגמר!</span>`;
+        if (dosSignals.low > 0) dosBadgesHtml += (dosBadgesHtml ? ' ' : '') + `<span class="tmc-dos-badge tmc-dos-low" title="${escapeHtml(dosTooltip)}">🏠 ${dosSignals.low} בקרוב</span>`;
         const cons = tmcBuildConsumptionCell(row);
         tr.innerHTML = `
           <td style="color:#667085;font-size:12px;font-weight:500;">${idx + 1}</td>
@@ -6582,6 +6624,7 @@
           <td class="${priorityClass}" style="font-weight:500;" title="${escapeHtml(priorityTitle)}">
             <div style="line-height:1.3;">${escapeHtml(priorityLabel)}</div>
             <div style="font-size:11px;color:#667085;">${accuracyParts.length ? accuracyParts.join(' ') + ' (היסטוריה מלאה)' : '—'}</div>
+            ${dosBadgesHtml ? `<div class="tmc-dos-badges-wrap">${dosBadgesHtml}</div>` : ''}
           </td>
           <td>${tmcRenderQtyWithinCycleCell(qtySummary)}</td>
           <td>${tmcRenderWhenCell(whenSummary, row._overdueDates, row._upcomingDates, row._earliestDateIso)}</td>
@@ -7432,6 +7475,7 @@
         #tmc-drilldown-modal .tmc-cons-sub { font-size: 11px; color: #667085; }
         #tmc-drilldown-modal .tmc-cons-badge { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #f2f4f7; color: #344054; margin-inline-end: 6px; }
         #tmc-drilldown-modal .tmc-cons-warn { border: 1px solid #fed7aa; background: #fff7ed; color: #b45309; }
+        #tmc-drilldown-modal .tmc-cons-info { border: 1px solid #bae6fd; background: #f0f9ff; color: #0369a1; }
         #tmc-drilldown-modal .tmc-cons-divider { height: 1px; background: #f2f4f7; margin: 4px 0; }
 
         /* --- נקודות סטטוס --- */
@@ -7587,19 +7631,33 @@
     }
 
     // Helper to detect mixed diet (Product Qty << Category Total)
+    // FIX: Only for food, and handle Unit vs Kg mismatch
     function tmcGetDietContext(skuRow, catRow) {
       if (!skuRow || !catRow) return null;
 
+      const catType = (catRow.consumption_category || '').toLowerCase();
+      const catName = (catRow.category_name || '').toLowerCase();
+      if (catType.includes('litter') || catType === 'other' || catName.includes('חול') || catName.includes('ציוד')) {
+        return null;
+      }
+
       const prodQty = Number(skuRow.last_quantity || 0);
       const catTotal = Number(catRow.expected_next_total_amount || 0);
-      const catUnit = String(catRow.unit || '').toLowerCase();
 
-      if (prodQty > 0 && catTotal > (prodQty * 1.8)) {
+      let prodTotalWeight = prodQty;
+      if (skuRow.pack_value && skuRow.pack_value > 0) {
+        prodTotalWeight = prodQty * skuRow.pack_value;
+      } else {
+        if (catTotal > 10 && prodQty < 10) return null;
+      }
+
+      if (prodTotalWeight > 0 && catTotal > (prodTotalWeight * 1.8)) {
+        const catUnit = String(catRow.unit || '').toLowerCase();
         return {
           isMixed: true,
           text: 'תזונה מעורבת',
           icon: '<i class="fa-solid fa-utensils" style="color:#f59e0b;"></i>',
-          desc: `הלקוח צורך כ-${Math.round(catTotal)} ${catUnit} בסה"כ, אך מוצר זה הוא רק כ-${prodQty} יח'.`
+          desc: `הלקוח צורך כ-${Math.round(catTotal)} ${catUnit} בסה"כ, אך מוצר זה מהווה רק כ-${Math.round(prodTotalWeight)} ${catUnit}.`
         };
       }
       return null;
@@ -8124,7 +8182,8 @@
         sortCol: 'status',
         sortDir: 'asc',
         productConsumptionCategory,
-        productPackUnit
+        productPackUnit,
+        dosByPhone: new Map()
       };
 
       function sortDrilldownRows(list, state) {
@@ -8291,6 +8350,26 @@
               rangeFulfilled: filteredByRange.filter(o => o.status === 'fulfilled').length,
               rangeMissed: filteredByRange.filter(o => o.status === 'missed').length
             };
+
+            // Home Inventory (DOS): batch fetch t_category_dos_snapshot for drilldown customers
+            const categoryKey = sortState.productConsumptionCategory;
+            if (categoryKey && rows && rows.length > 0) {
+              const phones = Array.from(new Set(rows.map(r => tmcNormalizeILPhone(r.customer_phone || r.customer_key)).filter(Boolean)));
+              if (phones.length > 0) {
+                try {
+                  const inList = phones.map(p => encodeURIComponent(p)).join(',');
+                  const snapUrl = `/rest/v1/t_category_dos_snapshot?category_key=eq.${encodeURIComponent(categoryKey)}&customer_phone=in.(${inList})&select=customer_phone,dos_bucket,dos_days`;
+                  const snapRows = await supaRestFetch(snapUrl, { method: 'GET' });
+                  const dosByPhone = new Map();
+                  for (const sr of (Array.isArray(snapRows) ? snapRows : [])) {
+                    const p = tmcNormalizeILPhone(sr.customer_phone);
+                    if (p) dosByPhone.set(p, { dos_bucket: (sr.dos_bucket || 'NO_DATA').toString(), dos_days: sr.dos_days });
+                  }
+                  sortState.dosByPhone = dosByPhone;
+                } catch (_) {}
+              }
+            }
+            if (!sortState.dosByPhone) sortState.dosByPhone = new Map();
 
             renderOutcomesSection(tmcLimitToRange);
             renderDrilldownTable(rows, sortState);
@@ -8577,14 +8656,20 @@
           <table data-tm-static-links="1">
             <thead>
               <tr>
-                <th class="sortable" data-col="customer_name" style="width:25%;" title="שם הלקוח + מזהה/טלפון">${iconFor('customer_name')}לקוח</th>
-                <th class="sortable" data-col="status" title="סטטוס התחזית לפי תאריך צפוי">${iconFor('status')}סטטוס</th>
-                <th title="תחזית צריכה לפי קטגוריה (מזון/חול) + שורת 'למוצר הזה'">צריכה</th>
-                <th class="sortable" data-col="last_quantity" title="כמות מומלצת להזמנה עכשיו (בדרך כלל כמות אחרונה; אם הייתה סטוקאפ, מתוקן לכמות טיפוסית)">${iconFor('last_quantity')}כמות צפויה</th>
-                <th class="sortable" data-col="avg_gap_days_recent" title="מחזיק להזמנה (DOS): כמה ימים הכמות המומלצת מחזיקה. מוצג גם ≈ ימים ליחידה (מחזיק/כמות)">${iconFor('avg_gap_days_recent')}מחזיק (ימים)</th>
-                <th class="sortable" data-col="last_order_date" title="תאריך ההזמנה האחרונה של הלקוח למוצר">${iconFor('last_order_date')}הזמנה אחרונה</th>
-                <th class="sortable" data-col="next_expected_date" title="התאריך הצפוי הבא לפי DOS">${iconFor('next_expected_date')}צפי</th>
-                <th class="sortable" data-col="n_orders" title="מספר ההזמנות ההיסטוריות של הלקוח למוצר">${iconFor('n_orders')}הזמנות עבר</th>
+                <th class="sortable" data-col="customer_name" style="width:22%;" title="שם הלקוח">לקוח</th>
+                <th class="sortable" data-col="status" style="width:12%; border-left:1px solid #eaecf0;"><i class="fa-solid fa-arrow-up tmc-sort-icon"></i> סטטוס</th>
+
+                <th style="width:10%; border-left:1px solid #eaecf0;" title="מלאי בית לפי צריכה (CRIT=נגמר, LOW=נמוך, OK=תקין)">מלאי בבית</th>
+
+                <th style="width:26%; background:#f5faff; border-left:1px solid #eaecf0; color:#005c99;" title="נתונים כלליים על הקטגוריה של החיה">
+                   <i class="fa-solid fa-layer-group" style="opacity:0.4; margin-left:4px;"></i> צריכה כוללת
+                </th>
+
+                <th class="sortable" data-col="last_quantity" title="כמות להזמנה">כמות</th>
+                <th class="sortable" data-col="avg_gap_days_recent" title="לכמה זמן זה מספיק">מחזיק</th>
+                <th class="sortable" data-col="last_order_date">הזמנה אחרונה</th>
+                <th class="sortable" data-col="next_expected_date">צפי</th>
+                <th class="sortable" data-col="n_orders">עבר</th>
               </tr>
             </thead>
             <tbody>
@@ -8760,6 +8845,17 @@
           const phoneNorm = __normPhoneFromKey(r.customer_phone || r.customer_key);
           const consumptionPlaceholder = `<div class="tmc-cons-cell"><div class="tmc-cons-muted">טוען...</div></div>`;
 
+          const dosByPhone = state.dosByPhone || new Map();
+          const dosRec = phoneNorm ? dosByPhone.get(phoneNorm) : null;
+          const dosBucket = (dosRec && dosRec.dos_bucket) ? String(dosRec.dos_bucket).toUpperCase() : 'NO_DATA';
+          const dosDays = dosRec && (dosRec.dos_days != null) ? Number(dosRec.dos_days) : null;
+          const dosTooltip = Number.isFinite(dosDays) ? `Enough for ~${dosDays} days` : (dosBucket === 'NO_DATA' ? 'No usage-based estimate' : '');
+          let homeStockHtml = '';
+          if (dosBucket === 'CRIT') homeStockHtml = `<span class="tmc-dos-home-crit" title="${escapeHtml(dosTooltip)}">נגמר</span>`;
+          else if (dosBucket === 'LOW') homeStockHtml = `<span class="tmc-dos-home-low" title="${escapeHtml(dosTooltip)}">נמוך</span>`;
+          else if (dosBucket === 'OK') homeStockHtml = `<span class="tmc-dos-home-ok" title="${escapeHtml(dosTooltip)}">תקין</span>`;
+          else homeStockHtml = `<span class="tmc-dos-home-nodata" title="${escapeHtml(dosTooltip)}">אין מידע</span>`;
+
           html.push(`
             <tr class="${ui.rowClass ?? ui.row}">
               <td class="tmc-td-name">
@@ -8767,6 +8863,7 @@
                 <div style="color:#667085; font-size:12px;">${escapeHtml(r.customer_key || '')}</div>
               </td>
               <td>${statusHtml}</td>
+              <td style="font-size:13px;" title="${escapeHtml(dosTooltip)}">${homeStockHtml}</td>
               <td class="tmc-td-consumption" data-customer-phone="${escapeHtml(phoneNorm || '')}" style="max-width:240px;">
                 ${consumptionPlaceholder}
               </td>
