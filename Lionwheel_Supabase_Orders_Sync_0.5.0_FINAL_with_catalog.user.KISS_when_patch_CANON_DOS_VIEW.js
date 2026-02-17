@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.16
+// @version      0.8.18
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -3567,6 +3567,12 @@
         .tmc-dos-home-low { color: #b54708; font-weight: 700; background: #fffaeb; padding: 2px 6px; border-radius: 4px; }
         .tmc-dos-home-ok { color: #027a48; font-weight: 600; background: #ecfdf3; padding: 2px 6px; border-radius: 4px; }
         .tmc-dos-home-nodata { color: #98a2b3; font-style: italic; font-size: 11px; }
+
+        /* Outcomes section accordion (collapsed by default) */
+        .tmc-outcomes-header { cursor: pointer; user-select: none; transition: background 0.1s; }
+        .tmc-outcomes-header:hover { background: #f9fafb; }
+        .tmc-outcomes-chevron { transition: transform 0.2s; display: inline-block; }
+        .tmc-rotated { transform: rotate(180deg); }
       `;
       const style = document.createElement('style');
       style.textContent = css;
@@ -4074,6 +4080,7 @@
     // Helper: Parse JSON array safely
     function safeJsonArrayParse(val) {
       if (!val) return [];
+      if (Array.isArray(val)) return val; // If already array (e.g. from Supabase), return as is
       try {
         const parsed = JSON.parse(val);
         return Array.isArray(parsed) ? parsed : [];
@@ -4150,7 +4157,7 @@
       // NEW: Fetch by supplier cycle (what to order per supplier cycle window)
       // Note: Keep the select explicit to reduce payload.
       let url = `/rest/v1/v_product_order_qty_by_cycle` +
-        `?select=sku,product_name,supplier,suggested_cycle_days,qty_within_cycle,n_records,first_due_date,last_due_date,n_missed` +
+        `?select=sku,product_name,supplier,suggested_cycle_days,qty_within_cycle,n_records,first_due_date,last_due_date,n_missed,customer_keys` +
         `&order=qty_within_cycle.desc.nullslast&limit=5000`;
 
       console.log('[Forecast] Fetching product overview (cycle) from:', url);
@@ -5934,8 +5941,33 @@
       `;
     }
 
-    function tmcRenderQtyWithinCycleCell(qty) {
-      return `<div class="tmc-qty-cell">${tmcRenderQtyValue(qty)}</div>`;
+    function tmcRenderQtyWithinCycleCell(qtySummary) {
+      const legacyQty = (qtySummary == null) ? null : Number(qtySummary);
+      return (row => {
+        const qCrit = Number(row?._qtyCrit) || 0;
+        const qLow = Number(row?._qtyLow) || 0;
+        const cCrit = Number(row?._critCount) || 0;
+        const cLow = Number(row?._lowCount) || 0;
+
+        if (qCrit > 0) {
+          const legacyLine = (legacyQty != null) ? `<div style="font-size:10px;color:#98A2B3;">מחזור: ${escapeHtml(String(legacyQty))}</div>` : '';
+          return `<div class="tmc-qty-cell">
+        <div title="מומלץ: ${qCrit} יח׳ (עבור ${cCrit} לקוחות עם חוסר מלאי בבית)" style="color:#d32f2f; font-weight:900; font-size:18px; line-height:1;">${escapeHtml(String(qCrit))}</div>
+        <div style="font-size:10px; color:#c62828; font-weight:700;">עבור ${escapeHtml(String(cCrit))} 🏠</div>
+        ${legacyLine}
+      </div>`;
+        }
+        if (qLow > 0) {
+          const legacyLine = (legacyQty != null) ? `<div style="font-size:10px;color:#98A2B3;">מחזור: ${escapeHtml(String(legacyQty))}</div>` : '';
+          return `<div class="tmc-qty-cell">
+        <div title="מומלץ: ${qLow} יח׳ (עבור ${cLow} לקוחות עם מלאי נמוך בבית)" style="color:#e65100; font-weight:900; font-size:18px; line-height:1;">${escapeHtml(String(qLow))}</div>
+        <div style="font-size:10px; color:#ef6c00; font-weight:700;">עבור ${escapeHtml(String(cLow))} 🏠</div>
+        ${legacyLine}
+      </div>`;
+        }
+        const qty = (legacyQty == null) ? '—' : String(legacyQty);
+        return `<div class="tmc-qty-cell"><div style="font-weight:800; font-size:18px; color:#101828; line-height:1;">${escapeHtml(qty)}</div></div>`;
+      });
     }
 
     /** Gradient: אפור → אדום כהה → אדום בוהק → כתום → כתום בוהק. position 0=gray, 1=urgent (היום/מחר). */
@@ -6440,16 +6472,7 @@
         return;
       }
 
-      // Home Inventory (DOS) signals are pre-fetched in fetchDataAndRender and attached as _critCount/_lowCount.
-      // Build lookup map from rows so badge rendering is unchanged.
-      let skuSignalsMap = new Map();
-      for (const r of rows) {
-        const sig = { crit: Number(r?._critCount) || 0, low: Number(r?._lowCount) || 0 };
-        const kSku = tmcNormalizeDigits(r?.sku);
-        if (kSku) skuSignalsMap.set(kSku, sig);
-        const kBar = tmcNormalizeDigits(r?.barcode);
-        if (kBar && !skuSignalsMap.has(kBar)) skuSignalsMap.set(kBar, sig);
-      }
+      // Home Inventory (DOS) signals are in fetchDataAndRender: _critCount, _lowCount, _qtyCrit, _qtyLow on each row.
 
       // טען תמונות *רק* עבור ה-SKUs שמופיעים כרגע במסך
       try {
@@ -6613,14 +6636,18 @@
         const tot = (row._sortPriority != null ? row._sortPriority : uSc + rSc);
         const priorityTitle = `ציון משולב: ${Math.round(tot)} (דחיפות ${uSc} + אמינות ${rSc >= 0 ? '+' : ''}${rSc}) — ✅${f} התגשמו, ❌${m} חרגו. Qty: ${row._sortQty ?? '?'}. לחץ לפריסה.`.trim();
         const barcodeNorm = tmcNormalizeDigits(row?.barcode);
-        const dosSignals = skuSignalsMap.get(skuNorm) || skuSignalsMap.get(barcodeNorm) || { crit: 0, low: 0 };
+        const dosSignals = { crit: Number(row?._critCount) || 0, low: Number(row?._lowCount) || 0 };
         let dosBadgesHtml = '';
         if (dosSignals.crit > 0) {
-          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-crit" title="${dosSignals.crit} לקוחות בלי אוכל (מלאי <= 0)">🏠 ${dosSignals.crit} נגמר!</span> `;
+          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-crit" title="${dosSignals.crit} לקוחות עם חוסר מלאי בבית (מלאי <= 0)">🏠 ${dosSignals.crit} נגמר!</span> `;
         }
         if (dosSignals.low > 0) {
-          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-low" title="${dosSignals.low} לקוחות עם מלאי נמוך (< 5 ימים)">🏠 ${dosSignals.low} בקרוב</span>`;
+          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-low" title="${dosSignals.low} לקוחות עם מלאי נמוך בבית (< 5 ימים)">🏠 ${dosSignals.low} בקרוב</span>`;
         }
+
+        const legacyQty = qtySummary != null ? qtySummary : (row?.qty_within_cycle ?? row?.last_quantity ?? 0);
+        const qtyHtml = tmcRenderQtyWithinCycleCell(legacyQty != null ? legacyQty : qtySummary)(row);
+
         const cons = tmcBuildConsumptionCell(row);
         tr.innerHTML = `
           <td style="color:#667085;font-size:12px;font-weight:500;">${idx + 1}</td>
@@ -6638,7 +6665,7 @@
             <div style="font-size:11px;color:#667085;">${accuracyParts.length ? accuracyParts.join(' ') + ' (היסטוריה מלאה)' : '—'}</div>
             <div style="margin-top:4px;">${dosBadgesHtml}</div>
           </td>
-          <td>${tmcRenderQtyWithinCycleCell(qtySummary)}</td>
+          <td>${qtyHtml}</td>
           <td>${tmcRenderWhenCell(whenSummary, row._overdueDates, row._upcomingDates, row._earliestDateIso)}</td>
           <td class="tmc-consumption-cell">${cons.html}</td>
         `;
@@ -7153,7 +7180,7 @@
 
           if (!Array.isArray(data)) {
             let url = `/rest/v1/${FORECAST_VIEW}` +
-              `?select=sku,product_name,supplier,suggested_cycle_days,qty_within_cycle,n_records,first_due_date,last_due_date,n_missed` +
+              `?select=sku,product_name,supplier,suggested_cycle_days,qty_within_cycle,n_records,first_due_date,last_due_date,n_missed,customer_keys` +
               `&order=qty_within_cycle.desc,sku.asc&limit=5000`;
 
             // Apply date filter if provided (overlapping window)
@@ -7169,48 +7196,137 @@
 
             data = await supaRestFetchPaged(url, { method: 'GET' });
           }
-          const normalizedRows = (data || []).map(normalizeProductRow);
+          let normalizedRows = (data || []).map(normalizeProductRow);
           
           forecastProductRows = normalizedRows;
 
-          // Pre-fetch DOS signals (sku_signals) so sorting and rendering can use _critCount/_lowCount
-          try {
-            const allSkus = Array.from(new Set(
-              normalizedRows
-                .flatMap(r => [tmcNormalizeDigits(r?.sku), tmcNormalizeDigits(r?.barcode)])
-                .filter(Boolean)
-            ));
-            const skuSignalsMap = new Map();
-            if (allSkus.length > 0) {
-              const CHUNK = 200;
-              for (let i = 0; i < allSkus.length; i += CHUNK) {
-                const batch = allSkus.slice(i, i + CHUNK);
-                const inList = batch.map(s => encodeURIComponent(s)).join(',');
-                const path = `/rest/v1/sku_signals?sku=in.(${inList})&select=sku,crit_count,low_count`;
+          // Granular DOS: use customer_keys (product overview API) to get visible customers in date range
+          const visiblePhones = new Set();
+          normalizedRows.forEach(row => {
+            const keys = Array.isArray(row.customer_keys) ? row.customer_keys : [];
+            keys.forEach(p => {
+              if (p) visiblePhones.add(tmcNormalizeILPhone(p));
+            });
+          });
+
+          const dosMap = new Map();
+          if (visiblePhones.size > 0) {
+            try {
+              const uniquePhones = Array.from(visiblePhones);
+              const CHUNK = 150;
+              for (let i = 0; i < uniquePhones.length; i += CHUNK) {
+                const batch = uniquePhones.slice(i, i + CHUNK);
+                const inList = batch.map(p => encodeURIComponent(p)).join(',');
+                const path = `/rest/v1/v_dos_details_per_customer_sku?customer_phone=in.(${inList})&select=sku,customer_phone,dos_bucket,last_qty`;
+                const data = await supaRestFetch(path, { method: 'GET' });
+                if (Array.isArray(data)) {
+                  data.forEach(item => {
+                    const kSku = tmcNormalizeDigits(item.sku);
+                    const kPhone = tmcNormalizeILPhone(item.customer_phone);
+                    if (kSku && kPhone) {
+                      dosMap.set(`${kSku}|${kPhone}`, {
+                        bucket: item.dos_bucket,
+                        qty: Number(item.last_qty) || 0
+                      });
+                    }
+                  });
+                }
+              }
+            } catch (e) {
+              console.warn('[Forecast] Granular DOS fetch failed', e);
+            }
+          }
+
+          if (dosMap.size === 0) {
+            console.warn('[Forecast] Granular DOS empty -> skipping Strict Filter (fallback to legacy rows).');
+          } else {
+            normalizedRows.forEach(row => {
+              let crit = 0, low = 0, qtyCrit = 0, qtyLow = 0;
+              const keys = Array.isArray(row.customer_keys) ? row.customer_keys : [];
+              const skuNorm = tmcNormalizeDigits(row.sku);
+              const barNorm = tmcNormalizeDigits(row.barcode);
+              keys.forEach(rawPhone => {
+                const phone = tmcNormalizeILPhone(rawPhone);
+                if (!phone) return;
+                const data = dosMap.get(`${skuNorm}|${phone}`) || dosMap.get(`${barNorm}|${phone}`);
+                if (data) {
+                  if (data.bucket === 'CRIT') {
+                    crit++;
+                    qtyCrit += data.qty;
+                  } else if (data.bucket === 'LOW') {
+                    low++;
+                    qtyLow += data.qty;
+                  }
+                  // OK / Fulfilled: do not add to qty — customer has stock
+                }
+              });
+              row._critCount = crit;
+              row._lowCount = low;
+              row._qtyCrit = qtyCrit;
+              row._qtyLow = qtyLow;
+            });
+
+            // === STRICT FILTER: ABSOLUTE DEMAND ONLY ===
+            // Remove any product that doesn't have at least one customer in CRIT or LOW status.
+            const originalCount = normalizedRows.length;
+
+            normalizedRows = normalizedRows.filter(r => {
+              const crit = r._critCount || 0;
+              const low = r._lowCount || 0;
+              return crit > 0 || low > 0;
+            });
+
+            console.log(`[Forecast] Strict Filter: Kept ${normalizedRows.length}/${originalCount} rows. Removed products with no active shortage.`);
+          }
+
+          // --- Pre-fetch sku_signals (needed_qty_crit/low) for "כמה להזמין" column ---
+          const allKeyDigits = Array.from(new Set(
+            normalizedRows.flatMap(r => [tmcNormalizeDigits(r?.sku), tmcNormalizeDigits(r?.barcode)].filter(Boolean))
+          ));
+          const skuSignalsMap = new Map();
+          if (allKeyDigits.length > 0) {
+            const CHUNK = 200;
+            for (let i = 0; i < allKeyDigits.length; i += CHUNK) {
+              const batch = allKeyDigits.slice(i, i + CHUNK);
+              const inList = batch.map(v => encodeURIComponent(v)).join(',');
+              const path =
+                `/rest/v1/sku_signals?sku=in.(${inList})` +
+                `&select=sku,crit_count,low_count,needed_qty_crit,needed_qty_low`;
+              try {
                 const sigs = await supaRestFetch(path, { method: 'GET' });
                 if (Array.isArray(sigs)) {
                   sigs.forEach(s => {
                     const k = tmcNormalizeDigits(s?.sku);
-                    if (k) skuSignalsMap.set(k, { crit: Number(s?.crit_count) || 0, low: Number(s?.low_count) || 0 });
+                    if (!k) return;
+                    skuSignalsMap.set(k, {
+                      crit: Number(s?.crit_count) || 0,
+                      low: Number(s?.low_count) || 0,
+                      qtyCrit: Number(s?.needed_qty_crit) || 0,
+                      qtyLow: Number(s?.needed_qty_low) || 0
+                    });
                   });
                 }
+              } catch (e) {
+                console.warn('[Forecast] sku_signals prefetch failed', e);
               }
             }
-            normalizedRows.forEach(r => {
-              const kSku = tmcNormalizeDigits(r?.sku);
-              const kBar = tmcNormalizeDigits(r?.barcode);
-              const sig = (kSku && skuSignalsMap.get(kSku)) || (kBar && skuSignalsMap.get(kBar)) || { crit: 0, low: 0 };
-              r._critCount = Number(sig?.crit) || 0;
-              r._lowCount = Number(sig?.low) || 0;
-            });
-          } catch (e) {
-            console.warn('[Forecast] sku_signals prefetch failed (continuing):', e);
           }
+          normalizedRows.forEach(row => {
+            const s = tmcNormalizeDigits(row?.sku);
+            const b = tmcNormalizeDigits(row?.barcode);
+            const sig = (s && skuSignalsMap.get(s)) || (b && skuSignalsMap.get(b)) || null;
+            if (sig) {
+              row._qtyCrit = sig.qtyCrit;
+              row._qtyLow = sig.qtyLow;
+            }
+          });
+          // -------------------------------------------------------------------------
 
+          forecastProductRows = normalizedRows;
           stateArg.productOverviewRows = normalizedRows;
-          stateArg.forecasts = normalizedRows; 
+          stateArg.forecasts = normalizedRows;
           stateArg.totalFetched = normalizedRows.length;
-         
+
           await renderForecastWrapper(stateArg, refs);
 
           // --- Catalog enrichment (SKU → barcode + supplier) in background ---
@@ -8225,12 +8341,16 @@
           productPackUnit = enriched.pack_unit || null;
         }
       } catch (_) {}
+      const mainRow = (typeof forecastProductRows !== 'undefined' && Array.isArray(forecastProductRows))
+        ? forecastProductRows.find(r => tmcNormalizeDigits(r?.sku) === normalizedSku)
+        : null;
       const sortState = {
         sortCol: 'status',
         sortDir: 'asc',
         productConsumptionCategory,
         productPackUnit,
-        dosByPhone: new Map()
+        dosByPhone: new Map(),
+        dosSignals: { crit: Number(mainRow?._critCount) || 0, low: Number(mainRow?._lowCount) || 0 }
       };
 
       function sortDrilldownRows(list, state) {
@@ -8609,37 +8729,51 @@
           `;
         });
 
-        // 4. Render Main Container with New Checkbox Logic
+        // 4. Render Main Container: clickable header + collapsible table body
         const m = outcomesMeta;
         const displayFulfilled = limitToRange ? m.rangeFulfilled : m.historyFulfilled;
         const displayMissed = limitToRange ? m.rangeMissed : m.historyMissed;
+        const ok = displayFulfilled;
+        const bad = displayMissed;
 
         wrap.innerHTML = `
           <div style="background:#fff; border:1px solid #eaecf0; border-radius:8px; overflow:hidden; box-shadow:0 1px 2px rgba(16,24,40,0.05);">
-            <div style="padding:10px 14px; background:#fff; border-bottom:1px solid #eaecf0; display:flex; justify-content:space-between; align-items:center;">
-              <span style="font-weight:700; color:#101828; font-size:13px;">
-                היסטוריית דיוק (מוצג: ${ICON_OK} ${displayFulfilled} / ${ICON_BAD} ${displayMissed})
-              </span>
-              <label style="font-size:12px; color:#667085; display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
-                <input type="checkbox" id="tmc-limit-range-toggle" ${limitToRange ? 'checked' : ''}> רק בטווח הנבחר
-              </label>
-            </div>
-
-            <table style="width:100%; border-collapse:collapse; text-align:right;">
-              <thead>
-                <tr style="background:#fcfcfd;">
-                  ${thOuter('name', 'לקוח', '40%')}
-                  ${thOuter('total', 'סה״כ', '15%')}
-                  ${thOuter('fulfilled', ICON_OK + ' התגשם', '20%')}
-                  ${thOuter('missed', ICON_BAD + ' פוספס', '25%')}
-                </tr>
-              </thead>
-              <tbody>
-                ${rowsHtml}
-              </tbody>
-            </table>
+            <details class="tmc-acc" style="background:#fff; border-bottom:1px solid #eaecf0;">
+              <summary style="padding:10px 14px; display:flex; justify-content:space-between; align-items:center; cursor:pointer; list-style:none;">
+                <span style="font-weight:700; color:#101828; font-size:13px;">
+                  היסטוריית דיוק (✅${ok} / ❌${bad})
+                </span>
+                <label style="font-size:12px; color:#667085; display:flex; align-items:center; gap:6px; cursor:pointer; user-select:none;">
+                  <input type="checkbox" id="tmc-limit-range-toggle" ${limitToRange ? 'checked' : ''}> רק בטווח הנבחר
+                </label>
+              </summary>
+              <div id="tmc-outcomes-body" style="padding:0 14px 12px 14px;">
+                <table style="width:100%; border-collapse:collapse; text-align:right;">
+                  <thead>
+                    <tr style="background:#fcfcfd;">
+                      ${thOuter('name', 'לקוח', '40%')}
+                      ${thOuter('total', 'סה״כ', '15%')}
+                      ${thOuter('fulfilled', ICON_OK + ' התגשם', '20%')}
+                      ${thOuter('missed', ICON_BAD + ' פוספס', '25%')}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${rowsHtml}
+                  </tbody>
+                </table>
+              </div>
+            </details>
           </div>
         `;
+
+        // Prevent checkbox click from toggling the <details>
+        setTimeout(() => {
+          const cb = document.getElementById('tmc-limit-range-toggle');
+          if (cb) {
+            cb.addEventListener('click', (e) => e.stopPropagation());
+            cb.addEventListener('mousedown', (e) => e.stopPropagation());
+          }
+        }, 0);
 
         wrap.querySelector('#tmc-limit-range-toggle').addEventListener('change', (e) => {
           tmcLimitToRange = e.target.checked;
@@ -8683,6 +8817,15 @@
       function renderDrilldownTable(list, state) {
         const sorted = sortDrilldownRows(list, state);
         const html = [];
+        const critCount = Number(state?.dosSignals?.crit) || 0;
+        const showCountWarning = critCount > 0 && list.length < critCount;
+        if (showCountWarning) {
+          html.push(`
+            <div class="tmc-drilldown-count-warning" style="background:#fef2f2; border:1px solid #fecaca; color:#991b1b; padding:10px 14px; border-radius:8px; margin-bottom:12px; font-size:13px; font-weight:500;">
+              מציג ${list.length} מתוך ${critCount} לקוחות קריטיים (השאר מחוץ לטווח התאריכים שנבחר)
+            </div>
+          `);
+        }
         const iconFor = (key) => {
           if (state.sortCol !== key) return '';
           const iconClass = state.sortDir === 'desc' ? 'fa-arrow-down' : 'fa-arrow-up';
