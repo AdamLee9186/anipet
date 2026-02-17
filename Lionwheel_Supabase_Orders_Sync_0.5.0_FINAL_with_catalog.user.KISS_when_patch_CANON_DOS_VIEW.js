@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.22
+// @version      0.8.23
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -5400,6 +5400,23 @@
       return rows;
     }
 
+    // canonical 9-digit phone (no leading 0, no 972)
+    function tmcPhone9(v) {
+      const d = String(v ?? "").replace(/\D/g, "");
+      if (!d) return "";
+      if (d.startsWith("972")) {
+        const rest = d.slice(3);
+        return rest.startsWith("0") ? rest.slice(1) : rest;
+      }
+      if (d.length === 10 && d.startsWith("0")) return d.slice(1);
+      return d;
+    }
+
+    function tmcOutcomeIsFulfilled(rec) {
+      const s = String(rec?.outcome_status ?? "").toLowerCase();
+      return s === "fulfilled";
+    }
+
     function tmcIsDateInRangeInclusive(isoDate, fromIso, toIso) {
       if (!isoDate) return false;
       try {
@@ -5425,7 +5442,7 @@
       for (let i = 0; i < uniq.length; i += CHUNK) {
         const batch = uniq.slice(i, i + CHUNK);
         const inList = batch.map(v => encodeURIComponent(v)).join(',');
-        const path = `/rest/v1/v_dos_details_per_customer_sku?sku=in.(${inList})&select=sku,customer_phone,last_qty,dos_bucket,dos_days,due_date`;
+        const path = `/rest/v1/v_dos_details_per_customer_sku_v3?sku=in.(${inList})&select=sku,customer_phone,last_qty,dos_bucket,dos_days,due_date,outcome_status,outcome_order_date,outcome_window_start,outcome_window_end`;
         const rows = await supaRestFetch(path, { method: 'GET' });
         if (!Array.isArray(rows)) continue;
         for (const r of rows) {
@@ -5438,6 +5455,10 @@
             dos_bucket: (r?.dos_bucket != null ? String(r.dos_bucket) : null),
             dos_days: (r?.dos_days != null ? Number(r.dos_days) : null),
             due_date: (r?.due_date != null ? String(r.due_date).slice(0, 10) : null),
+            outcome_status: (r?.outcome_status != null ? String(r.outcome_status) : null),
+            outcome_order_date: (r?.outcome_order_date != null ? String(r.outcome_order_date).slice(0, 10) : null),
+            outcome_window_start: (r?.outcome_window_start != null ? String(r.outcome_window_start).slice(0, 10) : null),
+            outcome_window_end: (r?.outcome_window_end != null ? String(r.outcome_window_end).slice(0, 10) : null),
           });
         }
       }
@@ -7305,17 +7326,20 @@
               const keysArr = Array.isArray(row?.customer_keys) ? row.customer_keys : [];
               if (!entries || !entries.length || !keysArr.length) return;
 
-              const keys = new Set(keysArr.map(p => tmcNormalizeILPhone(p) || String(p).trim()).filter(Boolean));
+              // IMPORTANT: match against v3 normalization (9-digit)
+              const keys = new Set(keysArr.map(p => tmcPhone9(p)).filter(Boolean));
               let cCrit = 0, cLow = 0, qCrit = 0, qLow = 0;
 
               for (const e of entries) {
-                const phone = String(e?.customer_phone || '').trim();
-                const phoneNorm = tmcNormalizeILPhone(phone) || phone;
-                if (!phoneNorm || !keys.has(phoneNorm)) continue;
+                const phone9 = tmcPhone9(e.customer_phone);
+                if (!phone9 || !keys.has(phone9)) continue;
 
                 if (!isAllOpen) {
                   if (!tmcIsDateInRangeInclusive(e?.due_date, dateFrom, dateTo)) continue;
                 }
+
+                // If already fulfilled -> DO NOT count as shortage in main table
+                if (tmcOutcomeIsFulfilled(e)) continue;
 
                 const bucket = e?.dos_bucket;
                 if (bucket === 'CRIT') {
@@ -8899,6 +8923,14 @@
       renderOutcomesSection(tmcLimitToRange);
 
       function renderDrilldownTable(list, state) {
+        // When rows contain outcome_status from v3, hide fulfilled entries from "needs order" drilldown
+        if (Array.isArray(list) && list.length) {
+          list = list.filter(r => {
+            const s = String(r?.outcome_status ?? "").toLowerCase();
+            if (s === "fulfilled") return false;
+            return true;
+          });
+        }
         const sorted = sortDrilldownRows(list, state);
         const html = [];
         const critCount = Number(state?.dosSignals?.crit) || 0;
