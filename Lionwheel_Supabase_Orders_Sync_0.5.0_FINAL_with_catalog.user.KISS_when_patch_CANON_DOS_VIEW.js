@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.23
+// @version      0.8.24
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -161,7 +161,7 @@
     const SUPABASE_ITEMS_TABLE = 'lionwheel_export_task_items_raw';
     const SUPABASE_VISITS_TABLE = 'store_visits_raw';
     // Buyer mode: what to order now (by supplier cycle)
-    const FORECAST_VIEW = 'v_product_order_qty_by_cycle';
+    const FORECAST_VIEW = 'v_product_order_qty_by_cycle_active';
 
     /************************************************************
      *  EXCLUSIONS - פריטים שלא נשלחים ל-Supabase ולא מוצגים בתחזית
