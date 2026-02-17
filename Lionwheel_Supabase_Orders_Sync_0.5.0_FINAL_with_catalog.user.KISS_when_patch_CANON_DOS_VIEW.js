@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.21
+// @version      0.8.22
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -5400,6 +5400,50 @@
       return rows;
     }
 
+    function tmcIsDateInRangeInclusive(isoDate, fromIso, toIso) {
+      if (!isoDate) return false;
+      try {
+        const d = new Date(String(isoDate).slice(0, 10)); d.setHours(0, 0, 0, 0);
+        const f = fromIso ? new Date(String(fromIso).slice(0, 10)) : null;
+        const t = toIso ? new Date(String(toIso).slice(0, 10)) : null;
+        if (f) f.setHours(0, 0, 0, 0);
+        if (t) t.setHours(0, 0, 0, 0);
+        if (f && d < f) return false;
+        if (t && d > t) return false;
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function tmcPrefetchDosDetailsBySku(allSkus) {
+      const map = new Map();
+      const uniq = Array.from(new Set((allSkus || []).map(s => tmcNormalizeDigits(s)).filter(Boolean)));
+      if (!uniq.length) return map;
+
+      const CHUNK = 200;
+      for (let i = 0; i < uniq.length; i += CHUNK) {
+        const batch = uniq.slice(i, i + CHUNK);
+        const inList = batch.map(v => encodeURIComponent(v)).join(',');
+        const path = `/rest/v1/v_dos_details_per_customer_sku?sku=in.(${inList})&select=sku,customer_phone,last_qty,dos_bucket,dos_days,due_date`;
+        const rows = await supaRestFetch(path, { method: 'GET' });
+        if (!Array.isArray(rows)) continue;
+        for (const r of rows) {
+          const sku = tmcNormalizeDigits(r?.sku);
+          if (!sku) continue;
+          if (!map.has(sku)) map.set(sku, []);
+          map.get(sku).push({
+            customer_phone: String(r?.customer_phone || '').trim(),
+            last_qty: (r?.last_qty != null ? Number(r.last_qty) : 0),
+            dos_bucket: (r?.dos_bucket != null ? String(r.dos_bucket) : null),
+            dos_days: (r?.dos_days != null ? Number(r.dos_days) : null),
+            due_date: (r?.due_date != null ? String(r.due_date).slice(0, 10) : null),
+          });
+        }
+      }
+      return map;
+    }
+
     /**
      * פונקציית עזר ל-GM_xmlhttpRequest עם Promise
      */
@@ -6340,6 +6384,8 @@
       const listEl = ui.body || ui.listWrap;
       listEl.innerHTML = '<div class="tmc-body-loader" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:320px;color:#667085;position:relative;z-index:10002;"><i class="fa fa-spinner fa-spin" style="font-size:48px;display:block;margin-bottom:16px;"></i><span style="font-size:16px;">טוען סיכום צפי…</span></div>';
 
+      // Main table signals from row._critCount/_lowCount/_qtyCrit/_qtyLow (range-aware, from v_dos_details_per_customer_sku in fetchDataAndRender). No skuSignalsMap here.
+
       // Apply the same exclusions as sync (without tracking stats)
       const filteredRows = [];
       const YIELD_EVERY = Math.max(10, Number(LW_ORDERS_CONFIG.YIELD_EVERY || 50));
@@ -6557,7 +6603,6 @@
         { key: 'priority', label: 'עדיפות', width: '90px', title: 'עדיפות משולבת: דחיפות לפי תאריך + אמינות (✅התגשמה / ❌פוספס, ±14 ימים). מוצר עם הרבה פספוסים יכול לרדת בעדיפות גם אם קרוב בזמן.', icon: 'fa-flag' },
         { key: 'qty_within_cycle', label: 'כמה להזמין', width: '140px', title: 'כמה יחידות מומלץ להזמין במחזור ההזמנה של הספק', icon: 'fa-cubes' },
         { key: 'first_due_date', label: 'מתי צפוי', width: '220px', title: 'באילו ימים צפויות הזמנות (היום/מחר/שני הבא...) לפי התקופה שנבחרה' },
-        { key: 'consumption', label: 'תחזית צריכה', width: '160px', title: 'תחזית צריכה (MVP)', noSort: true },
       ];
 
       // בניית הכותרות
@@ -6676,19 +6721,19 @@
         const tot = (row._sortPriority != null ? row._sortPriority : uSc + rSc);
         const priorityTitle = `ציון משולב: ${Math.round(tot)} (דחיפות ${uSc} + אמינות ${rSc >= 0 ? '+' : ''}${rSc}) — ✅${f} התגשמו, ❌${m} חרגו. Qty: ${row._sortQty ?? '?'}. לחץ לפריסה.`.trim();
         const barcodeNorm = tmcNormalizeDigits(row?.barcode);
-        const dosSignals = { crit: Number(row?._critCount) || 0, low: Number(row?._lowCount) || 0 };
+        const critCount = Number(row?._critCount) || 0;
+        const lowCount = Number(row?._lowCount) || 0;
         let dosBadgesHtml = '';
-        if (dosSignals.crit > 0) {
-          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-crit" title="${dosSignals.crit} לקוחות עם חוסר מלאי בבית (מלאי <= 0)">🏠 ${dosSignals.crit} נגמר!</span> `;
+        if (critCount > 0) {
+          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-crit" title="${critCount} לקוחות עם חוסר מלאי בבית (בטווח הנבחר)">🏠 ${critCount} נגמר!</span> `;
         }
-        if (dosSignals.low > 0) {
-          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-low" title="${dosSignals.low} לקוחות עם מלאי נמוך בבית (< 5 ימים)">🏠 ${dosSignals.low} בקרוב</span>`;
+        if (lowCount > 0) {
+          dosBadgesHtml += `<span class="tmc-dos-badge tmc-dos-low" title="${lowCount} לקוחות עם מלאי נמוך בבית (בטווח הנבחר)">🏠 ${lowCount} בקרוב</span>`;
         }
 
         const legacyQty = qtySummary != null ? qtySummary : (row?.qty_within_cycle ?? row?.last_quantity ?? 0);
         const qtyHtml = tmcRenderQtyWithinCycleCell(legacyQty != null ? legacyQty : qtySummary)(row);
 
-        const cons = tmcBuildConsumptionCell(row);
         tr.innerHTML = `
           <td style="color:#667085;font-size:12px;font-weight:500;">${idx + 1}</td>
           <td>${imgHtml}</td>
@@ -6707,7 +6752,6 @@
           </td>
           <td>${qtyHtml}</td>
           <td>${tmcRenderWhenCell(whenSummary, row._overdueDates, row._upcomingDates, row._earliestDateIso)}</td>
-          <td class="tmc-consumption-cell">${cons.html}</td>
         `;
         
         tr.addEventListener('click', (e) => {
@@ -7239,56 +7283,63 @@
           }
           let normalizedRows = (data || []).map((r, i) => normalizeProductRow(r, i));
 
-          // PREFETCH sku_signals (source of truth for crit/low counts + smart qty + category_key)
-          const skuSignalMap = new Map();
+          // Range-aware DOS from v_dos_details_per_customer_sku: crit/low + smart qty only for row.customer_keys and only when due_date in selected range (except "כל הפתוחים")
           try {
-            const allKeys = Array.from(new Set(
-              normalizedRows.flatMap(r => [tmcNormalizeDigits(r?.sku), tmcNormalizeDigits(r?.barcode)].filter(Boolean))
-            ));
-            if (allKeys.length > 0) {
-              const CHUNK = 200;
-              for (let i = 0; i < allKeys.length; i += CHUNK) {
-                const batch = allKeys.slice(i, i + CHUNK);
-                const path = `/rest/v1/sku_signals?sku=in.(${batch.map(x => encodeURIComponent(x)).join(',')})&select=sku,category_key,crit_count,low_count,needed_qty_crit,needed_qty_low`;
-                const sigs = await supaRestFetch(path, { method: 'GET' });
-                if (Array.isArray(sigs)) {
-                  sigs.forEach(s => {
-                    const k = tmcNormalizeDigits(s?.sku);
-                    if (!k) return;
-                    skuSignalMap.set(k, {
-                      categoryKey: (s.category_key != null ? String(s.category_key) : null),
-                      crit: Number(s?.crit_count) || 0,
-                      low: Number(s?.low_count) || 0,
-                      qtyCrit: Number(s?.needed_qty_crit) || 0,
-                      qtyLow: Number(s?.needed_qty_low) || 0
-                    });
-                  });
+            const selectedKey = stateArg?.dateRangeKey || null;
+            const dateFrom = stateArg?.dateFrom || null;
+            const dateTo = stateArg?.dateTo || null;
+            const isAllOpen = (selectedKey === 'כל הפתוחים');
+
+            const allSkuKeys = normalizedRows.map(r => tmcNormalizeDigits(r?.sku)).filter(Boolean);
+            const dosBySku = await tmcPrefetchDosDetailsBySku(allSkuKeys);
+
+            let anySignals = false;
+            normalizedRows.forEach(row => {
+              row._critCount = 0;
+              row._lowCount = 0;
+              row._qtyCrit = 0;
+              row._qtyLow = 0;
+
+              const sku = tmcNormalizeDigits(row?.sku);
+              const entries = sku ? dosBySku.get(sku) : null;
+              const keysArr = Array.isArray(row?.customer_keys) ? row.customer_keys : [];
+              if (!entries || !entries.length || !keysArr.length) return;
+
+              const keys = new Set(keysArr.map(p => tmcNormalizeILPhone(p) || String(p).trim()).filter(Boolean));
+              let cCrit = 0, cLow = 0, qCrit = 0, qLow = 0;
+
+              for (const e of entries) {
+                const phone = String(e?.customer_phone || '').trim();
+                const phoneNorm = tmcNormalizeILPhone(phone) || phone;
+                if (!phoneNorm || !keys.has(phoneNorm)) continue;
+
+                if (!isAllOpen) {
+                  if (!tmcIsDateInRangeInclusive(e?.due_date, dateFrom, dateTo)) continue;
+                }
+
+                const bucket = e?.dos_bucket;
+                if (bucket === 'CRIT') {
+                  cCrit += 1;
+                  qCrit += (Number(e?.last_qty) || 0);
+                } else if (bucket === 'LOW') {
+                  cLow += 1;
+                  qLow += (Number(e?.last_qty) || 0);
                 }
               }
-            }
+
+              row._critCount = cCrit;
+              row._lowCount = cLow;
+              row._qtyCrit = qCrit;
+              row._qtyLow = qLow;
+
+              if (cCrit > 0 || cLow > 0) anySignals = true;
+            });
+
+            stateArg._signalsReady = anySignals;
           } catch (e) {
-            console.warn('[Forecast] sku_signals prefetch failed', e);
+            console.warn('[Forecast] Range-aware DOS prefetch failed; keeping legacy rows without shortage signals', e);
+            stateArg._signalsReady = false;
           }
-
-          normalizedRows.forEach(r => {
-            const skuKey = tmcNormalizeDigits(r?.sku);
-            const bcKey = tmcNormalizeDigits(r?.barcode);
-            const sig = (skuKey && skuSignalMap.get(skuKey)) || (bcKey && skuSignalMap.get(bcKey)) || null;
-            if (sig) {
-              r._categoryKey = sig.categoryKey;
-              r._critCount = sig.crit;
-              r._lowCount = sig.low;
-              r._qtyCrit = sig.qtyCrit;
-              r._qtyLow = sig.qtyLow;
-            } else {
-              r._critCount = 0;
-              r._lowCount = 0;
-              r._qtyCrit = 0;
-              r._qtyLow = 0;
-            }
-          });
-
-          stateArg._signalsReady = (skuSignalMap.size > 0);
 
           forecastProductRows = normalizedRows;
           stateArg.productOverviewRows = normalizedRows;
