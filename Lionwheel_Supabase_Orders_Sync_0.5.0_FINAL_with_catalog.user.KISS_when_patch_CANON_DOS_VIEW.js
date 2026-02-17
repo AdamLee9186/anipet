@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.18
+// @version      0.8.19
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -4080,13 +4080,29 @@
     // Helper: Parse JSON array safely
     function safeJsonArrayParse(val) {
       if (!val) return [];
-      if (Array.isArray(val)) return val; // If already array (e.g. from Supabase), return as is
-      try {
-        const parsed = JSON.parse(val);
-        return Array.isArray(parsed) ? parsed : [];
-      } catch {
-        return [];
+
+      // 1) Already an array (PostgREST often returns text[] as JSON array)
+      if (Array.isArray(val)) return val;
+
+      // 2) Postgres array literal: "{050...,052...}"
+      if (typeof val === 'string') {
+        const s = val.trim();
+        if (s.startsWith('{') && s.endsWith('}')) {
+          const inner = s.slice(1, -1).trim();
+          if (!inner) return [];
+          return inner.split(',').map(x => x.trim().replace(/^"+|"+$/g, '')).filter(Boolean);
+        }
+
+        // 3) JSON string: '["050...","052..."]'
+        try {
+          const parsed = JSON.parse(s);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
       }
+
+      return [];
     }
 
     // Helper: Normalize product row.
@@ -7209,6 +7225,17 @@
             });
           });
 
+          // Guard: if we have no customer_keys at all, do NOT run strict filter
+          if (visiblePhones.size === 0) {
+            console.warn('[Forecast] Strict Filter: visiblePhones empty (missing customer_keys?) -> skipping Strict Filter, showing legacy rows.');
+            forecastProductRows = normalizedRows;
+            stateArg.productOverviewRows = normalizedRows;
+            stateArg.forecasts = normalizedRows;
+            stateArg.totalFetched = normalizedRows.length;
+            await renderForecastWrapper(stateArg, refs);
+            return;
+          }
+
           const dosMap = new Map();
           if (visiblePhones.size > 0) {
             try {
@@ -7237,47 +7264,54 @@
             }
           }
 
-          if (dosMap.size === 0) {
+          // Guard: if dosMap is empty, skip strict filter (avoid empty table)
+          if (!dosMap || dosMap.size === 0) {
             console.warn('[Forecast] Granular DOS empty -> skipping Strict Filter (fallback to legacy rows).');
-          } else {
-            normalizedRows.forEach(row => {
-              let crit = 0, low = 0, qtyCrit = 0, qtyLow = 0;
-              const keys = Array.isArray(row.customer_keys) ? row.customer_keys : [];
-              const skuNorm = tmcNormalizeDigits(row.sku);
-              const barNorm = tmcNormalizeDigits(row.barcode);
-              keys.forEach(rawPhone => {
-                const phone = tmcNormalizeILPhone(rawPhone);
-                if (!phone) return;
-                const data = dosMap.get(`${skuNorm}|${phone}`) || dosMap.get(`${barNorm}|${phone}`);
-                if (data) {
-                  if (data.bucket === 'CRIT') {
-                    crit++;
-                    qtyCrit += data.qty;
-                  } else if (data.bucket === 'LOW') {
-                    low++;
-                    qtyLow += data.qty;
-                  }
-                  // OK / Fulfilled: do not add to qty — customer has stock
-                }
-              });
-              row._critCount = crit;
-              row._lowCount = low;
-              row._qtyCrit = qtyCrit;
-              row._qtyLow = qtyLow;
-            });
-
-            // === STRICT FILTER: ABSOLUTE DEMAND ONLY ===
-            // Remove any product that doesn't have at least one customer in CRIT or LOW status.
-            const originalCount = normalizedRows.length;
-
-            normalizedRows = normalizedRows.filter(r => {
-              const crit = r._critCount || 0;
-              const low = r._lowCount || 0;
-              return crit > 0 || low > 0;
-            });
-
-            console.log(`[Forecast] Strict Filter: Kept ${normalizedRows.length}/${originalCount} rows. Removed products with no active shortage.`);
+            forecastProductRows = normalizedRows;
+            stateArg.productOverviewRows = normalizedRows;
+            stateArg.forecasts = normalizedRows;
+            stateArg.totalFetched = normalizedRows.length;
+            await renderForecastWrapper(stateArg, refs);
+            return;
           }
+
+          normalizedRows.forEach(row => {
+            let crit = 0, low = 0, qtyCrit = 0, qtyLow = 0;
+            const keys = Array.isArray(row.customer_keys) ? row.customer_keys : [];
+            const skuNorm = tmcNormalizeDigits(row.sku);
+            const barNorm = tmcNormalizeDigits(row.barcode);
+            keys.forEach(rawPhone => {
+              const phone = tmcNormalizeILPhone(rawPhone);
+              if (!phone) return;
+              const data = dosMap.get(`${skuNorm}|${phone}`) || dosMap.get(`${barNorm}|${phone}`);
+              if (data) {
+                if (data.bucket === 'CRIT') {
+                  crit++;
+                  qtyCrit += data.qty;
+                } else if (data.bucket === 'LOW') {
+                  low++;
+                  qtyLow += data.qty;
+                }
+                // OK / Fulfilled: do not add to qty — customer has stock
+              }
+            });
+            row._critCount = crit;
+            row._lowCount = low;
+            row._qtyCrit = qtyCrit;
+            row._qtyLow = qtyLow;
+          });
+
+          // === STRICT FILTER: ABSOLUTE DEMAND ONLY ===
+          // Remove any product that doesn't have at least one customer in CRIT or LOW status.
+          const originalCount = normalizedRows.length;
+
+          normalizedRows = normalizedRows.filter(r => {
+            const crit = r._critCount || 0;
+            const low = r._lowCount || 0;
+            return crit > 0 || low > 0;
+          });
+
+          console.log(`[Forecast] Strict Filter: Kept ${normalizedRows.length}/${originalCount} rows. Removed products with no active shortage.`);
 
           // --- Pre-fetch sku_signals (needed_qty_crit/low) for "כמה להזמין" column ---
           const allKeyDigits = Array.from(new Set(
