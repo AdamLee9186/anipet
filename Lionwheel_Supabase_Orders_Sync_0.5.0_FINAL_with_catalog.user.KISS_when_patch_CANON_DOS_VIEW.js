@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.19
+// @version      0.8.20
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -4078,26 +4078,34 @@
     const FORECAST_EXCLUDED_SKUS = new Set(['491', '1949']);
 
     // Helper: Parse JSON array safely
-    function safeJsonArrayParse(val) {
-      if (!val) return [];
+    // Accept:
+    // 1) real array (PostgREST can return text[] as array)
+    // 2) postgres array literal string: "{050...,052...}"
+    // 3) json string: '["050...","052..."]'
+    function safeJsonArrayParse(v) {
+      if (v == null) return [];
+      if (Array.isArray(v)) return v;
+      if (typeof v !== 'string') return [];
 
-      // 1) Already an array (PostgREST often returns text[] as JSON array)
-      if (Array.isArray(val)) return val;
+      const s = v.trim();
+      if (!s) return [];
 
-      // 2) Postgres array literal: "{050...,052...}"
-      if (typeof val === 'string') {
-        const s = val.trim();
-        if (s.startsWith('{') && s.endsWith('}')) {
-          const inner = s.slice(1, -1).trim();
-          if (!inner) return [];
-          return inner.split(',').map(x => x.trim().replace(/^"+|"+$/g, '')).filter(Boolean);
-        }
+      // postgres array literal: "{a,b,c}" (may include quotes)
+      if (s.startsWith('{') && s.endsWith('}')) {
+        const inner = s.slice(1, -1).trim();
+        if (!inner) return [];
+        return inner.split(',').map(x => {
+          const t = String(x || '').trim();
+          return t.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+        }).filter(Boolean);
+      }
 
-        // 3) JSON string: '["050...","052..."]'
+      // json array string
+      if (s.startsWith('[') && s.endsWith(']')) {
         try {
           const parsed = JSON.parse(s);
           return Array.isArray(parsed) ? parsed : [];
-        } catch {
+        } catch (e) {
           return [];
         }
       }
@@ -4109,7 +4117,7 @@
     // Supports BOTH:
     // - legacy: v_forecast_product_overview / v_forecast_api fallback
     // - new:    v_product_order_qty_by_cycle (supplier cycle + qty within cycle)
-    function normalizeProductRow(r) {
+    function normalizeProductRow(r, i) {
       const forecastQtyRaw = r?.forecast_qty ?? r?.forecastQty ?? null;
       const forecastQty =
         (forecastQtyRaw == null || Number.isNaN(Number(forecastQtyRaw)))
@@ -4130,6 +4138,7 @@
 
       return {
         ...r,
+        idx: (r.idx != null ? Number(r.idx) : (i !== undefined ? i + 1 : 1)),
         sku: String(r.sku ?? '').trim(),
         product_name: String(r.product_name ?? r.name ?? '').trim(),
         supplier: String(r.supplier ?? '').trim(),
@@ -4141,7 +4150,7 @@
         first_due_date: r.first_due_date || null,
         last_due_date: r.last_due_date || null,
 
-        // Legacy (forecast overview)
+        // Legacy (forecast overview). customer_keys required for drilldown + shortage logic
         customer_names: safeJsonArrayParse(r.customer_names),
         customer_keys: safeJsonArrayParse(r.customer_keys),
         forecast_qty: forecastQty,
@@ -4153,6 +4162,13 @@
         n_due: Number(r.n_due) || 0,
         n_soon: Number(r.n_soon) || 0,
         n_open: Number(r.n_open) || 0,
+
+        // DOS / Smart qty fields attached later (prefetch sku_signals)
+        _critCount: 0,
+        _lowCount: 0,
+        _qtyCrit: 0,
+        _qtyLow: 0,
+        _categoryKey: null,
       };
     }
 
@@ -4244,7 +4260,7 @@
 
       // Normalize and filter excluded SKUs
       const normalizedRows = (rawRows || [])
-        .map(normalizeProductRow)
+        .map((r, i) => normalizeProductRow(r, i))
         .filter(row => !FORECAST_EXCLUDED_SKUS.has(row.sku));
 
       // Update global state
@@ -5329,6 +5345,14 @@
 
         return true;
       });
+
+      // STRICT FILTER (Consumption-first): hide products with NO active shortage
+      // Uses sku_signals prefetch (row._critCount/_lowCount). If signals not ready, do NOT hide everything.
+      const onlyShortage = (state.onlyShortage !== false);
+      const signalsReady = (state._signalsReady === true);
+      if (onlyShortage && signalsReady) {
+        rows = rows.filter(r => (Number(r._critCount) || 0) > 0 || (Number(r._lowCount) || 0) > 0);
+      }
 
       // REMOVED SEARCH FILTER LOGIC HERE
 
@@ -7135,6 +7159,7 @@
       }
       async function fetchDataAndRender(stateArg) {
         if (refs.listWrap) refs.listWrap.innerHTML = '<div class="tmc-body-loader" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:320px;color:#667085;position:relative;z-index:10002;"><i class="fa fa-spinner fa-spin" style="font-size:48px;display:block;margin-bottom:16px;"></i><span id="tmc-fc-loader-msg" style="font-size:16px;">טוען…</span></div>';
+        if (stateArg.onlyShortage == null) stateArg.onlyShortage = true;
         let progressTimer;
         try {
           progressTimer = setTimeout(() => {
@@ -7212,127 +7237,26 @@
 
             data = await supaRestFetchPaged(url, { method: 'GET' });
           }
-          let normalizedRows = (data || []).map(normalizeProductRow);
-          
-          forecastProductRows = normalizedRows;
+          let normalizedRows = (data || []).map((r, i) => normalizeProductRow(r, i));
 
-          // Granular DOS: use customer_keys (product overview API) to get visible customers in date range
-          const visiblePhones = new Set();
-          normalizedRows.forEach(row => {
-            const keys = Array.isArray(row.customer_keys) ? row.customer_keys : [];
-            keys.forEach(p => {
-              if (p) visiblePhones.add(tmcNormalizeILPhone(p));
-            });
-          });
-
-          // Guard: if we have no customer_keys at all, do NOT run strict filter
-          if (visiblePhones.size === 0) {
-            console.warn('[Forecast] Strict Filter: visiblePhones empty (missing customer_keys?) -> skipping Strict Filter, showing legacy rows.');
-            forecastProductRows = normalizedRows;
-            stateArg.productOverviewRows = normalizedRows;
-            stateArg.forecasts = normalizedRows;
-            stateArg.totalFetched = normalizedRows.length;
-            await renderForecastWrapper(stateArg, refs);
-            return;
-          }
-
-          const dosMap = new Map();
-          if (visiblePhones.size > 0) {
-            try {
-              const uniquePhones = Array.from(visiblePhones);
-              const CHUNK = 150;
-              for (let i = 0; i < uniquePhones.length; i += CHUNK) {
-                const batch = uniquePhones.slice(i, i + CHUNK);
-                const inList = batch.map(p => encodeURIComponent(p)).join(',');
-                const path = `/rest/v1/v_dos_details_per_customer_sku?customer_phone=in.(${inList})&select=sku,customer_phone,dos_bucket,last_qty`;
-                const data = await supaRestFetch(path, { method: 'GET' });
-                if (Array.isArray(data)) {
-                  data.forEach(item => {
-                    const kSku = tmcNormalizeDigits(item.sku);
-                    const kPhone = tmcNormalizeILPhone(item.customer_phone);
-                    if (kSku && kPhone) {
-                      dosMap.set(`${kSku}|${kPhone}`, {
-                        bucket: item.dos_bucket,
-                        qty: Number(item.last_qty) || 0
-                      });
-                    }
-                  });
-                }
-              }
-            } catch (e) {
-              console.warn('[Forecast] Granular DOS fetch failed', e);
-            }
-          }
-
-          // Guard: if dosMap is empty, skip strict filter (avoid empty table)
-          if (!dosMap || dosMap.size === 0) {
-            console.warn('[Forecast] Granular DOS empty -> skipping Strict Filter (fallback to legacy rows).');
-            forecastProductRows = normalizedRows;
-            stateArg.productOverviewRows = normalizedRows;
-            stateArg.forecasts = normalizedRows;
-            stateArg.totalFetched = normalizedRows.length;
-            await renderForecastWrapper(stateArg, refs);
-            return;
-          }
-
-          normalizedRows.forEach(row => {
-            let crit = 0, low = 0, qtyCrit = 0, qtyLow = 0;
-            const keys = Array.isArray(row.customer_keys) ? row.customer_keys : [];
-            const skuNorm = tmcNormalizeDigits(row.sku);
-            const barNorm = tmcNormalizeDigits(row.barcode);
-            keys.forEach(rawPhone => {
-              const phone = tmcNormalizeILPhone(rawPhone);
-              if (!phone) return;
-              const data = dosMap.get(`${skuNorm}|${phone}`) || dosMap.get(`${barNorm}|${phone}`);
-              if (data) {
-                if (data.bucket === 'CRIT') {
-                  crit++;
-                  qtyCrit += data.qty;
-                } else if (data.bucket === 'LOW') {
-                  low++;
-                  qtyLow += data.qty;
-                }
-                // OK / Fulfilled: do not add to qty — customer has stock
-              }
-            });
-            row._critCount = crit;
-            row._lowCount = low;
-            row._qtyCrit = qtyCrit;
-            row._qtyLow = qtyLow;
-          });
-
-          // === STRICT FILTER: ABSOLUTE DEMAND ONLY ===
-          // Remove any product that doesn't have at least one customer in CRIT or LOW status.
-          const originalCount = normalizedRows.length;
-
-          normalizedRows = normalizedRows.filter(r => {
-            const crit = r._critCount || 0;
-            const low = r._lowCount || 0;
-            return crit > 0 || low > 0;
-          });
-
-          console.log(`[Forecast] Strict Filter: Kept ${normalizedRows.length}/${originalCount} rows. Removed products with no active shortage.`);
-
-          // --- Pre-fetch sku_signals (needed_qty_crit/low) for "כמה להזמין" column ---
-          const allKeyDigits = Array.from(new Set(
-            normalizedRows.flatMap(r => [tmcNormalizeDigits(r?.sku), tmcNormalizeDigits(r?.barcode)].filter(Boolean))
-          ));
-          const skuSignalsMap = new Map();
-          if (allKeyDigits.length > 0) {
-            const CHUNK = 200;
-            for (let i = 0; i < allKeyDigits.length; i += CHUNK) {
-              const batch = allKeyDigits.slice(i, i + CHUNK);
-              const inList = batch.map(v => encodeURIComponent(v)).join(',');
-              const path =
-                `/rest/v1/sku_signals?sku=in.(${inList})` +
-                `&select=sku,crit_count,low_count,needed_qty_crit,needed_qty_low`;
-              try {
+          // PREFETCH sku_signals (source of truth for crit/low counts + smart qty + category_key)
+          const skuSignalMap = new Map();
+          try {
+            const allKeys = Array.from(new Set(
+              normalizedRows.flatMap(r => [tmcNormalizeDigits(r?.sku), tmcNormalizeDigits(r?.barcode)].filter(Boolean))
+            ));
+            if (allKeys.length > 0) {
+              const CHUNK = 200;
+              for (let i = 0; i < allKeys.length; i += CHUNK) {
+                const batch = allKeys.slice(i, i + CHUNK);
+                const path = `/rest/v1/sku_signals?sku=in.(${batch.map(x => encodeURIComponent(x)).join(',')})&select=sku,category_key,crit_count,low_count,needed_qty_crit,needed_qty_low`;
                 const sigs = await supaRestFetch(path, { method: 'GET' });
                 if (Array.isArray(sigs)) {
                   sigs.forEach(s => {
                     const k = tmcNormalizeDigits(s?.sku);
                     if (!k) return;
-                    skuSignalsMap.set(k, {
+                    skuSignalMap.set(k, {
+                      categoryKey: (s.category_key != null ? String(s.category_key) : null),
                       crit: Number(s?.crit_count) || 0,
                       low: Number(s?.low_count) || 0,
                       qtyCrit: Number(s?.needed_qty_crit) || 0,
@@ -7340,26 +7264,38 @@
                     });
                   });
                 }
-              } catch (e) {
-                console.warn('[Forecast] sku_signals prefetch failed', e);
               }
             }
+          } catch (e) {
+            console.warn('[Forecast] sku_signals prefetch failed', e);
           }
-          normalizedRows.forEach(row => {
-            const s = tmcNormalizeDigits(row?.sku);
-            const b = tmcNormalizeDigits(row?.barcode);
-            const sig = (s && skuSignalsMap.get(s)) || (b && skuSignalsMap.get(b)) || null;
+
+          normalizedRows.forEach(r => {
+            const skuKey = tmcNormalizeDigits(r?.sku);
+            const bcKey = tmcNormalizeDigits(r?.barcode);
+            const sig = (skuKey && skuSignalMap.get(skuKey)) || (bcKey && skuSignalMap.get(bcKey)) || null;
             if (sig) {
-              row._qtyCrit = sig.qtyCrit;
-              row._qtyLow = sig.qtyLow;
+              r._categoryKey = sig.categoryKey;
+              r._critCount = sig.crit;
+              r._lowCount = sig.low;
+              r._qtyCrit = sig.qtyCrit;
+              r._qtyLow = sig.qtyLow;
+            } else {
+              r._critCount = 0;
+              r._lowCount = 0;
+              r._qtyCrit = 0;
+              r._qtyLow = 0;
             }
           });
-          // -------------------------------------------------------------------------
+
+          stateArg._signalsReady = (skuSignalMap.size > 0);
 
           forecastProductRows = normalizedRows;
           stateArg.productOverviewRows = normalizedRows;
           stateArg.forecasts = normalizedRows;
           stateArg.totalFetched = normalizedRows.length;
+
+          if (typeof window !== 'undefined') window.__tmcForecastState = stateArg;
 
           await renderForecastWrapper(stateArg, refs);
 
@@ -7409,7 +7345,10 @@
           sortCol: stateArg.sortCol || 'priority',
           sortDir: stateArg.sortDir || 'desc',
           supplierKey: stateArg.supplierKey || '__ALL__',
-          totalFetched: Number(stateArg.totalFetched) || 0
+          totalFetched: Number(stateArg.totalFetched) || 0,
+          productOverviewRows: stateArg.productOverviewRows,
+          _signalsReady: stateArg._signalsReady,
+          onlyShortage: stateArg.onlyShortage
         });
 
         let filteredRows = getFilteredAndSortedProductRows(refsArg.state);
@@ -8003,6 +7942,17 @@
           if (!byPhone[key]) byPhone[key] = [];
           byPhone[key].push(row);
         });
+        const byPhoneByCategory = new Map();
+        (rows || []).forEach(r => {
+          const phone = String(r.customer_phone || '').trim();
+          const cat = String(r.category_key || r.consumption_category || '').trim();
+          if (!phone || !cat) return;
+          if (!byPhoneByCategory.has(phone)) byPhoneByCategory.set(phone, new Map());
+          byPhoneByCategory.get(phone).set(cat, r);
+        });
+        if (typeof window !== 'undefined' && window.__tmcForecastState) {
+          window.__tmcForecastState._consumptionByPhone = byPhoneByCategory;
+        }
         const out = { byPhone, error: null, phonesSent: list, rowsCount: rows.length };
         CONSUMPTION_FORECAST_BATCH_CACHE.set(cacheKey, { ts: now, data: out });
         if (LW_ORDERS_CONFIG.DEBUG) {
@@ -8552,6 +8502,55 @@
               rangeMissed: filteredByRange.filter(o => o.status === 'missed').length
             };
 
+            // Consumption-first drilldown: show ONLY customers in CRIT/LOW for this SKU's category_key
+            const stateArg = (typeof window !== 'undefined' && window.__tmcForecastState) ? window.__tmcForecastState : null;
+            const rowMeta = (stateArg && stateArg.productOverviewRows)
+              ? (stateArg.productOverviewRows.find(r => tmcNormalizeDigits(r?.sku) === normalizedSku) || null)
+              : null;
+            const categoryKeyForConsumption = (mainRow && mainRow._categoryKey) ? String(mainRow._categoryKey) : (rowMeta && rowMeta._categoryKey ? String(rowMeta._categoryKey) : null);
+
+            function bucketFromDays(d) {
+              if (d == null) return null;
+              const n = Number(d);
+              if (!Number.isFinite(n)) return null;
+              if (n <= 0) return 'CRIT';
+              if (n < 5) return 'LOW';
+              return 'OK';
+            }
+
+            if (categoryKeyForConsumption && stateArg && stateArg._consumptionByPhone && rows && rows.length > 0) {
+              const phonesForBatch = Array.from(new Set((rowMeta && Array.isArray(rowMeta.customer_keys) ? rowMeta.customer_keys : rows.map(r => r.customer_phone || r.customer_key)).filter(Boolean)));
+              if (phonesForBatch.length > 0) {
+                try {
+                  await getCustomerConsumptionForecastBatchCached(phonesForBatch);
+                  const byPhone = stateArg._consumptionByPhone;
+                  const phones = rowMeta && Array.isArray(rowMeta.customer_keys) ? rowMeta.customer_keys : rows.map(r => r.customer_phone || r.customer_key).filter(Boolean);
+                  const filtered = [];
+                  for (const p of phones) {
+                    const phone = String(p || '').trim();
+                    if (!phone) continue;
+                    const perPhone = byPhone.get(tmcNormalizeILPhone(phone)) || byPhone.get(phone);
+                    const cc = perPhone ? perPhone.get(categoryKeyForConsumption) : null;
+                    const dosDays = (cc && cc.dos_days != null) ? Number(cc.dos_days) : null;
+                    const b = bucketFromDays(dosDays);
+                    if (b === 'CRIT' || b === 'LOW') {
+                      filtered.push({
+                        customer_phone: phone,
+                        customer_name: (cc && cc.customer_name) ? cc.customer_name : (rows.find(r => (r.customer_phone || r.customer_key) === phone)?.customer_name || ''),
+                        _dos_days: dosDays,
+                        _dos_bucket: b,
+                        _next_expected_date: (cc && cc.next_expected_date) ? cc.next_expected_date : null,
+                        last_quantity: null
+                      });
+                    }
+                  }
+                  if (filtered.length > 0) rows = filtered;
+                } catch (e) {
+                  console.warn('[Forecast] drilldown consumption filter failed', e);
+                }
+              }
+            }
+
             // Home Inventory (DOS): batch fetch t_category_dos_snapshot for drilldown customers
             const categoryKey = sortState.productConsumptionCategory;
             if (categoryKey && rows && rows.length > 0) {
@@ -8876,6 +8875,20 @@
           return x;
         };
 
+        function renderHoldCell(row) {
+          const d = (row && row._dos_days != null) ? Number(row._dos_days) : null;
+          if (d == null || !Number.isFinite(d)) return `<span style="color:#475467;">—</span>`;
+          const perUnit = (row && row.last_quantity != null && Number(row.last_quantity) > 0) ? (d / Number(row.last_quantity)) : null;
+          return `<span style="color:#475467;" title="DOS (צריכה): ${d} ימים${perUnit != null ? ` | ≈ ${Math.round(perUnit)} ימים ליחידה` : ''}">${d}${perUnit != null ? ` <span style="font-size:11px;color:#98A2B3;">(≈${Math.round(perUnit)} ליח')</span>` : ''}</span>`;
+        }
+        function renderHomeStockCell(row) {
+          const b = row && row._dos_bucket ? row._dos_bucket : null;
+          if (b === 'CRIT') return `<span class="tmc-dos-home-crit" title="DOS &lt;= 0">נגמר</span>`;
+          if (b === 'LOW') return `<span class="tmc-dos-home-low" title="DOS &lt; 5">נמוך</span>`;
+          if (b === 'OK') return `<span class="tmc-dos-home-ok" title="DOS תקין">תקין</span>`;
+          return null;
+        }
+
         html.push(`
           <table data-tm-static-links="1">
             <thead>
@@ -9033,10 +9046,11 @@
             (Number.isFinite(avgGapDays) ? `מחזיק להזמנה: ${avgGapDisplay} ימים` : 'מחזיק להזמנה: —') +
             (__perUnitDisplay ? ` | ≈ ${__perUnitDisplay} ימים ליחידה (מחזיק/כמות מומלצת)` : '')
           );
-          // Expected date with relative time (two lines)
+          // Expected date with relative time (two lines); prefer _next_expected_date when consumption-based
+          const nextExpDate = (r._next_expected_date != null) ? r._next_expected_date : r.next_expected_date;
           let nextExpHtml = '—';
-          if (r.next_expected_date) {
-            const d = new Date(r.next_expected_date);
+          if (nextExpDate) {
+            const d = new Date(nextExpDate);
             const dateStr = `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}/${d.getFullYear()}`;
 
             const now = new Date();
@@ -9074,17 +9088,20 @@
           const dosBucket = (dosRec && dosRec.dos_bucket) ? String(dosRec.dos_bucket).toUpperCase() : 'NO_DATA';
           const dosDays = dosRec && (dosRec.dos_days != null) ? Number(dosRec.dos_days) : null;
           const dosTooltip = Number.isFinite(dosDays) ? `Enough for ~${dosDays} days` : (dosBucket === 'NO_DATA' ? 'No usage-based estimate' : '');
-          let homeStockHtml = '';
-          if (dosBucket === 'CRIT') homeStockHtml = `<span class="tmc-dos-home-crit" title="${escapeHtml(dosTooltip)}">נגמר</span>`;
-          else if (dosBucket === 'LOW') homeStockHtml = `<span class="tmc-dos-home-low" title="${escapeHtml(dosTooltip)}">נמוך</span>`;
-          else if (dosBucket === 'OK') homeStockHtml = `<span class="tmc-dos-home-ok" title="${escapeHtml(dosTooltip)}">תקין</span>`;
-          else homeStockHtml = `<span class="tmc-dos-home-nodata" title="${escapeHtml(dosTooltip)}">אין מידע</span>`;
+          let homeStockHtml = renderHomeStockCell(r);
+          if (!homeStockHtml) {
+            if (dosBucket === 'CRIT') homeStockHtml = `<span class="tmc-dos-home-crit" title="${escapeHtml(dosTooltip)}">נגמר</span>`;
+            else if (dosBucket === 'LOW') homeStockHtml = `<span class="tmc-dos-home-low" title="${escapeHtml(dosTooltip)}">נמוך</span>`;
+            else if (dosBucket === 'OK') homeStockHtml = `<span class="tmc-dos-home-ok" title="${escapeHtml(dosTooltip)}">תקין</span>`;
+            else homeStockHtml = `<span class="tmc-dos-home-nodata" title="${escapeHtml(dosTooltip)}">אין מידע</span>`;
+          }
+          const holdCellHtml = (r._dos_days != null || r._dos_bucket) ? renderHoldCell(r) : (avgGapCellHtml ? `<span style="color:#475467;" title="${escapeHtml(avgGapCellTitle)}">${avgGapCellHtml}</span>` : '—');
 
           html.push(`
             <tr class="${ui.rowClass ?? ui.row}">
               <td class="tmc-td-name">
                 <div style="font-weight:600; font-size:14px;">${escapeHtml(r.customer_name || '—')}</div>
-                <div style="color:#667085; font-size:12px;">${escapeHtml(r.customer_key || '')}</div>
+                <div style="color:#667085; font-size:12px;">${escapeHtml(r.customer_key || r.customer_phone || '')}</div>
               </td>
               <td>${statusHtml}</td>
               <td style="font-size:13px;" title="${escapeHtml(dosTooltip)}">${homeStockHtml}</td>
@@ -9092,7 +9109,7 @@
                 ${consumptionPlaceholder}
               </td>
               <td style="font-weight:700; color:#101828; font-size:14px;">${forecastQty == null ? '—' : forecastQty}</td>
-              <td style="color:#475467;" title="${escapeHtml(avgGapCellTitle)}">${avgGapCellHtml}</td>
+              <td style="color:#475467;">${holdCellHtml}</td>
               <td dir="ltr" style="color:#475467;">${lastOrder}</td>
               <td dir="ltr" style="font-weight:600; color:#101828;">${nextExpHtml}</td>
               <td style="color:#475467;">${(r.n_orders ?? r.total_orders ?? 0)}</td>
