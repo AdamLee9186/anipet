@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.25
+// @version      0.8.26
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -5440,6 +5440,16 @@
       const uniq = Array.from(new Set((allSkus || []).map(s => tmcNormalizeDigits(s)).filter(Boolean)));
       if (!uniq.length) return map;
 
+      // Dedup rule for the same (sku, phone, due_date):
+      // prefer fulfilled > missed > open (so fulfilled suppresses older open duplicates).
+      const __outcomeRank = (s) => {
+        const x = String(s ?? '').toLowerCase();
+        if (x === 'fulfilled') return 3;
+        if (x === 'missed') return 2;
+        if (x === 'open') return 1;
+        return 0;
+      };
+
       const CHUNK = 200;
       for (let i = 0; i < uniq.length; i += CHUNK) {
         const batch = uniq.slice(i, i + CHUNK);
@@ -5464,6 +5474,27 @@
           });
         }
       }
+
+      // Post-process: per SKU, dedupe by (phone9|due_date) using outcome priority.
+      for (const [sku, list] of map.entries()) {
+        const best = new Map();
+        for (const r of (list || [])) {
+          const phone9 = tmcPhone9(r?.customer_phone);
+          const due = r?.due_date ? String(r.due_date) : '';
+          if (!phone9 || !due) continue;
+          const key = `${phone9}|${due}`;
+          const cur = best.get(key);
+          if (!cur) {
+            best.set(key, r);
+            continue;
+          }
+          const rCur = __outcomeRank(cur?.outcome_status);
+          const rNew = __outcomeRank(r?.outcome_status);
+          if (rNew > rCur) best.set(key, r);
+        }
+        map.set(sku, Array.from(best.values()));
+      }
+
       return map;
     }
 
@@ -8925,13 +8956,27 @@
       renderOutcomesSection(tmcLimitToRange);
 
       function renderDrilldownTable(list, state) {
-        // When rows contain outcome_status from v3, hide fulfilled entries from "needs order" drilldown
+        // Drilldown: dedupe by (phone9|due_date) with outcome priority, then remove fulfilled.
+        // This prevents cases where the same customer shows both "open" and "fulfilled" duplicates.
         if (Array.isArray(list) && list.length) {
-          list = list.filter(r => {
-            const s = String(r?.outcome_status ?? "").toLowerCase();
-            if (s === "fulfilled") return false;
-            return true;
-          });
+          const __rank = (s) => {
+            const x = String(s ?? "").toLowerCase();
+            if (x === "fulfilled") return 3;
+            if (x === "missed") return 2;
+            if (x === "open") return 1;
+            return 0;
+          };
+          const best = new Map();
+          for (const r of list) {
+            const phone9 = tmcPhone9(r?.customer_phone || r?.customer_key);
+            const due = (r?.due_date ? String(r.due_date) : "") || (r?.next_expected_date ? String(r.next_expected_date).slice(0, 10) : "");
+            if (!phone9 || !due) continue;
+            const key = `${phone9}|${due}`;
+            const cur = best.get(key);
+            if (!cur) { best.set(key, r); continue; }
+            if (__rank(r?.outcome_status) > __rank(cur?.outcome_status)) best.set(key, r);
+          }
+          list = Array.from(best.values()).filter(r => String(r?.outcome_status ?? "").toLowerCase() !== "fulfilled");
         }
         const sorted = sortDrilldownRows(list, state);
         const html = [];
