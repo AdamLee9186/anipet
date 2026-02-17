@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.24
+// @version      0.8.25
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -4188,7 +4188,9 @@
 
       // NEW: Fetch by supplier cycle (what to order per supplier cycle window)
       // Note: Keep the select explicit to reduce payload.
-      let url = `/rest/v1/v_product_order_qty_by_cycle` +
+      // IMPORTANT: Must use FORECAST_VIEW (can be v_product_order_qty_by_cycle_active)
+      // Otherwise main table can still show fulfilled-only rows (e.g., Marina + ProPlan)
+      let url = `/rest/v1/${FORECAST_VIEW}` +
         `?select=sku,product_name,supplier,suggested_cycle_days,qty_within_cycle,n_records,first_due_date,last_due_date,n_missed,customer_keys` +
         `&order=qty_within_cycle.desc.nullslast&limit=5000`;
 
