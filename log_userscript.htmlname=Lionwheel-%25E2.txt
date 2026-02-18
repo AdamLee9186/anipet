@@ -1,0 +1,1087 @@
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2949 [Supabase Sync] ✅ הטבלה נטענה עם 100 שורות.
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22524694 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22532503 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22532797 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22533108 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22549499 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22552541 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22552547 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22552549 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22534429 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22533401 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22534596 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22536395 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22536597 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22537794 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22553072 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22553539 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22553628 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22553944 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22554039 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22555663 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22555878 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22556289 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22560571 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22561032 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22561147 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22561440 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22564255 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22565646 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22566071 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22566075 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:13457  POST https://members.lionwheel.com/tasks/21191847/panel_view 429 (Too Many Requests)
+hookedFetch @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:13457
+fetchPanelAndMarkReady @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:10259
+drainReadyQueue @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:10350
+wrappedCallback @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:13134
+At @ VM24:10
+t.<computed> @ VM24:81
+At @ VM24:10
+r @ VM24:32
+(אנונימית) @ VM24:32
+(אנונימית) @ VM24:22
+_ @ VM24:22
+$t @ content.js:9
+h @ content.js:65
+t @ content.js:66
+setTimeout
+setTimeout @ content.js:54
+processMessage @ content.js:57
+(אנונימית) @ content.js:87
+v @ content.js:66
+At @ VM24:10
+m @ VM24:21
+c @ VM24:24
+(אנונימית) @ VM24:24
+co @ VM24:18
+send @ VM24:24
+Yo @ VM24:32
+or @ VM24:33
+At @ VM24:10
+a @ VM24:81
+value @ VM24:86
+window.setTimeout @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:13143
+drainReadyQueue @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:10344
+wrappedCallback @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:13134
+At @ VM24:10
+t.<computed> @ VM24:81
+At @ VM24:10
+r @ VM24:32
+(אנונימית) @ VM24:32
+(אנונימית) @ VM24:22
+_ @ VM24:22
+$t @ content.js:9
+h @ content.js:65
+t @ content.js:66
+setTimeout
+setTimeout @ content.js:54
+processMessage @ content.js:57
+(אנונימית) @ content.js:87
+v @ content.js:66
+At @ VM24:10
+m @ VM24:21
+c @ VM24:24
+(אנונימית) @ VM24:24
+co @ VM24:18
+send @ VM24:24
+Yo @ VM24:32
+or @ VM24:33
+At @ VM24:10
+a @ VM24:81
+value @ VM24:86
+window.setTimeout @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:13143
+(אנונימית) @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:10360
+Promise.finally
+drainReadyQueue @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:10357
+wrappedCallback @ userscript.html?name=Lionwheel-Anipet-Toolbox.user.js&id=8271b621-cce2-44ee-a021-bddc09659e9f:13134
+At @ VM24:10
+t.<computed> @ VM24:81
+At @ VM24:10
+r @ VM24:32
+(אנונימית) @ VM24:32
+(אנונימית) @ VM24:22
+_ @ VM24:22
+$t @ content.js:9
+h @ content.js:65
+t @ content.js:66הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22566324 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22569507 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22549499 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22552541 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22552547 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22552549 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22553072 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22553539 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:351
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22553628 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22553944 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22554039 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22555663 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22555878 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22556289 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22560571 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22561032 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22561147 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22561440 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22564255 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22565646 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22566071 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22566075 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22566324 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  GET https://members.lionwheel.com/tasks/22569507 429 (Too Many Requests)
+patchedFetch @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446
+fetchTaskDocument @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2751
+lwSupabaseSendTaskById @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2761
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2543
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:349
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:358
+next @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:344
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:352
+Promise.then
+run @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:350
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:357
+limitFn @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:356
+(אנונימית) @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2542
+syncStoreVisitsIndexToSupabase @ userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:2540הסבר על השגיאה
+userscript.html?name=Lionwheel-%25E2%2586%2592-Supabase-Orders-Sync-with-Forecast.user.js&id=27cac65f-cce7-4784-9f23-47ae94b3637c:446  POST https://qgqpjlubdvxfzxjtocrh.supabase.co/rest/v1/rpc/match_forecast_predictions_batch 500 (Internal Server Error)
