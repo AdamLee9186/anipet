@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.26
+// @version      0.8.27
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -5414,9 +5414,83 @@
       return d;
     }
 
+    // ---------------------------------------------------------------------------
+    // Outcome normalization + dedupe (fulfilled > missed > open)
+    // Core fix: prevents "already fulfilled" items from polluting the main forecast table.
+    // ---------------------------------------------------------------------------
+    function tmcNormOutcome(e) {
+      const raw =
+        e?.outcome_status ??
+        e?.outcome ??
+        e?.status ??
+        e?.dos_outcome ??
+        '';
+      return String(raw).trim().toLowerCase();
+    }
+
+    function tmcOutcomeRank(e) {
+      const s = typeof e === 'object' && e !== null ? tmcNormOutcome(e) : String(e ?? '').trim().toLowerCase();
+      if (s === 'fulfilled' || s === 'done' || s === 'closed' || s === 'complete') return 3;
+      if (s === 'missed' || s === 'overdue' || s === 'late') return 2;
+      return 1;
+    }
+
     function tmcOutcomeIsFulfilled(rec) {
-      const s = String(rec?.outcome_status ?? "").toLowerCase();
-      return s === "fulfilled";
+      return tmcOutcomeRank(rec) === 3;
+    }
+
+    function tmcKeyCustomerDue(e) {
+      const phone = tmcPhone9(e?.customer_phone ?? e?.customer_key ?? e?.phone9 ?? '');
+      const due = (e?.due_date ?? e?.next_expected_date ?? e?.expected_date ?? '');
+      const dueStr = due ? String(due).trim().slice(0, 10) : '';
+      return `${phone}|${dueStr}`;
+    }
+
+    function tmcDedupeBestOutcomeByCustomerDue(rows) {
+      const best = new Map();
+      for (const e of (rows || [])) {
+        const k = tmcKeyCustomerDue(e);
+        if (k === '|') continue;
+        const prev = best.get(k);
+        if (!prev || tmcOutcomeRank(e) > tmcOutcomeRank(prev)) {
+          best.set(k, e);
+        }
+      }
+      return Array.from(best.values());
+    }
+
+    function tmcIsCrit(e) {
+      const s = String(e?.dos_bucket ?? e?.status ?? e?.dos_status ?? '').trim().toLowerCase();
+      return s === 'crit' || s === 'critical' || e?.is_crit === true;
+    }
+
+    function tmcIsLow(e) {
+      const s = String(e?.dos_bucket ?? e?.status ?? e?.dos_status ?? '').trim().toLowerCase();
+      return s === 'low' || e?.is_low === true;
+    }
+
+    function tmcQty(e) {
+      const q = e?.last_qty ?? e?.qty_needed ?? e?.qty ?? e?.quantity ?? e?.dos_qty ?? 0;
+      const n = Number(q);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function tmcComputeShortageFromDetails(details) {
+      const deduped = Array.isArray(details?.__deduped) ? details.__deduped : tmcDedupeBestOutcomeByCustomerDue(details);
+      let critCount = 0, lowCount = 0, qtyCrit = 0, qtyLow = 0;
+      for (const e of deduped) {
+        if (tmcOutcomeIsFulfilled(e)) continue;
+        if (tmcIsCrit(e)) {
+          critCount++;
+          qtyCrit += tmcQty(e);
+          continue;
+        }
+        if (tmcIsLow(e)) {
+          lowCount++;
+          qtyLow += tmcQty(e);
+        }
+      }
+      return { critCount, lowCount, qtyCrit, qtyLow };
     }
 
     function tmcIsDateInRangeInclusive(isoDate, fromIso, toIso) {
@@ -5439,16 +5513,6 @@
       const map = new Map();
       const uniq = Array.from(new Set((allSkus || []).map(s => tmcNormalizeDigits(s)).filter(Boolean)));
       if (!uniq.length) return map;
-
-      // Dedup rule for the same (sku, phone, due_date):
-      // prefer fulfilled > missed > open (so fulfilled suppresses older open duplicates).
-      const __outcomeRank = (s) => {
-        const x = String(s ?? '').toLowerCase();
-        if (x === 'fulfilled') return 3;
-        if (x === 'missed') return 2;
-        if (x === 'open') return 1;
-        return 0;
-      };
 
       const CHUNK = 200;
       for (let i = 0; i < uniq.length; i += CHUNK) {
@@ -5475,24 +5539,15 @@
         }
       }
 
-      // Post-process: per SKU, dedupe by (phone9|due_date) using outcome priority.
-      for (const [sku, list] of map.entries()) {
-        const best = new Map();
-        for (const r of (list || [])) {
-          const phone9 = tmcPhone9(r?.customer_phone);
-          const due = r?.due_date ? String(r.due_date) : '';
-          if (!phone9 || !due) continue;
-          const key = `${phone9}|${due}`;
-          const cur = best.get(key);
-          if (!cur) {
-            best.set(key, r);
-            continue;
-          }
-          const rCur = __outcomeRank(cur?.outcome_status);
-          const rNew = __outcomeRank(r?.outcome_status);
-          if (rNew > rCur) best.set(key, r);
+      // Per-SKU dedupe: prevents duplicates (e.g. missed+fulfilled for same customer|due_date) from counting as shortages.
+      try {
+        for (const [sku, raw] of map.entries()) {
+          const deduped = tmcDedupeBestOutcomeByCustomerDue(raw);
+          deduped.__deduped = deduped;
+          map.set(sku, deduped);
         }
-        map.set(sku, Array.from(best.values()));
+      } catch (e) {
+        console.warn('[Forecast] dedupe pass failed (non-fatal):', e);
       }
 
       return map;
@@ -7347,6 +7402,8 @@
             const allSkuKeys = normalizedRows.map(r => tmcNormalizeDigits(r?.sku)).filter(Boolean);
             const dosBySku = await tmcPrefetchDosDetailsBySku(allSkuKeys);
 
+            // Recompute shortage from DEDUPED details; override any server/RPC noise.
+            // Guarantees "already fulfilled" SKUs get zero counts and are filtered out by onlyShortage.
             let anySignals = false;
             normalizedRows.forEach(row => {
               row._critCount = 0;
@@ -7359,37 +7416,21 @@
               const keysArr = Array.isArray(row?.customer_keys) ? row.customer_keys : [];
               if (!entries || !entries.length || !keysArr.length) return;
 
-              // IMPORTANT: match against v3 normalization (9-digit)
               const keys = new Set(keysArr.map(p => tmcPhone9(p)).filter(Boolean));
-              let cCrit = 0, cLow = 0, qCrit = 0, qLow = 0;
+              const filteredDetails = (entries.__deduped || entries).filter((e) => {
+                const phone9 = tmcPhone9(e?.customer_phone);
+                if (!phone9 || !keys.has(phone9)) return false;
+                if (!isAllOpen && !tmcIsDateInRangeInclusive(e?.due_date, dateFrom, dateTo)) return false;
+                return true;
+              });
 
-              for (const e of entries) {
-                const phone9 = tmcPhone9(e.customer_phone);
-                if (!phone9 || !keys.has(phone9)) continue;
+              const s = tmcComputeShortageFromDetails({ __deduped: filteredDetails });
+              row._critCount = s.critCount;
+              row._lowCount = s.lowCount;
+              row._qtyCrit = s.qtyCrit;
+              row._qtyLow = s.qtyLow;
 
-                if (!isAllOpen) {
-                  if (!tmcIsDateInRangeInclusive(e?.due_date, dateFrom, dateTo)) continue;
-                }
-
-                // If already fulfilled -> DO NOT count as shortage in main table
-                if (tmcOutcomeIsFulfilled(e)) continue;
-
-                const bucket = e?.dos_bucket;
-                if (bucket === 'CRIT') {
-                  cCrit += 1;
-                  qCrit += (Number(e?.last_qty) || 0);
-                } else if (bucket === 'LOW') {
-                  cLow += 1;
-                  qLow += (Number(e?.last_qty) || 0);
-                }
-              }
-
-              row._critCount = cCrit;
-              row._lowCount = cLow;
-              row._qtyCrit = qCrit;
-              row._qtyLow = qLow;
-
-              if (cCrit > 0 || cLow > 0) anySignals = true;
+              if (s.critCount > 0 || s.lowCount > 0) anySignals = true;
             });
 
             stateArg._signalsReady = anySignals;
