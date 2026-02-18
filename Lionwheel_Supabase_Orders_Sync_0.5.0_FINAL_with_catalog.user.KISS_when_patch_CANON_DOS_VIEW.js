@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.27
+// @version      0.8.28
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -5436,7 +5436,9 @@
     }
 
     function tmcOutcomeIsFulfilled(rec) {
-      return tmcOutcomeRank(rec) === 3;
+      // Broader check: supports multiple field names, trims whitespace, ignores case.
+      const s = String(rec?.outcome_status || rec?.status || "").toLowerCase().trim();
+      return s === "fulfilled" || s === "matched";
     }
 
     function tmcKeyCustomerDue(e) {
@@ -5510,44 +5512,140 @@
     }
 
     async function tmcPrefetchDosDetailsBySku(allSkus) {
-      const map = new Map();
       const uniq = Array.from(new Set((allSkus || []).map(s => tmcNormalizeDigits(s)).filter(Boolean)));
-      if (!uniq.length) return map;
+      if (!uniq.length) return new Map();
 
-      const CHUNK = 200;
+      // Look back a limited window for outcomes (60 days is typically enough).
+      const d = new Date();
+      d.setDate(d.getDate() - 60);
+      const outcomeSince = d.toISOString().slice(0, 10);
+
+      const CHUNK = 150;
+      const dosPromises = [];
+      const outcomePromises = [];
+
       for (let i = 0; i < uniq.length; i += CHUNK) {
         const batch = uniq.slice(i, i + CHUNK);
         const inList = batch.map(v => encodeURIComponent(v)).join(',');
-        const path = `/rest/v1/v_dos_details_per_customer_sku_v3?sku=in.(${inList})&select=sku,customer_phone,last_qty,dos_bucket,dos_days,due_date,outcome_status,outcome_order_date,outcome_window_start,outcome_window_end`;
-        const rows = await supaRestFetch(path, { method: 'GET' });
-        if (!Array.isArray(rows)) continue;
-        for (const r of rows) {
-          const sku = tmcNormalizeDigits(r?.sku);
-          if (!sku) continue;
-          if (!map.has(sku)) map.set(sku, []);
-          map.get(sku).push({
-            customer_phone: String(r?.customer_phone || '').trim(),
-            last_qty: (r?.last_qty != null ? Number(r.last_qty) : 0),
-            dos_bucket: (r?.dos_bucket != null ? String(r.dos_bucket) : null),
-            dos_days: (r?.dos_days != null ? Number(r.dos_days) : null),
-            due_date: (r?.due_date != null ? String(r.due_date).slice(0, 10) : null),
-            outcome_status: (r?.outcome_status != null ? String(r.outcome_status) : null),
-            outcome_order_date: (r?.outcome_order_date != null ? String(r.outcome_order_date).slice(0, 10) : null),
-            outcome_window_start: (r?.outcome_window_start != null ? String(r.outcome_window_start).slice(0, 10) : null),
-            outcome_window_end: (r?.outcome_window_end != null ? String(r.outcome_window_end).slice(0, 10) : null),
-          });
+
+        const pathDos =
+          `/rest/v1/v_dos_details_per_customer_sku_v3?` +
+          `sku=in.(${inList})` +
+          `&select=sku,customer_phone,last_qty,dos_bucket,dos_days,due_date,outcome_status,outcome_order_date,outcome_window_start,outcome_window_end`;
+        dosPromises.push(supaRestFetch(pathDos, { method: 'GET' }));
+
+        const pathOut =
+          `/rest/v1/v_forecast_predictions_outcomes_canon_v3?` +
+          `sku_canon=in.(${inList})` +
+          `&status=eq.fulfilled` +
+          `&matched_order_date=gte.${outcomeSince}` +
+          `&select=sku_canon,customer_key,customer_key_norm,matched_order_date,status`;
+        outcomePromises.push(supaRestFetch(pathOut, { method: 'GET' }));
+      }
+
+      const [dosResults, outcomeResults] = await Promise.all([
+        Promise.all(dosPromises),
+        Promise.all(outcomePromises),
+      ]);
+
+      // Build a fast lookup: key = "sku|phone9" -> array of matched_order_date timestamps
+      const fulfilledMap = new Map();
+      const flatOutcomes = (outcomeResults || []).flat().filter(Boolean);
+      for (const o of flatOutcomes) {
+        const sku = tmcNormalizeDigits(o?.sku_canon);
+        const phone = tmcPhone9(o?.customer_key_norm || o?.customer_key);
+        if (!sku || !phone) continue;
+
+        const key = `${sku}|${phone}`;
+        if (!fulfilledMap.has(key)) fulfilledMap.set(key, []);
+
+        const md = o?.matched_order_date;
+        if (md) {
+          const t = new Date(String(md).slice(0, 10)).getTime();
+          if (Number.isFinite(t)) fulfilledMap.get(key).push(t);
         }
       }
 
-      // Per-SKU dedupe: prevents duplicates (e.g. missed+fulfilled for same customer|due_date) from counting as shortages.
-      try {
-        for (const [sku, raw] of map.entries()) {
-          const deduped = tmcDedupeBestOutcomeByCustomerDue(raw);
-          deduped.__deduped = deduped;
-          map.set(sku, deduped);
+      // Process DOS, inject "fulfilled" if Outcomes prove it, then dedupe by (phone9|due_date)
+      const map = new Map();
+      const flatDos = (dosResults || []).flat().filter(Boolean);
+
+      for (const r0 of flatDos) {
+        const sku = tmcNormalizeDigits(r0?.sku);
+        if (!sku) continue;
+
+        const customerPhone = String(r0?.customer_phone || '').trim();
+        const dueDate = (r0?.due_date != null ? String(r0.due_date).slice(0, 10) : null);
+
+        const viewStatus = String(r0?.outcome_status || '').toLowerCase().trim();
+        const isViewFulfilled = (viewStatus === 'fulfilled' || viewStatus === 'matched');
+
+        let isPatchFulfilled = false;
+        if (!isViewFulfilled) {
+          const phone9 = tmcPhone9(customerPhone);
+          const key = `${sku}|${phone9}`;
+          const matches = fulfilledMap.get(key);
+
+          if (matches && dueDate) {
+            const dueTime = new Date(dueDate).getTime();
+            const THRESHOLD = 30 * 24 * 60 * 60 * 1000;
+            if (Number.isFinite(dueTime)) {
+              isPatchFulfilled = matches.some(mt => Number.isFinite(mt) && Math.abs(mt - dueTime) < THRESHOLD);
+            }
+          }
         }
-      } catch (e) {
-        console.warn('[Forecast] dedupe pass failed (non-fatal):', e);
+
+        // Clone/normalize the record we store, injecting the corrected status if needed.
+        const out = {
+          customer_phone: customerPhone,
+          last_qty: (r0?.last_qty != null ? Number(r0.last_qty) : 0),
+          dos_bucket: (r0?.dos_bucket != null ? String(r0.dos_bucket) : null),
+          dos_days: (r0?.dos_days != null ? Number(r0.dos_days) : null),
+          due_date: dueDate,
+          outcome_status: (r0?.outcome_status != null ? String(r0.outcome_status) : null),
+          outcome_order_date: (r0?.outcome_order_date != null ? String(r0.outcome_order_date).slice(0, 10) : null),
+          outcome_window_start: (r0?.outcome_window_start != null ? String(r0.outcome_window_start).slice(0, 10) : null),
+          outcome_window_end: (r0?.outcome_window_end != null ? String(r0.outcome_window_end).slice(0, 10) : null),
+        };
+
+        if (isPatchFulfilled) {
+          out.outcome_status = 'fulfilled';
+          out.dos_bucket = 'OK';
+        }
+
+        if (!map.has(sku)) map.set(sku, []);
+        map.get(sku).push(out);
+      }
+
+      // Dedupe rule for same (sku, phone, due_date): prefer fulfilled > missed > open
+      const __outcomeRank = (s) => {
+        const x = String(s ?? '').toLowerCase().trim();
+        if (x === 'fulfilled' || x === 'matched' || x === 'done' || x === 'closed' || x === 'complete') return 3;
+        if (x === 'missed' || x === 'overdue' || x === 'late') return 2;
+        if (x === 'open') return 1;
+        return 0;
+      };
+
+      for (const [sku, list] of map.entries()) {
+        const best = new Map();
+        for (const r of (list || [])) {
+          const phone9 = tmcPhone9(r?.customer_phone);
+          const due = r?.due_date ? String(r.due_date) : '';
+          if (!phone9 || !due) continue;
+
+          const key = `${phone9}|${due}`;
+          const cur = best.get(key);
+          if (!cur) {
+            best.set(key, r);
+            continue;
+          }
+          const rCur = __outcomeRank(cur?.outcome_status);
+          const rNew = __outcomeRank(r?.outcome_status);
+          if (rNew > rCur) best.set(key, r);
+        }
+        const dedupedList = Array.from(best.values());
+        dedupedList.__deduped = dedupedList;
+        map.set(sku, dedupedList);
       }
 
       return map;
