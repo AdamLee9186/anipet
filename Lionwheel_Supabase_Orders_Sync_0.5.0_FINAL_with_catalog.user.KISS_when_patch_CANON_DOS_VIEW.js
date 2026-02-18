@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.28
+// @version      0.8.29
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -4163,7 +4163,8 @@
         n_soon: Number(r.n_soon) || 0,
         n_open: Number(r.n_open) || 0,
 
-        // DOS / Smart qty fields attached later (prefetch sku_signals)
+        // DOS / Smart qty fields: ALWAYS computed client-side from tmcPrefetchDosDetailsBySku.
+        // Ignore any server/RPC crit/low – we trust only our patched logic (Parallel Fetch & Merge).
         _critCount: 0,
         _lowCount: 0,
         _qtyCrit: 0,
@@ -5435,10 +5436,17 @@
       return 1;
     }
 
+    // גרסה אחודה וחזקה - בודקת את כל הווריאציות האפשריות
     function tmcOutcomeIsFulfilled(rec) {
-      // Broader check: supports multiple field names, trims whitespace, ignores case.
-      const s = String(rec?.outcome_status || rec?.status || "").toLowerCase().trim();
-      return s === "fulfilled" || s === "matched";
+      if (!rec) return false;
+      const s = String(rec.outcome_status || rec.status || rec.dos_outcome || "").toLowerCase().trim();
+      return (
+        s === "fulfilled" ||
+        s === "matched" ||
+        s === "done" ||
+        s === "closed" ||
+        s === "complete"
+      );
     }
 
     function tmcKeyCustomerDue(e) {
@@ -7501,13 +7509,14 @@
             const dosBySku = await tmcPrefetchDosDetailsBySku(allSkuKeys);
 
             // Recompute shortage from DEDUPED details; override any server/RPC noise.
-            // Guarantees "already fulfilled" SKUs get zero counts and are filtered out by onlyShortage.
+            // Existence gate: override n_open with clientOpenCount – if 0, row is excluded.
             let anySignals = false;
             normalizedRows.forEach(row => {
               row._critCount = 0;
               row._lowCount = 0;
               row._qtyCrit = 0;
               row._qtyLow = 0;
+              row._hasClientDetails = false;
 
               const sku = tmcNormalizeDigits(row?.sku);
               const entries = sku ? dosBySku.get(sku) : null;
@@ -7522,6 +7531,13 @@
                 return true;
               });
 
+              row._hasClientDetails = true;
+
+              // Client Truth: count "open" (non-fulfilled) rows; override server n_open
+              const openRows = filteredDetails.filter(r => !tmcOutcomeIsFulfilled(r));
+              const clientOpenCount = openRows.length;
+              row.n_open = clientOpenCount;
+
               const s = tmcComputeShortageFromDetails({ __deduped: filteredDetails });
               row._critCount = s.critCount;
               row._lowCount = s.lowCount;
@@ -7529,6 +7545,12 @@
               row._qtyLow = s.qtyLow;
 
               if (s.critCount > 0 || s.lowCount > 0) anySignals = true;
+            });
+
+            // The Gatekeeper: remove rows where client says 0 open (e.g. Marina was only one and is fulfilled)
+            normalizedRows = normalizedRows.filter(r => {
+              if (r._hasClientDetails && (r.n_open || 0) === 0) return false;
+              return true;
             });
 
             stateArg._signalsReady = anySignals;
