@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel → Supabase Orders Sync with Forecast
 // @namespace    http://tampermonkey.net/
-// @version      0.8.29
+// @version      0.8.30
 // @description  Server-side date filtering, improved getDateRange, Product view only (n_open > 0), Exclude Gift/Club/Shipping, Smart image cache, Table/Grid view toggle, Click-to-sort table headers, Enhanced drilldown with detailed logging and improved forecast status detection
 // @author       Adam
 // @match        https://members.lionwheel.com/operator/store_visits*
@@ -5523,7 +5523,6 @@
       const uniq = Array.from(new Set((allSkus || []).map(s => tmcNormalizeDigits(s)).filter(Boolean)));
       if (!uniq.length) return new Map();
 
-      // Look back a limited window for outcomes (60 days is typically enough).
       const d = new Date();
       d.setDate(d.getDate() - 60);
       const outcomeSince = d.toISOString().slice(0, 10);
@@ -5536,18 +5535,10 @@
         const batch = uniq.slice(i, i + CHUNK);
         const inList = batch.map(v => encodeURIComponent(v)).join(',');
 
-        const pathDos =
-          `/rest/v1/v_dos_details_per_customer_sku_v3?` +
-          `sku=in.(${inList})` +
-          `&select=sku,customer_phone,last_qty,dos_bucket,dos_days,due_date,outcome_status,outcome_order_date,outcome_window_start,outcome_window_end`;
+        const pathDos = `/rest/v1/v_dos_details_per_customer_sku_v3?sku=in.(${inList})&select=sku,customer_phone,last_qty,dos_bucket,dos_days,due_date,outcome_status,outcome_order_date`;
         dosPromises.push(supaRestFetch(pathDos, { method: 'GET' }));
 
-        const pathOut =
-          `/rest/v1/v_forecast_predictions_outcomes_canon_v3?` +
-          `sku_canon=in.(${inList})` +
-          `&status=eq.fulfilled` +
-          `&matched_order_date=gte.${outcomeSince}` +
-          `&select=sku_canon,customer_key,customer_key_norm,matched_order_date,status`;
+        const pathOut = `/rest/v1/v_forecast_predictions_outcomes_canon_v3?sku_canon=in.(${inList})&status=eq.fulfilled&matched_order_date=gte.${outcomeSince}&select=sku_canon,sku,sku_input_canon,customer_key,customer_key_norm,matched_order_date`;
         outcomePromises.push(supaRestFetch(pathOut, { method: 'GET' }));
       }
 
@@ -5556,25 +5547,31 @@
         Promise.all(outcomePromises),
       ]);
 
-      // Build a fast lookup: key = "sku|phone9" -> array of matched_order_date timestamps
+      // Multi-Key Mapping: map each Outcome to ALL SKU variants (sku_canon, sku, sku_input_canon)
       const fulfilledMap = new Map();
       const flatOutcomes = (outcomeResults || []).flat().filter(Boolean);
       for (const o of flatOutcomes) {
-        const sku = tmcNormalizeDigits(o?.sku_canon);
-        const phone = tmcPhone9(o?.customer_key_norm || o?.customer_key);
-        if (!sku || !phone) continue;
+        const phone = tmcPhone9(o.customer_key_norm || o.customer_key);
+        if (!phone) continue;
 
-        const key = `${sku}|${phone}`;
-        if (!fulfilledMap.has(key)) fulfilledMap.set(key, []);
+        const timestamps = [];
+        if (o.matched_order_date) {
+          const t = new Date(String(o.matched_order_date).slice(0, 10)).getTime();
+          if (Number.isFinite(t)) timestamps.push(t);
+        }
 
-        const md = o?.matched_order_date;
-        if (md) {
-          const t = new Date(String(md).slice(0, 10)).getTime();
-          if (Number.isFinite(t)) fulfilledMap.get(key).push(t);
+        const skuKeys = [o.sku_canon, o.sku, o.sku_input_canon]
+          .map(s => tmcNormalizeDigits(s))
+          .filter(Boolean);
+        const uniqueSkus = [...new Set(skuKeys)];
+
+        for (const sKey of uniqueSkus) {
+          const compositeKey = `${sKey}|${phone}`;
+          if (!fulfilledMap.has(compositeKey)) fulfilledMap.set(compositeKey, []);
+          fulfilledMap.get(compositeKey).push(...timestamps);
         }
       }
 
-      // Process DOS, inject "fulfilled" if Outcomes prove it, then dedupe by (phone9|due_date)
       const map = new Map();
       const flatDos = (dosResults || []).flat().filter(Boolean);
 
@@ -5582,78 +5579,65 @@
         const sku = tmcNormalizeDigits(r0?.sku);
         if (!sku) continue;
 
-        const customerPhone = String(r0?.customer_phone || '').trim();
-        const dueDate = (r0?.due_date != null ? String(r0.due_date).slice(0, 10) : null);
+        const phone9 = tmcPhone9(r0?.customer_phone);
+        const dueStr = r0?.due_date ? String(r0.due_date).slice(0, 10) : null;
 
-        const viewStatus = String(r0?.outcome_status || '').toLowerCase().trim();
-        const isViewFulfilled = (viewStatus === 'fulfilled' || viewStatus === 'matched');
+        const rawStatus = String(r0?.outcome_status || '').toLowerCase();
+        let isFulfilled = (rawStatus === 'fulfilled' || rawStatus === 'matched');
 
-        let isPatchFulfilled = false;
-        if (!isViewFulfilled) {
-          const phone9 = tmcPhone9(customerPhone);
+        if (!isFulfilled && phone9) {
           const key = `${sku}|${phone9}`;
           const matches = fulfilledMap.get(key);
 
-          if (matches && dueDate) {
-            const dueTime = new Date(dueDate).getTime();
-            const THRESHOLD = 30 * 24 * 60 * 60 * 1000;
-            if (Number.isFinite(dueTime)) {
-              isPatchFulfilled = matches.some(mt => Number.isFinite(mt) && Math.abs(mt - dueTime) < THRESHOLD);
+          if (matches && matches.length > 0) {
+            if (dueStr) {
+              const dueTime = new Date(dueStr).getTime();
+              const THRESHOLD = 45 * 24 * 60 * 60 * 1000;
+              if (Number.isFinite(dueTime) && matches.some(t => Number.isFinite(t) && Math.abs(t - dueTime) < THRESHOLD)) {
+                isFulfilled = true;
+              }
+            } else {
+              isFulfilled = true;
             }
           }
         }
 
-        // Clone/normalize the record we store, injecting the corrected status if needed.
-        const out = {
-          customer_phone: customerPhone,
-          last_qty: (r0?.last_qty != null ? Number(r0.last_qty) : 0),
-          dos_bucket: (r0?.dos_bucket != null ? String(r0.dos_bucket) : null),
-          dos_days: (r0?.dos_days != null ? Number(r0.dos_days) : null),
-          due_date: dueDate,
-          outcome_status: (r0?.outcome_status != null ? String(r0.outcome_status) : null),
-          outcome_order_date: (r0?.outcome_order_date != null ? String(r0.outcome_order_date).slice(0, 10) : null),
-          outcome_window_start: (r0?.outcome_window_start != null ? String(r0.outcome_window_start).slice(0, 10) : null),
-          outcome_window_end: (r0?.outcome_window_end != null ? String(r0.outcome_window_end).slice(0, 10) : null),
-        };
-
-        if (isPatchFulfilled) {
-          out.outcome_status = 'fulfilled';
-          out.dos_bucket = 'OK';
+        if (isFulfilled) {
+          r0.outcome_status = 'fulfilled';
+          r0.dos_bucket = 'OK';
+          r0.last_qty = 0;
         }
 
         if (!map.has(sku)) map.set(sku, []);
-        map.get(sku).push(out);
+
+        map.get(sku).push({
+          customer_phone: String(r0?.customer_phone || '').trim(),
+          last_qty: Number(r0?.last_qty || 0),
+          dos_bucket: r0?.dos_bucket != null ? String(r0.dos_bucket) : null,
+          dos_days: r0?.dos_days != null ? Number(r0.dos_days) : null,
+          due_date: dueStr,
+          outcome_status: isFulfilled ? 'fulfilled' : (r0?.outcome_status || 'open'),
+          outcome_order_date: r0?.outcome_order_date != null ? String(r0.outcome_order_date).slice(0, 10) : null,
+        });
       }
 
-      // Dedupe rule for same (sku, phone, due_date): prefer fulfilled > missed > open
-      const __outcomeRank = (s) => {
-        const x = String(s ?? '').toLowerCase().trim();
-        if (x === 'fulfilled' || x === 'matched' || x === 'done' || x === 'closed' || x === 'complete') return 3;
-        if (x === 'missed' || x === 'overdue' || x === 'late') return 2;
-        if (x === 'open') return 1;
-        return 0;
-      };
-
-      for (const [sku, list] of map.entries()) {
+      for (const [s, list] of map.entries()) {
         const best = new Map();
-        for (const r of (list || [])) {
-          const phone9 = tmcPhone9(r?.customer_phone);
-          const due = r?.due_date ? String(r.due_date) : '';
-          if (!phone9 || !due) continue;
+        for (const item of (list || [])) {
+          const p = tmcPhone9(item?.customer_phone);
+          const d = item?.due_date || 'nodate';
+          const k = `${p}|${d}`;
 
-          const key = `${phone9}|${due}`;
-          const cur = best.get(key);
-          if (!cur) {
-            best.set(key, r);
-            continue;
+          const existing = best.get(k);
+          if (!existing) {
+            best.set(k, item);
+          } else if (item.outcome_status === 'fulfilled' && existing.outcome_status !== 'fulfilled') {
+            best.set(k, item);
           }
-          const rCur = __outcomeRank(cur?.outcome_status);
-          const rNew = __outcomeRank(r?.outcome_status);
-          if (rNew > rCur) best.set(key, r);
         }
         const dedupedList = Array.from(best.values());
         dedupedList.__deduped = dedupedList;
-        map.set(sku, dedupedList);
+        map.set(s, dedupedList);
       }
 
       return map;
@@ -7510,7 +7494,9 @@
 
             // Recompute shortage from DEDUPED details; override any server/RPC noise.
             // Existence gate: override n_open with clientOpenCount – if 0, row is excluded.
-            let anySignals = false;
+            // _signalsReady = "client-side DOS signals were computed successfully",
+            // NOT "there exists at least one shortage". Otherwise onlyShortage never filters
+            // when every SKU has 0 shortages (fulfilled/OK rows would stay visible).
             normalizedRows.forEach(row => {
               row._critCount = 0;
               row._lowCount = 0;
@@ -7544,7 +7530,6 @@
               row._qtyCrit = s.qtyCrit;
               row._qtyLow = s.qtyLow;
 
-              if (s.critCount > 0 || s.lowCount > 0) anySignals = true;
             });
 
             // The Gatekeeper: remove rows where client says 0 open (e.g. Marina was only one and is fulfilled)
@@ -7553,7 +7538,7 @@
               return true;
             });
 
-            stateArg._signalsReady = anySignals;
+            stateArg._signalsReady = true;
           } catch (e) {
             console.warn('[Forecast] Range-aware DOS prefetch failed; keeping legacy rows without shortage signals', e);
             stateArg._signalsReady = false;
