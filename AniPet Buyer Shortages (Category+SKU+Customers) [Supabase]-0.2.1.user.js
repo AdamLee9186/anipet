@@ -123,7 +123,6 @@
   function fmtNum(n, digits = 2) {
     const x = Number(n);
     if (!Number.isFinite(x)) return "";
-    // trim trailing zeros nicely
     return x.toLocaleString(undefined, { maximumFractionDigits: digits });
   }
 
@@ -302,7 +301,6 @@
     return i;
   }
 
-  // Popular windows: windowDays forward + gracePast back
   controls.appendChild(
     labeledInput(
       "טווח קדימה (ימים)",
@@ -363,6 +361,7 @@
     }))
   );
 
+  // NOTE: label text here is static; functional toggle is correct.
   controls.appendChild(
     labeledInput(
       "כולל יחידות (unit)?",
@@ -449,12 +448,6 @@
   // Data fetchers
   // ============================================================
   async function fetchCategorySummary() {
-    // RPC signature:
-    // buyer_category_summary_by_window_from_events(
-    //   p_window_days int, p_limit int,
-    //   p_include_unit boolean, p_min_kg numeric, p_min_l numeric, p_min_unit numeric,
-    //   p_grace_past_days int, p_gap_min_days numeric, p_gap_max_days numeric, p_low_days int
-    // )
     const args = {
       p_window_days: state.windowDays,
       p_limit: state.limit,
@@ -487,12 +480,6 @@
   }
 
   async function fetchCategorySkuBreakdown(groupKey, categoryKey, unitKey) {
-    // buyer_category_sku_breakdown_by_window_from_events(
-    //   p_group_key text, p_category_key text, p_unit_key text,
-    //   p_window_days int, p_grace_past_days int,
-    //   p_gap_min_days numeric, p_gap_max_days numeric,
-    //   p_low_days int, p_limit int
-    // )
     return sbRpc(RPC.CATEGORY_SKU_BREAKDOWN, {
       p_group_key: String(groupKey),
       p_category_key: String(categoryKey),
@@ -507,10 +494,6 @@
   }
 
   async function fetchCategoryCustomersRollup(groupKey, categoryKey, unitKey) {
-    // buyer_customer_category_rollup_by_window(
-    //   p_group_key text, p_category_key text, p_unit_key text,
-    //   p_window_days int, p_grace_past_days int, p_min_unit numeric
-    // )
     return sbRpc(RPC.CATEGORY_CUSTOMERS_ROLLUP, {
       p_group_key: String(groupKey),
       p_category_key: String(categoryKey),
@@ -522,12 +505,6 @@
   }
 
   async function fetchSkuCustomers(sku, unitKey) {
-    // buyer_sku_customers_by_window_from_events(
-    //   p_sku text, p_unit_key text,
-    //   p_window_days int, p_grace_past_days int,
-    //   p_gap_min_days numeric, p_gap_max_days numeric,
-    //   p_low_days int, p_limit int
-    // )
     return sbRpc(RPC.SKU_CUSTOMERS, {
       p_sku: String(sku),
       p_unit_key: String(unitKey),
@@ -567,7 +544,6 @@
       return;
     }
 
-    // Build table with expandable rows
     const wrap = el("div", {});
     for (const r of rows) {
       const k = keyOf(r);
@@ -614,7 +590,6 @@
           panel.appendChild(el("div", { textContent: "טוען פירוק SKU…", style: { fontSize: "12px", color: "#666" } }));
           wrap.appendChild(panel);
 
-          // fetch + rerender inside
           try {
             const skus = await fetchCategorySkuBreakdown(r.group_key, r.category_key, r.unit_key);
             panel.innerHTML = "";
@@ -662,15 +637,12 @@
                 )
               );
 
-              // SKU customers subpanel
               if (state.expandedSku) {
                 panel.appendChild(hr());
                 panel.appendChild(el("div", { textContent: `טוען לקוחות ל־SKU ${state.expandedSku}…`, style: { fontSize: "12px", color: "#666" } }));
 
                 try {
                   const cust = await fetchSkuCustomers(state.expandedSku, r.unit_key);
-
-                  // replace loader
                   panel.lastChild.remove();
 
                   if (!cust.length) {
@@ -715,7 +687,6 @@
             }));
           }
         } else {
-          // customers rollup tab
           panel.appendChild(el("div", { textContent: "טוען לקוחות לפי קטגוריה…", style: { fontSize: "12px", color: "#666" } }));
           wrap.appendChild(panel);
 
@@ -773,6 +744,5 @@
     main.appendChild(wrap);
   }
 
-  // initial
   refresh();
 })();
