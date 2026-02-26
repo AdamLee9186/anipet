@@ -2942,8 +2942,19 @@
     }
 
     let __lwToastStyleInjected = false;
+    let __lwToastStackEl = null;
     let __lwTaskProgressToastEl = null;
     let __lwTaskProgressRemoveTimer = null;
+
+    function ensureToastStack() {
+      ensureToastStyles();
+      if (__lwToastStackEl && __lwToastStackEl.isConnected) return __lwToastStackEl;
+      const el = document.createElement('div');
+      el.className = 'lw-toast-stack';
+      document.body.appendChild(el);
+      __lwToastStackEl = el;
+      return el;
+    }
 
     function ensureToastStyles() {
       if (__lwToastStyleInjected) return;
@@ -2951,11 +2962,19 @@
 
       const style = document.createElement('style');
       style.textContent = `
-        .lw-toast {
+        .lw-toast-stack {
           position: fixed;
           z-index: 999999;
           left: 16px;
           bottom: 16px;
+          display: flex;
+          flex-direction: column-reverse;
+          gap: 8px;
+          pointer-events: none;
+          align-items: flex-start;
+        }
+        .lw-toast {
+          position: relative;
           background: rgba(20,20,20,0.92);
           color: #fff;
           padding: 10px 12px;
@@ -2968,7 +2987,7 @@
           opacity: 0;
           transform: translateY(8px);
           transition: opacity 160ms ease, transform 160ms ease;
-          pointer-events: none;
+          pointer-events: auto;
         }
         .lw-toast.lw-toast--show { opacity: 1; transform: translateY(0); }
         .lw-toast.lw-toast--success { background: rgba(16,120,60,0.92); }
@@ -3027,7 +3046,7 @@
         <div class="lw-toast-progress-meta">0/${safeTotal}</div>
         <div class="lw-toast-progress-track"><div class="lw-toast-progress-fill"></div></div>
       `;
-      document.body.appendChild(el);
+      ensureToastStack().appendChild(el);
       requestAnimationFrame(() => el.classList.add('lw-toast--show'));
       __lwTaskProgressToastEl = el;
       return el;
@@ -3094,7 +3113,7 @@
           ? Math.max(baseMs, 8000)
           : Math.max(baseMs, 4500);
 
-      document.body.appendChild(el);
+      ensureToastStack().appendChild(el);
       requestAnimationFrame(() => el.classList.add('lw-toast--show'));
 
       window.setTimeout(() => {
