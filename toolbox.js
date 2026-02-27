@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.11
+// @version      13.9.10
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -1000,6 +1000,30 @@ const __tmcBRANCH_RE = new RegExp(
 function __tmcContainsBranch(t) {
   const s = __tmcNormalizeText(t);
   return __tmcBRANCH_RE.test(s);
+}
+
+// Collect searchable panel text from editable/value rows only.
+// Falls back to panel/body text after explicitly removing comments area.
+function __tmcGetScopedPanelText(rootLike) {
+  try {
+    const root = rootLike?.querySelectorAll ? rootLike : (rootLike?.body || document.body);
+    if (!root) return '';
+
+    const dataRows = Array.from(root.querySelectorAll('.row[data-name]'));
+    if (dataRows.length) {
+      return __tmcNormalizeText(dataRows.map(el => el.textContent || '').join(' '));
+    }
+
+    const base = rootLike?.body || root;
+    if (!base || !base.cloneNode) return __tmcNormalizeText(base?.textContent || '');
+    const clone = base.cloneNode(true);
+    clone.querySelectorAll('#comments-container, .add-comment-modal').forEach(el => {
+      try { el.remove(); } catch(_) {}
+    });
+    return __tmcNormalizeText(clone.textContent || '');
+  } catch(_) {
+    return '';
+  }
 }
 
 // מזהה פורמט בינלאומי ישראלי (+972 או 00972) ללא ה-0 המוביל
@@ -3616,7 +3640,7 @@ setupBlockedScriptObserver();
 
     // ---< Main Anipet Toolbox Script >---
     const SCRIPT_NAME = "Lionwheel - Anipet Toolbox";
-    const SCRIPT_VERSION = "13.9.11"; // Match @version
+    const SCRIPT_VERSION = "13.9.10"; // Match @version
     if (DEBUG) console.log(`✅ ${SCRIPT_NAME} v${SCRIPT_VERSION} loaded.`);
 
     // Configure Crisp safe mode
@@ -10290,7 +10314,7 @@ function prepareCopyElements() {
 
             let foundCoord = false, foundBranch = false;
             const coordPatterns = ['לתאם','לקבוע','תיאום','תאום','תיאם','קבע','קבענו','קבעתי','נקבע','נקבעה','נקבעו','תואם','מתואם','מתואמת','מתואמים','נתאם','לתיאום הגעה','תיאום הגעה','תאום הגעה','נסגור שעה','סגירת שעה'];
-            const fullText = (doc.body ? doc.body.textContent : doc.textContent) || '';
+            const fullText = __tmcGetScopedPanelText(doc);
             if (coordPatterns.some(p => fullText.includes(p))) foundCoord = true;
             if (__tmcContainsBranch(fullText)) foundBranch = true;
 
@@ -10438,11 +10462,10 @@ function prepareCopyElements() {
                     }
                 }
 
-                // First, check tooltips in the row (ready ONLY from shipment notes)
+                // Fast DOM pass: check shipment notes column only (avoid comments tooltip noise)
                 let foundInTooltip = false;
                 let seenReady = false, seenCoord = false;
                 let foundBranchInRow = false;
-                const tooltipCells = row.querySelectorAll('[title], [data-original-title]');
                 const coordPatterns = ['לתאם','לקבוע','תיאום','תאום','תיאם','קבע','קבענו','קבעתי','נקבע','נקבעה','נקבעו','תואם','מתואם','מתואמת','מתואמים','נתאם','לתיאום הגעה','תיאום הגעה','תאום הגעה','נסגור שעה','סגירת שעה'];
 
                 // Ready: only from shipment notes tooltip (notes column)
@@ -10454,19 +10477,9 @@ function prepareCopyElements() {
                 if (notesTooltip && notesTooltip.includes('מוכן')) {
                     seenReady = true;
                 }
-
-                // Coord/branch: still allowed from any tooltip in the row
-                for (const cell of tooltipCells) {
-                    const title = cell.getAttribute('title') || cell.getAttribute('data-original-title') || '';
-                    if (!title) continue;
-                    if (coordPatterns.some(p => title.includes(p))) seenCoord = true;
-                    if (!foundBranchInRow && __tmcContainsBranch(title)) foundBranchInRow = true;
-                }
-
-                // Fast path: check the whole row text once (covers any column)
-                if (!foundBranchInRow) {
-                    const rowText = row.textContent || '';
-                    if (__tmcContainsBranch(rowText)) foundBranchInRow = true;
+                if (notesTooltip) {
+                    if (coordPatterns.some(p => notesTooltip.includes(p))) seenCoord = true;
+                    if (__tmcContainsBranch(notesTooltip)) foundBranchInRow = true;
                 }
 
                 if (seenReady && seenCoord) {
@@ -10537,7 +10550,7 @@ function prepareCopyElements() {
         if (!panelView) return;
 
         // ---------- Signals ----------
-        const panelText = (panelView.textContent || '').replace(/\s+/g, ' ');
+        const panelText = __tmcGetScopedPanelText(panelView);
 
         // Notes – prefer the explicit notes cell if present
         const notesNode =
@@ -12063,10 +12076,6 @@ function addClickableLinksToAllTables(force = false, root = document) {
         const allTables = __tmcScope.querySelectorAll('table:not([data-tm-static-links])');
 
         allTables.forEach(table => {
-            // ✅ Never touch tables inside the Orders Forecast / TMC drilldowns
-            if (table.closest && table.closest('#tmc-drilldown-modal, #tmc-forecast-modal, .tmc-panel, .tmc-table-wrap')) {
-                return;
-            }
             // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
             if (table.classList && table.classList.contains('pick-order-item-table')) return;
             if (table.closest && table.closest('#missing-table-container')) return;
