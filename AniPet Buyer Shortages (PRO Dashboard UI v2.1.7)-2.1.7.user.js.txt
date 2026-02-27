@@ -1,0 +1,564 @@
+// ==UserScript==
+// @name         AniPet Buyer Shortages (PRO Dashboard UI v2.1.7)
+// @namespace    anipet.buyer
+// @version      2.1.7
+// @description  Perfect Mobile UX: Strong RTL Separation (Labels right, Values left), Justify-Space-Between fix.
+// @match        https://*/*
+// @grant        GM_xmlhttpRequest
+// @connect      qgqpjlubdvxfzxjtocrh.supabase.co
+// ==/UserScript==
+
+(() => {
+  "use strict";
+
+  // ============================================================
+  // INJECT MODERN CSS (WITH PERFECT MOBILE CARD VIEW)
+  // ============================================================
+  const css = `
+    /* Reset Box-Sizing to prevent Mobile Bleeding/Overflow */
+    #anipet-pro-root *, .ani-modal-overlay * {
+      box-sizing: border-box;
+    }
+
+    #anipet-pro-root {
+      position: fixed; top: 16px; right: 16px; z-index: 999999;
+      background: #f8fafc; border-radius: 16px;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+      width: min(1350px, calc(100vw - 32px)); max-height: calc(100vh - 32px);
+      display: flex; flex-direction: column;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden; direction: rtl; border: 1px solid #e2e8f0;
+    }
+    #anipet-pro-header {
+      background: linear-gradient(135deg, #0f172a, #1e293b); color: #fff;
+      padding: 16px 20px; display: flex; justify-content: space-between; align-items: center;
+    }
+    #anipet-pro-body {
+      padding: 16px 20px; overflow-y: auto; flex-grow: 1; position: relative;
+    }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    .ani-toolbar {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+      padding: 12px 16px; margin-bottom: 16px; display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;
+    }
+    .ani-input-group { display: flex; flex-direction: column; gap: 6px; }
+    .ani-label { font-size: 12px; font-weight: 600; color: #64748b; }
+    .ani-input, .ani-select {
+      border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px 12px; font-size: 14px;
+      color: #334155; background: #fff; outline: none; transition: all 0.2s;
+    }
+    .ani-input:focus, .ani-select:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+
+    .ani-card {
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 12px;
+      margin-bottom: 12px; transition: all 0.2s ease; box-shadow: 0 1px 3px 0 rgba(0,0,0,0.05);
+      overflow: hidden;
+    }
+    .ani-card-header { padding: 14px 16px; display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    .ani-card-body { padding: 0; background: #fafaf9; border-top: 1px solid #f1f5f9; display: none; }
+    .ani-card-body.open { display: block; animation: slideDown 0.3s ease-out forwards; }
+
+    .ani-btn {
+      background: #fff; border: 1px solid #cbd5e1; border-radius: 8px;
+      padding: 6px 14px; font-size: 13px; font-weight: 600; color: #475569;
+      cursor: pointer; transition: all 0.2s; white-space: nowrap;
+    }
+    .ani-btn:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a; }
+
+    .ani-badge {
+      padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+      display: inline-flex; align-items: center; border: 1px solid transparent; white-space: nowrap;
+    }
+    .badge-gray { background: #f1f5f9; color: #475569; border-color: #e2e8f0; }
+    .badge-red { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+    .badge-orange { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+    .badge-green { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+    .badge-blue { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+
+    /* Custom Tooltip */
+    .ani-tooltip-box {
+      position: fixed; background: rgba(15, 23, 42, 0.95); color: #fff; padding: 6px 12px;
+      border-radius: 6px; font-size: 12px; font-weight: 500; pointer-events: none;
+      z-index: 9999999; opacity: 0; transition: opacity 0.2s; box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      max-width: 250px; text-align: center; direction: rtl; line-height: 1.4;
+    }
+    .has-tooltip { border-bottom: 1px dotted #94a3b8; cursor: help; display: inline-block; }
+
+    /* Custom Popover/Modal */
+    .ani-modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15,23,42,0.5);
+      z-index: 9999999; display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s; padding: 16px; backdrop-filter: blur(2px);
+    }
+    .ani-modal-overlay.open { opacity: 1; pointer-events: auto; }
+    .ani-modal {
+      background: #fff; border-radius: 16px; width: 100%; max-width: 600px; max-height: 85vh;
+      display: flex; flex-direction: column; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.25);
+      transform: scale(0.95); transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      margin: auto;
+    }
+    .ani-modal-overlay.open .ani-modal { transform: scale(1); }
+    .ani-modal-header { padding: 16px 20px; border-bottom: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
+    .ani-modal-body { padding: 16px 20px; overflow-y: auto; overflow-x: hidden; }
+
+    /* Skeleton Loader (Shimmer) */
+    @keyframes shimmer { 0% { background-position: -400px 0; } 100% { background-position: 400px 0; } }
+    .skeleton {
+      animation: shimmer 1.5s infinite linear;
+      background: linear-gradient(to right, #f1f5f9 4%, #e2e8f0 25%, #f1f5f9 36%);
+      background-size: 800px 100%; height: 16px; border-radius: 4px; width: 100%;
+    }
+
+    /* --------------------------------------------------------
+       DESKTOP TABLES
+       -------------------------------------------------------- */
+    .table-responsive { width: 100%; padding: 0 16px 16px 16px; }
+    .ani-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; border: 1px solid #e2e8f0; margin-top: 16px; }
+    .ani-table th { background: #f8fafc; padding: 12px 14px; font-size: 12px; color: #64748b; font-weight: 600; text-align: right; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    .ani-table td { padding: 12px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; color: #334155; vertical-align: middle; }
+
+    /* --------------------------------------------------------
+       MOBILE TABLES (CARD VIEW NO HORIZONTAL SCROLL)
+       -------------------------------------------------------- */
+    @media (max-width: 768px) {
+      .table-responsive { padding: 0; overflow-x: hidden; }
+      .ani-modal-body { padding: 12px; }
+      .ani-modal-overlay { padding: 12px; }
+
+      .ani-table { border: none; background: transparent; margin-top: 8px; width: 100%; }
+      .ani-table thead { display: none; }
+
+      .ani-table tbody tr {
+        display: block; /* Turns rows into proper blocks */
+        background: #fff; border: 1px solid #e2e8f0;
+        border-radius: 12px; margin-bottom: 16px;
+        padding: 0; box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+        width: 100%;
+      }
+
+      .ani-table tbody td {
+        display: flex;
+        justify-content: space-between; /* THIS IS THE MAGIC: Forces label right, content left */
+        align-items: flex-start;
+        padding: 12px; border-bottom: 1px solid #f1f5f9;
+        width: 100%;
+      }
+      .ani-table tbody td:last-child { border-bottom: none; }
+
+      .ani-table tbody td::before {
+        content: attr(data-label);
+        font-weight: 700; color: #475569;
+        margin-left: 12px; text-align: right;
+        flex-shrink: 0; /* Prevents the label from shrinking */
+      }
+
+      .ani-table tbody td > .ani-val,
+      .ani-table tbody td > span,
+      .ani-table tbody td > div {
+        text-align: left; /* Forces text inside to align left */
+        color: #0f172a;
+        max-width: 65%; /* Prevents long text from crushing the label */
+        word-break: break-word;
+      }
+
+      /* Fix alignment for flex containers inside values (like buttons next to text) */
+      .ani-table tbody td > div {
+        display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px;
+      }
+    }
+  `;
+  const styleSheet = document.createElement("style"); styleSheet.innerText = css; document.head.appendChild(styleSheet);
+
+  // ============================================================
+  // CONFIG & HELPERS
+  // ============================================================
+  const SUPABASE_URL = "https://qgqpjlubdvxfzxjtocrh.supabase.co";
+  const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFncXBqbHViZHZ4Znp4anRvY3JoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMjc1MTcsImV4cCI6MjA4NDcwMzUxN30.UBsJrTtys9Sf8u2q3Jm3Y2uLrq64NsnHP-D8irDgCLs";
+
+  const I18N = {
+    'cat_litter': 'מצעים / חול לחתול', 'cat_food': 'מזון לחתול', 'dog_food': 'מזון לכלב',
+    'wet_cat_food': 'מזון לח לחתול', 'wet_dog_food': 'מזון לח לכלב',
+    'CRIT': 'קריטי', 'LOW': 'נמוך', 'OK': 'תקין (בתחזית)', 'HIGH': 'עודף מלאי'
+  };
+  function t(key) { return I18N[key] || key; }
+
+  function fmtDate(d) {
+    if (!d) return "";
+    const parts = String(d).split('-');
+    if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    return String(d);
+  }
+
+  const state = { limit: 300, sortBy: 'smart', graceDays: 7, windowDays: 14, skusData: [] };
+
+  function gmFetch(url, { method = "GET", headers = {}, body = null } = {}) {
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method, url, headers, data: body, responseType: "text",
+        onload: (res) => resolve({ ok: res.status >= 200 && res.status < 300, status: res.status, responseText: res.responseText }),
+        onerror: (err) => reject(err),
+      });
+    });
+  }
+
+  function sbHeaders() {
+    return { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${SUPABASE_ANON_KEY}`, Accept: "application/json", "Content-Type": "application/json" };
+  }
+
+  async function sbRpc(fnName, args = {}) {
+    const url = `${SUPABASE_URL}/rest/v1/rpc/${encodeURIComponent(fnName)}`;
+    const res = await gmFetch(url, { method: "POST", headers: sbHeaders(), body: JSON.stringify(args) });
+    if (!res.ok) throw { message: "Supabase RPC failed", status: res.status, body: res.responseText };
+    const data = tryParse(res.responseText);
+    return Array.isArray(data) ? data : [];
+  }
+  function tryParse(txt) { try { return JSON.parse(txt); } catch { return null; } }
+
+  // ============================================================
+  // DOM CREATION HELPERS
+  // ============================================================
+  function el(tag, props = {}, children = []) {
+    const node = document.createElement(tag);
+    for (const [key, val] of Object.entries(props)) {
+      if (key === 'style' && typeof val === 'object') Object.assign(node.style, val);
+      else if (key === 'className') node.className = val;
+      else if (key.startsWith('data-')) node.setAttribute(key, val);
+      else node[key] = val;
+    }
+    for (const c of children) {
+      if (c) node.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+    }
+    return node;
+  }
+
+  function badge(text, type = "gray", tooltipTxt = null) {
+    const props = { className: `ani-badge badge-${type}` };
+    if (tooltipTxt) {
+      props.className += " has-tooltip";
+      props['data-tooltip'] = tooltipTxt;
+    }
+    return el("span", props, [text]);
+  }
+
+  function asNode(n) { if (n) n.__isNode = true; return n; }
+
+  // ============================================================
+  // TOOLTIP & MODAL SYSTEM
+  // ============================================================
+  const tooltipBox = el("div", { className: "ani-tooltip-box" });
+  document.body.appendChild(tooltipBox);
+
+  document.addEventListener('mouseover', handleTooltip);
+  document.addEventListener('touchstart', handleTooltip, { passive: true });
+
+  function handleTooltip(e) {
+    const target = e.target.closest('[data-tooltip]');
+    if (target) {
+      tooltipBox.textContent = target.getAttribute('data-tooltip');
+      const rect = target.getBoundingClientRect();
+      tooltipBox.style.opacity = "1";
+      let top = rect.bottom + 8;
+      let left = rect.left + (rect.width / 2) - (tooltipBox.offsetWidth / 2);
+      if (left < 10) left = 10;
+      tooltipBox.style.top = `${top}px`;
+      tooltipBox.style.left = `${left}px`;
+    } else {
+      tooltipBox.style.opacity = "0";
+      tooltipBox.style.top = "-9999px";
+    }
+  }
+
+  const modalOverlay = el("div", { className: "ani-modal-overlay" });
+  const modalBox = el("div", { className: "ani-modal" });
+  const modalHeader = el("div", { className: "ani-modal-header" });
+  const modalTitle = el("div", { style: { fontWeight: "700", fontSize: "16px", color: "#0f172a" } });
+  const modalClose = el("button", { textContent: "✕", style: { background: "transparent", border: "none", fontSize: "20px", color: "#64748b", cursor: "pointer" }, onclick: closeModal });
+  const modalBody = el("div", { className: "ani-modal-body" });
+
+  modalHeader.appendChild(modalTitle); modalHeader.appendChild(modalClose);
+  modalBox.appendChild(modalHeader); modalBox.appendChild(modalBody);
+  modalOverlay.appendChild(modalBox);
+  document.body.appendChild(modalOverlay);
+  modalOverlay.addEventListener('click', (e) => { if(e.target === modalOverlay) closeModal(); });
+
+  function openModal(title, contentNode) {
+    modalTitle.textContent = title;
+    modalBody.innerHTML = "";
+    modalBody.appendChild(contentNode);
+    modalOverlay.classList.add('open');
+  }
+  function closeModal() { modalOverlay.classList.remove('open'); }
+
+  // הטבלה המשודרגת שעוטפת כל טקסט כדי שה-CSS למובייל יוכל לתפוס אותו וליישר לשמאל
+  function table(headers, rows) {
+    const headerTexts = headers.map(h => {
+      if (!h) return "";
+      if (typeof h === "string") return h;
+      if (h.textContent) return h.textContent.replace('❓', '').trim();
+      return "";
+    });
+
+    const thead = el("thead", {}, [ el("tr", {}, headers.map(h => el("th", {}, h && h.__isNode ? [h] : [String(h ?? "")]))) ]);
+
+    const tbody = el("tbody", {}, rows.map(r => el("tr", {}, r.map((cell, index) => {
+      // עטיפת התוכן המוחלט ב-span כדי לשלוט בכיוון שלו באופן מדויק במובייל
+      const valNode = (cell && cell.__isNode) ? cell : el("span", { className: "ani-val" }, [String(cell ?? "")]);
+      const td = el("td", {}, [valNode]);
+
+      if (headerTexts[index]) td.setAttribute('data-label', headerTexts[index]);
+      return td;
+    }))));
+
+    return el("table", { className: "ani-table" }, [thead, tbody]);
+  }
+
+  // ============================================================
+  // MAIN LAYOUT
+  // ============================================================
+  const rootDiv = el("div", { id: "anipet-pro-root" });
+  const headerDiv = el("div", { id: "anipet-pro-header" }, [
+    el("div", { style: { display: "flex", alignItems: "center", gap: "12px" } }, [
+      el("div", { textContent: "📦", style: { fontSize: "24px" } }),
+      el("div", {}, [
+        el("div", { textContent: "AniPet PRO · ניהול רכש ותחזיות", style: { fontSize: "16px", fontWeight: "700" } }),
+        el("div", { textContent: "עיצוב מובייל מושלם | מניעת זליגות | הפרדה בין כותרת לערך בימין-ושמאל", style: { fontSize: "12px", color: "#94a3b8" } })
+      ])
+    ]),
+    el("button", { textContent: "✕", style: { background: "transparent", border: "none", color: "#94a3b8", fontSize: "20px", cursor: "pointer" }, onclick: () => rootDiv.remove() })
+  ]);
+  const bodyContent = el("div", { id: "anipet-pro-body" });
+  const toolbar = el("div", { className: "ani-toolbar" });
+
+  const inGrace = el("input", { type: "number", className: "ani-input", style: { width: "80px" }, value: state.graceDays, min: 0 });
+  inGrace.onchange = () => { state.graceDays = parseInt(inGrace.value)||0; loadDataAndRender(); };
+
+  const inWindow = el("input", { type: "number", className: "ani-input", style: { width: "80px" }, value: state.windowDays, min: 0 });
+  inWindow.onchange = () => { state.windowDays = parseInt(inWindow.value)||0; loadDataAndRender(); };
+
+  const selSort = el("select", { className: "ani-select", style: { width: "220px" } });
+  [ {v:'smart', l:'שילוב חכם (זמן + כמות)'}, {v:'churn', l:'סכנת נטישה (מהישן לחדש)'}, {v:'upcoming', l:'תחזית קרובה להיום'}, {v:'volume', l:'הכי הרבה לקוחות בתחזית'}
+  ].forEach(o => selSort.appendChild(el("option", { value: o.v, textContent: o.l, selected: state.sortBy === o.v })));
+  selSort.onchange = () => { state.sortBy = selSort.value; renderMainList(); };
+
+  toolbar.appendChild(el("div", { className: "ani-input-group" }, [ el("label", { className: "ani-label", textContent: "ימים אחורה (איחור)" }), inGrace ]));
+  toolbar.appendChild(el("div", { className: "ani-input-group" }, [ el("label", { className: "ani-label", textContent: "ימים קדימה (תחזית)" }), inWindow ]));
+  toolbar.appendChild(el("div", { className: "ani-input-group" }, [ el("label", { className: "ani-label", textContent: "מיון חכם" }), selSort ]));
+
+  const statusLine = el("div", { style: { display: "flex", alignItems: "center", gap: "10px", padding: "0 4px 16px 4px", fontSize: "13px", color: "#64748b", fontWeight: "500" } });
+  const mainList = el("div", { style: { display: "flex", flexDirection: "column" } });
+
+  bodyContent.appendChild(toolbar); bodyContent.appendChild(statusLine); bodyContent.appendChild(mainList);
+  rootDiv.appendChild(headerDiv); rootDiv.appendChild(bodyContent);
+  document.documentElement.appendChild(rootDiv);
+
+  function setStatus(text, isError = false) {
+    statusLine.innerHTML = "";
+    statusLine.appendChild(badge(isError ? "שגיאה" : "סטטוס", isError ? "red" : "blue"));
+    statusLine.appendChild(el("span", { textContent: text }));
+  }
+
+  function createSkeletonTable() {
+    const wrapper = el("div", { className: "table-responsive" });
+    const tbl = el("table", { className: "ani-table" });
+    const tbody = el("tbody");
+    for(let i=0; i<3; i++) {
+        const tr = el("tr");
+        for(let j=0; j<6; j++) tr.appendChild(el("td", { 'data-label': 'טוען...' }, [el("div", { className: "skeleton" })]));
+        tbody.appendChild(tr);
+    }
+    tbl.appendChild(tbody); wrapper.appendChild(tbl);
+    return wrapper;
+  }
+
+  // ============================================================
+  // LOGIC
+  // ============================================================
+  async function loadDataAndRender() {
+    mainList.innerHTML = "";
+    setStatus(`טוען נתונים... מ-${state.graceDays} אחורה עד ${state.windowDays} קדימה.`);
+    try {
+      state.skusData = await sbRpc("buyer_sku_shortages_based_on_category", { p_category_key: null, p_limit: state.limit, p_grace_past_days: state.graceDays, p_window_days: state.windowDays });
+      renderMainList();
+    }
+    catch (e) { setStatus(`שגיאה בטעינת הנתונים`, true); }
+  }
+
+  function renderMainList() {
+    mainList.innerHTML = "";
+    if (!state.skusData || !state.skusData.length) {
+        mainList.appendChild(el("div", { textContent: "אין מוצרים דחופים בחלון הזמן הזה.", style: { color: "#94a3b8", textAlign: "center", padding: "40px", fontSize: "16px" } }));
+        return;
+    }
+
+    const sortedSkus = [...state.skusData].sort((a, b) => {
+      const dA = new Date(a.nearest_due_date).setHours(0,0,0,0), dB = new Date(b.nearest_due_date).setHours(0,0,0,0), today = new Date().setHours(0,0,0,0);
+      if (state.sortBy === 'smart') {
+          const tA = (dA - today) <= 0 ? 1 : ((dA - today) <= 7*86400000 ? 2 : 3);
+          const tB = (dB - today) <= 0 ? 1 : ((dB - today) <= 7*86400000 ? 2 : 3);
+          return tA !== tB ? tA - tB : b.total_customers - a.total_customers;
+      } else if (state.sortBy === 'churn') return dA - dB;
+      else if (state.sortBy === 'upcoming') return Math.abs(dA - today) - Math.abs(dB - today);
+      else return b.total_customers - a.total_customers;
+    });
+
+    setStatus(`מציג ${sortedSkus.length} מוצרים מובילים לתחזית.`);
+
+    for (const s of sortedSkus) {
+      const card = el("div", { className: "ani-card" });
+      const badgeList = [];
+      if (s.buyer_crit_customers > 0) badgeList.push(badge(`${t('CRIT')}: ${s.buyer_crit_customers}`, "red"));
+      if (s.buyer_low_customers > 0) badgeList.push(badge(`${t('LOW')}: ${s.buyer_low_customers}`, "orange"));
+      if (s.buyer_ok_customers > 0) badgeList.push(badge(`${t('OK')}: ${s.buyer_ok_customers}`, "green"));
+      if (s.buyer_high_customers > 0) badgeList.push(badge(`${t('HIGH')}: ${s.buyer_high_customers}`, "blue"));
+      badgeList.push(el("span", { textContent: "|", style: { color: "#cbd5e1" } }));
+      if (s.late_customers > 0) badgeList.push(el("span", { textContent: `אחורה: ${s.late_customers}`, style: { color: "#b45309", fontWeight: "600", fontSize: "13px" } }));
+      if (s.future_customers > 0) badgeList.push(el("span", { textContent: `קדימה: ${s.future_customers}`, style: { color: "#059669", fontWeight: "600", fontSize: "13px" } }));
+      badgeList.push(el("span", { textContent: `[סה"כ: ${s.total_customers}]`, style: { color: "#0f172a", fontWeight: "700", fontSize: "13px" } }));
+      badgeList.push(el("span", { textContent: `• תאריך קרוב: ${fmtDate(s.nearest_due_date)}`, style: { fontSize: "13px", color: "#64748b" } }));
+
+      const titleArea = el("div", { style: { display: "flex", flexDirection: "column", gap: "6px" } }, [
+        el("div", { style: { display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" } }, [
+          el("span", { textContent: s.product_name || "מוצר ללא שם", style: { fontSize: "15px", fontWeight: "700", color: "#0f172a" } }),
+          badge(s.recommend_sku, "gray"), badge(t(s.category_key), "gray")
+        ]),
+        el("div", { style: { display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" } }, badgeList)
+      ]);
+
+      const btnToggle = el("button", { className: "ani-btn", textContent: "פתח לקוחות" });
+      const cBody = el("div", { className: "ani-card-body" });
+      let isLoaded = false;
+
+      btnToggle.onclick = async () => {
+        const isOpen = cBody.classList.contains('open');
+        if (isOpen) {
+            cBody.classList.remove('open');
+            btnToggle.textContent = "פתח לקוחות";
+        } else {
+            cBody.classList.add('open');
+            btnToggle.textContent = "סגור רשימה";
+            if (!isLoaded) {
+                cBody.innerHTML = "";
+                cBody.appendChild(createSkeletonTable());
+                await fetchAndRenderCustomers(s.recommend_sku, cBody);
+                isLoaded = true;
+            }
+        }
+      };
+
+      card.appendChild(el("div", { className: "ani-card-header" }, [titleArea, btnToggle]));
+      card.appendChild(cBody);
+      mainList.appendChild(card);
+    }
+  }
+
+  async function fetchAndRenderCustomers(sku, containerElement) {
+    try {
+      const users = await sbRpc("buyer_sku_shortages_drilldown_step1_base", { p_recommend_sku: sku, p_category_key: null, p_limit: state.limit, p_grace_past_days: state.graceDays, p_window_days: state.windowDays });
+      containerElement.innerHTML = "";
+
+      if (!users.length) { containerElement.appendChild(el("div", { textContent: "לא נמצאו לקוחות מתאימים.", style: { padding: "16px", textAlign: "center", color: "#94a3b8" } })); return; }
+
+      const phones = users.map(u => u.p9);
+      const cat = users[0].category_key;
+      let nameMap = {}, ordersMap = {};
+      try {
+          const namesRaw = await sbRpc("buyer_sku_shortages_raw_names", { p_phones: phones });
+          for (const n of namesRaw) nameMap[n.p9] = { name: n.c_name, addr: [n.c_city, n.c_address].filter(Boolean).join(" - ") };
+      } catch(e) {}
+
+      try {
+          const orderPromises = phones.map(phone => sbRpc("buyer_sku_shortages_raw_orders_single", { p_phone: phone, p_category: cat }).then(res => res.map(r => ({ p9: phone, o_date: r.o_date, qty: r.qty }))).catch(()=>[]));
+          const ordersRaw = (await Promise.all(orderPromises)).flat();
+          for (const o of ordersRaw) { if (!ordersMap[o.p9]) ordersMap[o.p9] = []; ordersMap[o.p9].push({ date: new Date(o.o_date), qty: Number(o.qty) }); }
+      } catch(e) {}
+
+      const custRows = users.map(u => {
+        const p9 = u.p9;
+        let uOrders = ordersMap[p9] || []; uOrders.sort((a,b)=>b.date-a.date);
+
+        let anomalyBadge = badge("יציב", "gray"), cv = null, relBadge = badge("מעט נתונים", "gray");
+        let lastDate = null, lastQty = 0;
+
+        if (uOrders.length > 0) {
+            lastDate = uOrders[0].date.toISOString().split('T')[0];
+            lastQty = uOrders[0].qty;
+            let past = uOrders.slice(1,4);
+            if (past.length > 0) {
+                let avg = past.reduce((s,o)=>s+o.qty,0) / past.length;
+                let diff = lastQty - avg;
+                if (lastQty <= avg * 0.85) anomalyBadge = badge(`חסר ${Math.abs(diff).toFixed(1)}`, "red", `קנה ${lastQty} במקום ממוצע ${avg.toFixed(1)}`);
+                if (lastQty >= avg * 1.15) anomalyBadge = badge(`עודף ${Math.abs(diff).toFixed(1)}`, "green", `קנה ${lastQty} במקום ממוצע ${avg.toFixed(1)}`);
+            }
+
+            let rates = [];
+            for(let i=0; i<uOrders.length-1; i++) {
+                let d = (uOrders[i].date - uOrders[i+1].date)/86400000;
+                if (d>4) rates.push(uOrders[i+1].qty/d);
+            }
+            if (rates.length >= 2) {
+                let mean = rates.reduce((a,b)=>a+b,0)/rates.length;
+                let v = rates.reduce((a,b)=>a+Math.pow(b-mean,2),0)/rates.length;
+                cv = mean > 0 ? Math.sqrt(v)/mean : 0;
+                let cvPct = (cv*100).toFixed(1)+"%";
+                if (cv <= 0.15) relBadge = badge("🎯 גבוהה", "green", `סטיית צריכה: ${cvPct}`);
+                else if (cv <= 0.35) relBadge = badge("🟡 בינונית", "orange", `סטיית צריכה: ${cvPct}`);
+                else relBadge = badge("🎲 נמוכה", "red", `סטיית צריכה: ${cvPct}`);
+            }
+        }
+
+        let statusType = u.dos_bucket === "CRIT" ? "red" : (u.dos_bucket === "LOW" ? "orange" : (u.dos_bucket === "OK" ? "green" : "blue"));
+        const infoBtn = el("button", { className: "ani-btn", textContent: "👁️", style: { padding: "4px 8px", fontSize: "14px", border: "none", background: "#f1f5f9" } });
+        const cName = nameMap[p9]?.name || "לקוח לא ידוע";
+
+        infoBtn.onclick = async () => {
+            infoBtn.textContent = "⏳";
+            try {
+                const data = await sbRpc("get_customer_recent_items_fast", {
+                    p_phone: p9,
+                    p_category: cat
+                });
+
+                if (!data || !data.length) {
+                    alert("לא נמצאו פריטים קודמים בקטגוריה זו.");
+                    return;
+                }
+
+                const histRows = data.map(d => [fmtDate(d.order_date), d.item_name, d.qty || 1, `${d.qty_pack} ק"ג`]);
+                const histTable = table(["תאריך", "פריט", "יחידות", 'סה"כ משקל'], histRows);
+
+                openModal(`היסטוריית הזמנות של ${cName}`, el("div", {className: "table-responsive", style:{padding:0}}, [histTable]));
+            } catch(err) {
+                const errBody = err.body ? (typeof err.body === 'string' ? err.body : JSON.stringify(err.body)) : '';
+                alert(`שגיאת שליפה מפורטת:\nסטטוס: ${err.status || 'לא ידוע'}\n${errBody || err.message}`);
+            } finally {
+                infoBtn.textContent = "👁️";
+            }
+        };
+
+        const dateCell = el("div", { style: { display: "flex", alignItems: "center", gap: "8px" } }, [ el("span", { textContent: fmtDate(lastDate) }), infoBtn ]);
+        const historyText = uOrders.length > 0 ? `${u.order_days_180d || 0} (סה"כ: ${uOrders.length})` : String(u.order_days_180d || 0);
+
+        return [
+          u.customer_phone || "", cName, nameMap[p9]?.addr || "",
+          asNode(badge(t(u.category_key), "gray")), asNode(dateCell), asNode(anomalyBadge), asNode(relBadge),
+          asNode(badge(t(u.dos_bucket), statusType)), fmtDate(u.next_expected_date), historyText
+        ];
+      });
+
+      const relHeader = el("span", { className: "has-tooltip", 'data-tooltip': "מחושב עפ״י יציבות צריכה יומית לאורך זמן", textContent: "אמינות ❓" });
+      const tblContainer = el("div", { className: "table-responsive" });
+      tblContainer.appendChild(table(["טלפון", "שם לקוח", "כתובת למשלוח", "קטגוריה", "הזמנה אחרונה", "מגמת כמות", asNode(relHeader), "מלאי בבית", "צפי סיום", "הזמנות (חצי שנה)"], custRows));
+      containerElement.appendChild(tblContainer);
+
+    } catch(e) { containerElement.innerHTML = ""; containerElement.appendChild(el("div", { textContent: `שגיאה בשליפת לקוחות: ${e.message}`, style: { padding: "16px", color: "red" } })); }
+  }
+
+  loadDataAndRender();
+
+})();
