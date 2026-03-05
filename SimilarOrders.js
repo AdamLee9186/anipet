@@ -13,6 +13,7 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
+// @grant        GM_registerMenuCommand
 // @connect      members.lionwheel.com
 // @connect      raw.githubusercontent.com
 // @run-at       document-idle
@@ -39,7 +40,7 @@
     };
 
     // --- קבועים לטעינת תמונות ---
-    const IMAGE_FINDER_CSV_URL = "https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v1.csv";
+    const IMAGE_FINDER_CSV_URL = "https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v10_.csv";
     const PRODUCT_DATA_CACHE_KEY = 'anipet_product_data_cache_search';
     const IMAGE_CACHE_TIMESTAMP_KEY = 'anipet_image_cache_timestamp_search';
     const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -126,7 +127,7 @@
             width: 100%;
             height: 100%;
             background: rgba(0, 0, 0, 0.5);
-            z-index: 9998;
+            z-index: 9999998; /* מעל AniPet PRO */
             display: none;
             direction: rtl;
         }
@@ -140,7 +141,7 @@
             background: #fff;
             border-radius: 8px;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            z-index: 9999;
+            z-index: 9999999; /* מעל AniPet PRO */
             width: 90%;
             max-width: 850px;
             max-height: 80vh;
@@ -1553,6 +1554,25 @@
         }
     }
 
+    function clearImageCache() {
+        try {
+            GM_deleteValue(PRODUCT_DATA_CACHE_KEY);
+            GM_deleteValue(IMAGE_CACHE_TIMESTAMP_KEY);
+            productDataCache = null;
+            alert('קאש התמונות נמחק. ברענון הבא הקטלוג ייטען מחדש.');
+            console.log('LW Search: Image cache cleared by menu command.');
+        } catch (error) {
+            console.error('LW Search: Failed to clear image cache:', error);
+            alert('נכשל בניקוי קאש התמונות. בדוק קונסול לפרטים.');
+        }
+    }
+
+    function registerMenuCommands() {
+        if (typeof GM_registerMenuCommand !== 'function') return;
+
+        GM_registerMenuCommand('LW Search: נקה קאש תמונות', clearImageCache);
+    }
+
     function lwColorQtySpan(qtyText) {
         try {
             if (!qtyText) return qtyText;
@@ -1630,6 +1650,7 @@
 
     // טען את קטלוג התמונות ברקע
     getProductData();
+    registerMenuCommands();
 
     setTimeout(addSearchIcons, 1000);
 
@@ -1651,5 +1672,18 @@
     });
 
     createModal();
+
+    // === גשר תקשורת (API) עבור סקריפטים חיצוניים כמו AniPet PRO ===
+    document.addEventListener('OpenSimilarOrdersByPhone', function(e) {
+        if (e.detail && e.detail.phone) {
+            const overlay = document.getElementById('lwSearchOverlay');
+            const modal = document.getElementById('lwSearchModal');
+            if (overlay) {
+                overlay.style.display = 'flex';
+                if (modal) modal.style.display = 'flex';
+                performSearch(e.detail.phone);
+            }
+        }
+    });
 
 })();
