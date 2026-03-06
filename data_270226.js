@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lionwheel - Anipet Toolbox
 // @namespace    anipet-toolbox-merged
-// @version      13.9.10
+// @version      13.9.11
 // @description  AIO Script: Image Finder, Barcode Replacer, Previews, Responsive Views & more, all controlled from the Tampermonkey menu.
 // @author       Adam Lee
 // @source       https://github.com/AdamLee9186/anipet_app
@@ -3650,7 +3650,7 @@ setupBlockedScriptObserver();
     setupCrossScriptConsoleFiltering();
 
     // ---< Constants >---
-    const IMAGE_FINDER_CSV_URL = "https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v1.1.csv";
+    const IMAGE_FINDER_CSV_URL = "https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v10_.csv";
     const BARCODE_REPLACER_CSV_URL = 'https://raw.githubusercontent.com/AdamLee9186/anipet/main/backoffice_catalog.csv';
     const PLACEHOLDER_IMG_URL = 'data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="80" height="70" viewBox="0 0 80 70"><rect width="80" height="70" fill="#fafafa"/><text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="12px" fill="#d4d4d4">אין תמונה</text></svg>');
     // Optional webhook to silently receive image report emails without opening a mail client
@@ -12079,6 +12079,8 @@ function addClickableLinksToAllTables(force = false, root = document) {
             // ⛔ דלג על חלונית ליקוט ועל טבלת החוסרים
             if (table.classList && table.classList.contains('pick-order-item-table')) return;
             if (table.closest && table.closest('#missing-table-container')) return;
+            // ⛔ דלג על טבלאות בתוך מודאל AniPet PRO
+            if (table.closest && table.closest('#anipet-pro-root')) return;
 
             // Skip store visits table - don't add copy icons for names there
             if (table.id === 'operator-store-visits-table' ||
