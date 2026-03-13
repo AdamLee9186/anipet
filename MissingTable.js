@@ -1,7 +1,7 @@
     // ==UserScript==
-    // @name        טבלת חוסרים 17/01/2026
+    // @name        טבלת חוסרים 13/03/2026
     // @namespace   http://tampermonkey.net/
-    // @version     9.3
+    // @version     9.4
     // @description הצגת טבלת חוסרים בלחיצה, כולל קיבוץ לפי שם מוצר, תצוגות מתחלפות, מיון, חיפוש, ייצוא, והדפסה
     // @author      Adam Lee
     // @match       https://members.lionwheel.com/operator/store_visits*
@@ -183,7 +183,7 @@
                 if (!resp.ok) return resp;
 
                 const text = await resp.text();
-                
+
                 // נסה לשמור רק אם יש מקום, אחרת פשוט תשתמש במידע בלי לשמור
                 try {
                     const e = resp.headers.get("ETag");
@@ -196,7 +196,7 @@
                         console.warn('[MissingTable] Disk full. Catalog will be used from memory but NOT cached to disk.');
                     }
                 }
-                
+
                 return new Response(new Blob([text]), { status: 200 });
             } catch (networkErr) {
                 console.error('[MissingTable] Network error fetching catalog:', networkErr);
@@ -996,7 +996,7 @@
         }
 
         const CSV_URL = 'https://raw.githubusercontent.com/AdamLee9186/anipet/main/backoffice_catalog.csv';
-        const MASTER_CSV_URL = 'https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v1.csv';
+        const MASTER_CSV_URL = 'https://raw.githubusercontent.com/AdamLee9186/anipet/main/anipet_master_catalog_v10_.csv';
         console.log('📁 URL של קובץ הקטלוג CSV:', CSV_URL);
         console.log('🖼️ URL של מאסטר התמונות CSV:', MASTER_CSV_URL);
 
@@ -1051,8 +1051,8 @@
         let catalogData = null;
         let allResults = []; // Store all fetched results
         let filteredAndSortedResults = []; // Store currently filtered and sorted results
-        let selectedItemUniqueIds = new Set(); 
-        
+        let selectedItemUniqueIds = new Set();
+
         // --- משתנים חדשים לספקים וגלריה ---
         let supplierDataMap = new Map(); // ברקוד -> שם ספק
         let supplierDataByNameMap = new Map(); // שם מוצר -> שם ספק
@@ -1061,7 +1061,7 @@
         let selectedSupplierFilter = ''; // הספק שנבחר לסינון
         let galleryViewMode = 'detailed'; // 'detailed' (default) or 'simple'
         let supplierIndex = null; // compact supplier index for cross-script sharing
-        
+
         // AbortController להרצה נקייה
         let currentRun = null;
 
@@ -1072,26 +1072,70 @@
             return controller;
         }
 
-        // ניקוי חד-פעמי של קאש ישן (להפעלה ידנית אם נדרש)
+        // ניקוי קאש ונתוני CSV מהזיכרון, כדי לאלץ רענון מלא מהשרת
         function clearOldCache() {
-            const keysToRemove = ['missing_table_task_cache_v1', 'catalog_csv_v1', 'catalog_csv'];
+            const keysToRemove = [
+                'missing_table_task_cache_v1',
+                'catalog_csv_v1',
+                'catalog_csv',
+                CONFIG.CACHE_NS,
+                CONFIG.CACHE_NS + ':meta',
+                'master_csv_v1:meta',
+                LW_SHARED_SESSION_SUPPLIER_KEY
+            ];
+
             keysToRemove.forEach(k => {
                 try {
                     localStorage.removeItem(k);
-                    sessionStorage.removeItem(k);
-                    console.log(`🧹 נוקה ${k}`);
                 } catch(e) {
-                    console.warn(`לא ניתן לנקות ${k}:`, e);
+                    console.warn(`לא ניתן לנקות localStorage עבור ${k}:`, e);
+                }
+                try {
+                    sessionStorage.removeItem(k);
+                } catch(e) {
+                    console.warn(`לא ניתן לנקות sessionStorage עבור ${k}:`, e);
                 }
             });
+
+            // ניקוי אובייקטים בזיכרון (RAM) כך שהסקריפט יטען מחדש את ה־CSV בפעם הבאה
+            try {
+                catalogData = null;
+                allResults = [];
+                filteredAndSortedResults = [];
+                selectedItemUniqueIds = new Set();
+
+                supplierDataMap.clear();
+                supplierDataByNameMap.clear();
+                supplierDataLoaded = false;
+                uniqueSuppliers = new Set();
+                selectedSupplierFilter = '';
+                galleryViewMode = 'detailed';
+                supplierIndex = null;
+
+                if (currentRun && typeof currentRun.abort === 'function') {
+                    currentRun.abort();
+                }
+                currentRun = null;
+
+                masterCatalogReady = false;
+                masterSkuToImage.clear();
+                masterBarcodeToImage.clear();
+                masterSkuToUrl.clear();
+                masterBarcodeToUrl.clear();
+                barcodeToMaktMap = {};
+
+                console.log('🧹 כל נתוני הקטלוגים וה־CSV נוקו מהקאש ומהזיכרון.');
+            } catch (e) {
+                console.warn('שגיאה בעת ניקוי אובייקטים מהזיכרון:', e);
+            }
         }
 
         // רישום פקודה בתפריט Tampermonkey (לחיצה על האייקון של התוסף בדפדפן)
         if (typeof GM_registerMenuCommand !== 'undefined') {
-            GM_registerMenuCommand("🗑️ ניקוי זיכרון מטמון (Cache)", () => {
-                if (confirm("האם לנקות את כל נתוני הקטלוג והמשימות השמורים?")) {
+            GM_registerMenuCommand("🗑️ ניקוי זיכרון הקטלוגים (CSV Cache)", () => {
+                if (confirm("האם לנקות את כל נתוני קטלוגי ה־CSV והקאש שלהם מהזיכרון? הם ייטענו מחדש מהשרת בטעינה הבאה.")) {
                     clearOldCache();
-                    alert("הזיכרון נוקה בהצלחה. טען את הדף מחדש.");
+                    alert("הזיכרון נוקה. טען את הדף מחדש כדי לטעון את הקטלוגים מחדש מה־CSV.");
                 }
             });
         }
@@ -1387,7 +1431,7 @@
               #missing-gallery-container{display:none; position:relative; flex:1 1 auto; min-height:0; width:100%; height:100%; overflow:auto; padding:0;}
               .missing-gallery-loader{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,.65); z-index:2}
               .missing-gallery-spinner{width:44px; height:44px; border-radius:50%; border:3px solid #d6dae0; border-top-color:#6c757d; animation:tm-spin .8s linear infinite}
-              
+
               /* Gallery close button */
               .gallery-close-button{
                 position:absolute; top:12px; right:12px; z-index:20;
@@ -1541,11 +1585,11 @@
               .missing-gallery-card:hover .missing-gallery-overlay{transform:translateY(0);}
               .missing-gallery-name{display:block; white-space:normal; word-break:break-word;}
               .missing-gallery-code{display:block; opacity:.9; font-family:monospace; direction:ltr;}
-              
+
               /* === Checkmark Overlay === */
               .checkmark-overlay{
-                position:absolute; top:0; left:0; right:0; bottom:0; 
-                background:rgba(16, 185, 129, 0.3); 
+                position:absolute; top:0; left:0; right:0; bottom:0;
+                background:rgba(16, 185, 129, 0.3);
                 display:flex; align-items:center; justify-content:center;
                 z-index:10; border-radius:8px;
                 animation: checkmarkFadeIn 0.3s ease-out;
@@ -1568,7 +1612,7 @@
                 50%{transform:scale(1.1);}
                 100%{transform:scale(1);}
               }
-              
+
               #toggle-gallery-btn.btn-primary{background-color:#D7DAE7; border-color:#D7DAE7; color:#000;}
               #toggle-gallery-btn.btn-primary:hover{background-color:#C5C9D6; border-color:#C5C9D6; color:#000;}
 
@@ -2330,7 +2374,7 @@ function showGalleryOverlay(items, startIndex){
                 const promises = [];
                 if (catalogData === null) promises.push(loadCatalogData());
                 promises.push(loadSupplierData()); // טעינת ספקים
-                
+
                 await Promise.all(promises);
             } catch (e) {
                 showMessageModal('שגיאה', e.message, true);
@@ -2648,10 +2692,10 @@ function showGalleryOverlay(items, startIndex){
                         }
                         // cachedEntry.data is HTML string, convert to { html, id } format
                         // Handle both old format ({ html, id }) and new format (HTML string)
-                        const html = typeof cachedEntry.data === 'string' 
-                            ? cachedEntry.data 
-                            : (cachedEntry.data && typeof cachedEntry.data === 'object' && cachedEntry.data.html 
-                                ? cachedEntry.data.html 
+                        const html = typeof cachedEntry.data === 'string'
+                            ? cachedEntry.data
+                            : (cachedEntry.data && typeof cachedEntry.data === 'object' && cachedEntry.data.html
+                                ? cachedEntry.data.html
                                 : '');
                         fetchedRawItems.push({ html, id });
 
@@ -2838,7 +2882,7 @@ function showGalleryOverlay(items, startIndex){
                             missing: total - picked,
                             status: itemStatus, // This is the individual item's display status (Hebrew)
                             taskOverallStatus: taskOverallStatus, // This is the overall order status (English mapping from above)
-                            destinationRegion: destinationRegion, 
+                            destinationRegion: destinationRegion,
                             makt,
                             price: price,
                             supplier: supplier // הוספת שדה ספק
@@ -3324,7 +3368,7 @@ function showGalleryOverlay(items, startIndex){
             const supplierSelect = document.getElementById('supplier-filter-select');
             uniqueSuppliers = new Set(allResults.map(i => i.supplier).filter(Boolean));
             const sortedSuppliers = Array.from(uniqueSuppliers).sort();
-            
+
             sortedSuppliers.forEach(s => {
                 const op = document.createElement('option');
                 op.value = s;
@@ -3344,14 +3388,14 @@ function showGalleryOverlay(items, startIndex){
             if(toggleViewBtn) {
                 toggleViewBtn.onclick = () => {
                     galleryViewMode = (galleryViewMode === 'detailed') ? 'simple' : 'detailed';
-                    toggleViewBtn.innerHTML = (galleryViewMode === 'detailed') 
-                        ? '<i class="fa-light fa-grid"></i> תצוגה פשוטה' 
+                    toggleViewBtn.innerHTML = (galleryViewMode === 'detailed')
+                        ? '<i class="fa-light fa-grid"></i> תצוגה פשוטה'
                         : '<i class="fa-light fa-id-card"></i> תצוגה מפורטת';
                     renderMissingGallery().catch(e => console.error('Gallery render error:', e)); // רנדר מחדש
                 };
                 // Set initial text
-                 toggleViewBtn.innerHTML = (galleryViewMode === 'detailed') 
-                        ? '<i class="fa-light fa-grid"></i> תצוגה פשוטה' 
+                 toggleViewBtn.innerHTML = (galleryViewMode === 'detailed')
+                        ? '<i class="fa-light fa-grid"></i> תצוגה פשוטה'
                         : '<i class="fa-light fa-id-card"></i> תצוגה מפורטת';
             }
 
@@ -4767,7 +4811,7 @@ expandedGroups.clear();
             function toggleCheckmarkOverlay(card) {
                 // בדוק אם כבר יש checkmark
                 const existingCheckmark = card.querySelector('.checkmark-overlay');
-                
+
                 if (existingCheckmark) {
                     // הסר את ה-checkmark
                     existingCheckmark.remove();
@@ -4792,23 +4836,23 @@ expandedGroups.clear();
             async function renderMissingGallery(){
               const grid = document.getElementById('missing-gallery-grid');
               if (!grid) return;
-              
+
               // עדכון מחלקה לקונטיינר לפי מצב תצוגה
               grid.className = `missing-gallery-grid mode-${galleryViewMode}`;
 
               grid.innerHTML = '';
               // Loader
               const skelFrag = document.createDocumentFragment();
-              const skelCount = 20; 
-              for (let i=0;i<skelCount;i++){ 
-                  const s = document.createElement('div'); 
-                  s.className = galleryViewMode === 'detailed' ? 'missing-skel detailed' : 'missing-skel'; 
-                  skelFrag.appendChild(s); 
+              const skelCount = 20;
+              for (let i=0;i<skelCount;i++){
+                  const s = document.createElement('div');
+                  s.className = galleryViewMode === 'detailed' ? 'missing-skel detailed' : 'missing-skel';
+                  skelFrag.appendChild(s);
               }
               grid.appendChild(skelFrag);
 
               await ensureImagesReady();
-              
+
               const agg = new Map();
               // שימוש ב-filteredAndSortedResults (כבר מסונן לפי ספק אם נבחר)
               (filteredAndSortedResults || []).forEach(r => {
@@ -4854,7 +4898,7 @@ expandedGroups.clear();
                 const supplier = item.supplier || '';
                 const barcode = item.barcode || '';
                 const imgUrl = findImageForItem(item);
-                
+
                 // יצירת הכרטיס
                 const card = document.createElement('div');
                 card.className = `missing-gallery-card ${galleryViewMode}`; // simple or detailed
@@ -4862,14 +4906,14 @@ expandedGroups.clear();
                 // 1. קונטיינר לתמונה
                 const imgContainer = document.createElement('div');
                 imgContainer.className = 'card-img-container';
-                
+
                 const img = document.createElement('img');
                 img.loading = 'lazy';
                 img.alt = name;
                 img.src = imgUrl || buildTextPlaceholder(name);
 
                 imgContainer.appendChild(img);
-                
+
                 // כמות (Badge)
                 const resolvedQty = Number.isFinite(+qtySum) ? +qtySum : 0;
                 if (resolvedQty > 1){
@@ -4878,36 +4922,36 @@ expandedGroups.clear();
                   badge.textContent = 'X' + resolvedQty;
                   imgContainer.appendChild(badge);
                 }
-                
+
                 card.appendChild(imgContainer);
 
                 // 2. פרטים (רק במידה וזה לא תצוגה פשוטה, או כ-Overlay בתצוגה פשוטה)
                 if (galleryViewMode === 'detailed') {
                     const info = document.createElement('div');
                     info.className = 'card-details';
-                    
+
                     const titleDiv = document.createElement('div');
                     titleDiv.className = 'card-title';
                     titleDiv.textContent = name;
                     titleDiv.title = name;
-                    
+
                     const metaDiv = document.createElement('div');
                     metaDiv.className = 'card-meta';
-                    
+
                     const supplierSpan = document.createElement('span');
                     supplierSpan.className = 'card-supplier';
                     const truckIcon = document.createElement('i');
                     truckIcon.className = 'fa-light fa-truck';
                     supplierSpan.appendChild(truckIcon);
                     supplierSpan.appendChild(document.createTextNode(' ' + supplier));
-                    
+
                     const barcodeSpan = document.createElement('span');
                     barcodeSpan.className = 'card-barcode';
                     const barcodeIcon = document.createElement('i');
                     barcodeIcon.className = 'fa-light fa-barcode';
                     barcodeSpan.appendChild(barcodeIcon);
                     barcodeSpan.appendChild(document.createTextNode(' ' + barcode));
-                    
+
                     metaDiv.appendChild(supplierSpan);
                     metaDiv.appendChild(barcodeSpan);
                     info.appendChild(titleDiv);
@@ -5012,10 +5056,10 @@ expandedGroups.clear();
                         touchMoved = false;
                         return;
                     }
-                    
+
                     card.classList.toggle('selected');
                     const isSelected = card.classList.contains('selected');
-                    
+
                     // עדכון ה-checkmark רק עבור הפריט הנוכחי
                     const existingCheckmark = card.querySelector('.checkmark-overlay');
                     if (isSelected) {
@@ -5031,7 +5075,7 @@ expandedGroups.clear();
 
                 // הוסף דאבל קליק או כפתור לפתיחת תמונה מלאה
                 imgContainer.addEventListener('dblclick', openGallery);
-                
+
                 cards.push(card);
                 if (preloadFirst.length < 12 && imgUrl){
                   const p = new Image(); p.src = imgUrl; preloadFirst.push(new Promise(r=>{ p.onload=p.onerror=()=>r(); }));
@@ -5039,9 +5083,9 @@ expandedGroups.clear();
               });
 
               const loader = document.querySelector('#missing-gallery-container .missing-gallery-loader');
-              if (loader) loader.remove(); 
+              if (loader) loader.remove();
               try { await Promise.race([ Promise.allSettled(preloadFirst), new Promise(r=>setTimeout(r,500)) ]); } catch(_){}
-              
+
               grid.innerHTML = '';
               const frag = document.createDocumentFragment(); cards.forEach(c=>frag.appendChild(c)); grid.appendChild(frag);
             }
@@ -5580,25 +5624,51 @@ expandedGroups.clear();
         function processNegativeItems(items) {
             console.log('מעבד נתונים למצב נגטיב...');
 
-            // 1. בוחרים את כל מזהי ההזמנות שבהן יש לפחות פריט חסר
-            // ורק הזמנות שהתחילו ליקוט (לא NEW, UNASSIGNED) או בסטטוס PENDING
+            // 1. בודקים את הסטטוס של כל ההזמנות - רק הזמנות שהתחילו ליקוט (לא NEW, UNASSIGNED)
+            // בודקים את הסטטוס של כל הפריטים בהזמנה כדי לוודא שההזמנה כולה לא בסטטוס NEW
+            const orderStatuses = new Map(); // taskId -> taskOverallStatus
+            items.forEach(item => {
+                if (!orderStatuses.has(item.taskId)) {
+                    orderStatuses.set(item.taskId, item.taskOverallStatus);
+                } else {
+                    // בדיקת עקביות - אם יש חוסר עקביות, זה בעיה
+                    const existingStatus = orderStatuses.get(item.taskId);
+                    if (existingStatus !== item.taskOverallStatus) {
+                        console.warn(`⚠️ חוסר עקביות בסטטוסים: הזמנה ${item.taskId} יש סטטוס ${existingStatus} וגם ${item.taskOverallStatus}`);
+                    }
+                }
+            });
+
+            // 2. בוחרים את כל מזהי ההזמנות שבהן יש לפחות פריט חסר
+            // ורק הזמנות שהתחילו ליקוט (לא NEW, UNASSIGNED)
             const ordersWithMissing = new Set(
                 items
-                    .filter(item =>
-                        item.picked < item.total &&
-                        item.taskOverallStatus !== 'NEW' &&
-                        item.taskOverallStatus !== 'UNASSIGNED'
-                    )
+                    .filter(item => {
+                        const orderStatus = orderStatuses.get(item.taskId);
+                        return item.picked < item.total &&
+                            orderStatus !== 'NEW' &&
+                            orderStatus !== 'UNASSIGNED';
+                    })
                     .map(item => item.taskId)
             );
 
             console.log(`נמצאו ${ordersWithMissing.size} הזמנות עם חסרים שהתחילו ליקוט או בסטטוס PENDING מתוך ${new Set(items.map(item => item.taskId)).size} הזמנות`);
 
-            // 2. מסננים רק את הפריטים שנלקטו ושייכים להזמנות אלה
-            const negativeItems = items.filter(item =>
-                item.picked > 0 &&
-                ordersWithMissing.has(item.taskId)
-            );
+            // 3. מסננים רק את הפריטים שנלקטו ושייכים להזמנות אלה
+            // בודקים את הסטטוס של ההזמנה (לא של הפריט הבודד, כי כל הפריטים מאותה הזמנה אמורים להיות עם אותו סטטוס)
+            const negativeItems = items.filter(item => {
+                const orderStatus = orderStatuses.get(item.taskId);
+                const isValid = item.picked > 0 &&
+                    ordersWithMissing.has(item.taskId) &&
+                    orderStatus !== 'NEW' &&
+                    orderStatus !== 'UNASSIGNED';
+
+                if (!isValid && item.picked > 0 && ordersWithMissing.has(item.taskId)) {
+                    console.log(`Negative items - filtering out item from order that hasn't started picking: ${item.name} | Task Status: ${orderStatus} | Task ID: ${item.taskId}`);
+                }
+
+                return isValid;
+            });
 
             console.log(`נמצאו ${negativeItems.length} פריטים שנלקטו מהזמנות עם חסרים`);
 
