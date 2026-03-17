@@ -111,15 +111,18 @@
     .lw-thumb-badge { position: absolute; top: -6px; left: -6px; z-index: 3; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px; border: 2px solid #fff; background: #000000a6; color: #fff; display: flex; align-items: center; justify-content: center; font-family: "Noto Sans Hebrew", Arial, sans-serif; font-weight: 700; font-size: 11px; line-height: 1; pointer-events: none; backdrop-filter: saturate(120%) blur(2px); }
 
     /* ====== CRM DROPDOWN STYLES ====== */
-    .crm-dropdown-wrapper { position: relative; display: inline-block; }
+    .crm-dropdown-wrapper { position: relative; display: inline-block; z-index: 1; }
+    .crm-dropdown-wrapper.open { z-index: 1000001; }
     .crm-dropdown-btn { display: flex; align-items: center; justify-content: space-between; gap: 6px; width: 130px; height: 38px; padding: 0 12px; border-radius: 5.46px; border: 1px solid rgba(0,0,0,0.1); cursor: pointer; font-size: 13px; font-family: "Noto Sans Hebrew", Poppins, Helvetica, sans-serif; font-weight: 400; transition: filter 0.15s ease-in-out; user-select: none; outline: none; }
     .crm-dropdown-btn:hover { filter: brightness(0.95); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
     .crm-dropdown-btn i { color: inherit !important; font-size: 14px !important; margin: 0 !important; padding: 0 !important;}
-    .crm-dropdown-menu { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 100; min-width: 140px; overflow: hidden; display: none; padding: 0; list-style: none; }
+    .crm-dropdown-menu { position: absolute; top: 100%; right: 0; margin-top: 4px; background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); z-index: 1000002; min-width: 140px; overflow: hidden; display: none; padding: 0; list-style: none; }
+    .crm-dropdown-menu.portal-open { position: fixed; margin-top: 0; z-index: 2147483647; overflow-y: auto; }
     .crm-dropdown-menu.show { display: block; animation: fadeIn 0.1s ease-out; }
     .crm-dropdown-item { padding: 10px 12px; font-size: 13px; font-weight: 600; cursor: pointer; text-align: center; border-bottom: 1px solid rgba(0,0,0,0.05); transition: opacity 0.2s; }
     .crm-dropdown-item:last-child { border-bottom: none; }
     .crm-dropdown-item:hover { filter: brightness(0.92); }
+    .ani-card.crm-dropdown-open { overflow: visible; }
 
     /* ====== ACTION BUTTON STYLES (FontAwesome) ====== */
     .ani-actions-container { display: inline-flex !important; align-items: center !important; gap: 6px !important; direction: rtl !important; }
@@ -505,7 +508,62 @@
   }
   function asNode(n) { if (n) n.__isNode = true; return n; }
 
-  document.addEventListener('click', () => { document.querySelectorAll('.crm-dropdown-menu').forEach(m => m.classList.remove('show')); });
+  let activeCrmDropdown = null;
+
+  function resetCrmDropdownMenu(menu) {
+    if (!menu) return;
+    menu.classList.remove('show', 'portal-open');
+    menu.style.top = '';
+    menu.style.left = '';
+    menu.style.right = '';
+    menu.style.minWidth = '';
+    menu.style.maxHeight = '';
+    if (menu.__crmHomeParent && menu.parentNode !== menu.__crmHomeParent) menu.__crmHomeParent.appendChild(menu);
+  }
+
+  function positionCrmDropdown(btn, menu) {
+    if (!btn || !menu) return;
+    const rect = btn.getBoundingClientRect();
+    const gutter = 8;
+
+    if (!menu.__crmHomeParent) menu.__crmHomeParent = menu.parentNode;
+    if (menu.parentNode !== document.body) document.body.appendChild(menu);
+
+    menu.classList.add('show', 'portal-open');
+    menu.style.top = '0px';
+    menu.style.left = '0px';
+    menu.style.right = 'auto';
+    menu.style.minWidth = `${Math.ceil(rect.width)}px`;
+
+    const menuRect = menu.getBoundingClientRect();
+    const openUp = rect.bottom + 4 + menuRect.height > window.innerHeight - gutter && rect.top - 4 - menuRect.height >= gutter;
+    const availableHeight = openUp ? rect.top - gutter - 4 : window.innerHeight - rect.bottom - gutter - 4;
+    const top = openUp
+      ? Math.max(gutter, rect.top - Math.min(menuRect.height, Math.max(140, availableHeight)) - 4)
+      : Math.min(window.innerHeight - gutter - menuRect.height, rect.bottom + 4);
+    const left = Math.max(gutter, Math.min(rect.right - menuRect.width, window.innerWidth - gutter - menuRect.width));
+
+    menu.style.top = `${Math.round(top)}px`;
+    menu.style.left = `${Math.round(left)}px`;
+    menu.style.maxHeight = `${Math.max(140, Math.floor(availableHeight))}px`;
+  }
+
+  function repositionActiveCrmDropdown() {
+    if (!activeCrmDropdown) return;
+    positionCrmDropdown(activeCrmDropdown.button, activeCrmDropdown.menu);
+  }
+
+  function closeAllCrmDropdowns() {
+    document.querySelectorAll('.crm-dropdown-menu').forEach(m => m.classList.remove('show'));
+    document.querySelectorAll('.crm-dropdown-wrapper.open').forEach(w => w.classList.remove('open'));
+    document.querySelectorAll('.ani-card.crm-dropdown-open').forEach(card => card.classList.remove('crm-dropdown-open'));
+    document.querySelectorAll('.crm-dropdown-menu.portal-open').forEach(resetCrmDropdownMenu);
+    activeCrmDropdown = null;
+  }
+
+  document.addEventListener('click', closeAllCrmDropdowns);
+  window.addEventListener('resize', repositionActiveCrmDropdown);
+  window.addEventListener('scroll', repositionActiveCrmDropdown, true);
 
   // כפתורי הפעולה
   function getCommunicationActions(phone, name) {
@@ -1197,6 +1255,7 @@
               const crmWrap = el("div", { className: "crm-dropdown-wrapper" });
               const currCrm = CRM_MAP[currentStatus];
               const crmBtn = el("button", {
+                  type: "button",
                   className: "crm-dropdown-btn", style: { backgroundColor: currCrm.bg, color: currCrm.text },
                   innerHTML: `<span style="flex-grow:1; text-align:center;">${currCrm.label}</span> <i class="fa-light fa-angle-down"></i>`
               });
@@ -1206,7 +1265,7 @@
                   const info = CRM_MAP[k];
                   const li = el("li", { className: "crm-dropdown-item", style: { backgroundColor: info.bg, color: info.text }, textContent: info.label });
                   li.onclick = async (e) => {
-                      e.stopPropagation(); crmMenu.classList.remove('show');
+                      e.stopPropagation(); closeAllCrmDropdowns();
                       const origHtml = crmBtn.innerHTML; crmBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
                       try {
                           const res = await gmFetch(`${SUPABASE_URL}/rest/v1/rpc/upsert_crm_status`, { method: "POST", headers: sbHeaders(), body: JSON.stringify({ p_phone: p9, p_category: u.category_key, p_status: k }) });
@@ -1218,7 +1277,17 @@
                   };
                   crmMenu.appendChild(li);
               });
-              crmBtn.onclick = (e) => { e.stopPropagation(); document.querySelectorAll('.crm-dropdown-menu').forEach(m => { if (m !== crmMenu) m.classList.remove('show'); }); crmMenu.classList.toggle('show'); };
+              crmBtn.onclick = (e) => {
+                  e.stopPropagation();
+                  const willOpen = !crmMenu.classList.contains('show');
+                  closeAllCrmDropdowns();
+                  if (willOpen) {
+                      crmWrap.classList.add('open');
+                      crmWrap.closest('.ani-card')?.classList.add('crm-dropdown-open');
+                      activeCrmDropdown = { button: crmBtn, menu: crmMenu };
+                      positionCrmDropdown(crmBtn, crmMenu);
+                  }
+              };
               crmWrap.appendChild(crmBtn); crmWrap.appendChild(crmMenu);
 
               let catDetails = el("div", {style:{display:"flex", flexDirection:"column", gap:"6px", alignItems:"flex-start"}});
