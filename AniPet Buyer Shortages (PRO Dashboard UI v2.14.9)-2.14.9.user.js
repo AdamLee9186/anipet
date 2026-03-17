@@ -295,7 +295,7 @@
   function saveCustomPresets() { GM_setValue('ani_custom_presets', JSON.stringify(state.customPresets)); }
   loadCustomPresets();
 
-  function gmFetch(url, { method = "GET", headers = {}, body = null } = {}) {
+  function gmFetch(url, { method = "GET", headers = {}, body = null, timeout = 30000 } = {}) {
     return new Promise((resolve, reject) => {
       GM_xmlhttpRequest({
           method, url, headers, data: body, responseType: "text",
@@ -303,7 +303,7 @@
           onerror: (err) => reject(new Error(err?.error || err?.message || "Network request failed")),
           onabort: () => reject(new Error("Request aborted")),
           ontimeout: () => reject(new Error("Request timed out")),
-          timeout: 30000
+          timeout
       });
     });
   }
@@ -400,7 +400,12 @@
       const btn = document.getElementById('ani-refresh-btn'); if (!btn) return;
       const originalHtml = btn.innerHTML; btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin"></i> מרענן נתונים בשרת...`; btn.style.pointerEvents = 'none';
       try {
-          const res = await gmFetch(`${SUPABASE_URL}/rest/v1/rpc/trigger_nightly_refresh`, { method: "POST", headers: sbHeaders() });
+          const res = await gmFetch(`${SUPABASE_URL}/rest/v1/rpc/trigger_nightly_refresh`, {
+              method: "POST",
+              headers: sbHeaders(),
+              body: "{}",
+              timeout: 120000
+          });
           if(res.ok) {
               btn.innerHTML = `<i class="fa-solid fa-check" style="color:#10b981;"></i> רענון הצליח! מושך נתונים...`;
               setTimeout(() => { fetchLastSyncTime(); fetchAllDataAndRender(); }, 1500);
@@ -408,7 +413,11 @@
               btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;"></i> שגיאה ברענון`;
               setTimeout(() => { btn.innerHTML = originalHtml; btn.style.pointerEvents = 'auto'; }, 3000);
           }
-      } catch(e) { btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;"></i> שגיאה בתקשורת`; setTimeout(() => { btn.innerHTML = originalHtml; btn.style.pointerEvents = 'auto'; }, 3000); }
+      } catch(e) {
+          const msg = /timed out/i.test(String(e?.message || "")) ? 'הרענון לוקח יותר מהרגיל' : 'שגיאה בתקשורת';
+          btn.innerHTML = `<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444;"></i> ${msg}`;
+          setTimeout(() => { btn.innerHTML = originalHtml; btn.style.pointerEvents = 'auto'; }, 4000);
+      }
   }
 
   async function fetchMetaForSkus(skus) {
