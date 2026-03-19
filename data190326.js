@@ -10440,6 +10440,13 @@ function stripCopyFrom(root) {
   if (root.getAttribute && root.getAttribute('title') === 'לחץ להעתקה') {
     root.removeAttribute('title');
   }
+  if (root.matches && root.matches('.copy-icon')) {
+    try { root.remove(); } catch(_){}
+    return;
+  }
+  root.querySelectorAll('.copy-icon').forEach(el => {
+    try { el.remove(); } catch(_){}
+  });
   root.querySelectorAll('.copy-enabled').forEach(el => el.classList.remove('copy-enabled'));
   root.querySelectorAll('[title="לחץ להעתקה"]').forEach(el => el.removeAttribute('title'));
 }
@@ -10467,13 +10474,21 @@ function cleanupDropdownCells() {
   });
 }
 
+function cleanupDatepickerCopyIcons() {
+  const roots = document.querySelectorAll('.datepicker, .datepicker-dropdown');
+  roots.forEach(root => stripCopyFrom(root));
+}
+
 // Run cleanup immediately and also when DOM is ready
 cleanupDropdownCells();
+cleanupDatepickerCopyIcons();
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', cleanupDropdownCells);
+  document.addEventListener('DOMContentLoaded', cleanupDatepickerCopyIcons);
 } else {
   // DOM is already ready, run cleanup
   cleanupDropdownCells();
+  cleanupDatepickerCopyIcons();
 }
 
 // Watch for new dropdown cells being added dynamically
@@ -10500,7 +10515,10 @@ const dropdownCleanupObserver = new MutationObserver((mutations) => {
   if (needsCleanup) {
     // Debounce cleanup to avoid excessive calls
     clearTimeout(window._dropdownCleanupTimeout);
-    window._dropdownCleanupTimeout = setTimeout(cleanupDropdownCells, 100);
+    window._dropdownCleanupTimeout = setTimeout(() => {
+      cleanupDropdownCells();
+      cleanupDatepickerCopyIcons();
+    }, 100);
   }
 });
 
@@ -10969,6 +10987,8 @@ function addClickableLinksToAllTables(force = false, root = document) {
             if (table.closest && table.closest('#missing-table-container')) return;
             // ⛔ דלג על טבלאות בתוך מודאל AniPet PRO
             if (table.closest && table.closest('#anipet-pro-root')) return;
+            // ⛔ דלג על טבלאות של datepicker
+            if (table.closest && table.closest('.datepicker, .datepicker-dropdown')) return;
 
             // Skip store visits table - don't add copy icons for names there
             if (table.id === 'operator-store-visits-table' ||
